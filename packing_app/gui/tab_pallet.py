@@ -102,6 +102,13 @@ class TabPallet(ttk.Frame):
         self.num_layers_var = tk.StringVar(value="1")
         ttk.Entry(layers_frame, textvariable=self.num_layers_var, width=5).grid(row=0, column=1, padx=5, pady=5)
 
+        ttk.Label(layers_frame, text="Maksymalna wysokość ułożenia (mm):").grid(row=1, column=0, padx=5, pady=5)
+        self.max_stack_var = tk.StringVar(value="0")
+        ttk.Entry(layers_frame, textvariable=self.max_stack_var, width=8).grid(row=1, column=1, padx=5, pady=5)
+        self.max_stack_var.trace_add("write", lambda *args: self.compute_pallet())
+        self.include_pallet_height_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(layers_frame, text="Uwzględnij wysokość nośnika", variable=self.include_pallet_height_var, command=self.compute_pallet).grid(row=1, column=2, columnspan=2, padx=5, pady=5, sticky="w")
+
         ttk.Label(layers_frame, text="Centrowanie:").grid(row=0, column=2, padx=5, pady=5)
         self.center_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(layers_frame, variable=self.center_var, command=self.compute_pallet).grid(row=0, column=3, padx=5, pady=5)
@@ -114,7 +121,7 @@ class TabPallet(ttk.Frame):
         ttk.Checkbutton(layers_frame, text="Naprzemienne transformacje", variable=self.alternate_var, command=self.update_transformations).grid(row=0, column=6, padx=5, pady=5)
 
         self.transform_frame = ttk.Frame(layers_frame)
-        self.transform_frame.grid(row=1, column=0, columnspan=7, padx=5, pady=5)
+        self.transform_frame.grid(row=2, column=0, columnspan=7, padx=5, pady=5)
 
         control_frame = ttk.Frame(self)
         control_frame.pack(fill=tk.X, padx=10, pady=5)
@@ -125,6 +132,8 @@ class TabPallet(ttk.Frame):
         self.layout_label.pack(side=tk.LEFT, padx=5)
         ttk.Button(control_frame, text="Następny", command=self.next_layout).pack(side=tk.LEFT, padx=5)
         ttk.Button(control_frame, text="Pokaż w 3D", command=self.show_3d).pack(side=tk.LEFT, padx=5)
+        self.totals_label = ttk.Label(control_frame, text="")
+        self.totals_label.pack(side=tk.LEFT, padx=10)
 
         self.fig = plt.Figure(figsize=(8, 6))
         self.ax = self.fig.add_subplot(111)
@@ -274,7 +283,16 @@ class TabPallet(ttk.Frame):
         box_w = parse_dim(self.box_w_var)
         box_l = parse_dim(self.box_l_var)
         box_h = parse_dim(self.box_h_var)
+        thickness = parse_dim(self.cardboard_thickness_var)
         num_layers = int(parse_dim(self.num_layers_var))
+        max_stack = parse_dim(self.max_stack_var)
+
+        if max_stack > 0:
+            avail = max_stack - (pallet_h if self.include_pallet_height_var.get() else 0)
+            box_h_ext = box_h + 2 * thickness
+            if box_h_ext > 0:
+                num_layers = int(avail // box_h_ext)
+                self.num_layers_var.set(str(max(num_layers, 0)))
 
         if pallet_w == 0 or pallet_l == 0 or pallet_h == 0 or box_w == 0 or box_l == 0 or box_h == 0 or num_layers <= 0:
             messagebox.showwarning("Błąd", "Wszystkie wymiary i liczba warstw muszą być większe od 0.")
@@ -296,6 +314,16 @@ class TabPallet(ttk.Frame):
             count, positions, _ = self.layouts[self.current_layout_idx]
             self.layers.append(positions)
         self.update_transformations()
+        if self.layers:
+            box_h_ext = box_h + 2 * thickness
+            total_cartons = len(self.layers[0]) * num_layers
+            total_products = total_cartons
+            stack_height = num_layers * box_h_ext
+            if self.include_pallet_height_var.get():
+                stack_height += pallet_h
+            self.totals_label.config(text=f"Kartonów: {total_cartons} | Produkty: {total_products} | Wysokość: {stack_height:.1f} mm")
+        else:
+            self.totals_label.config(text="")
 
     def draw_pallet(self):
         self.ax.clear()
