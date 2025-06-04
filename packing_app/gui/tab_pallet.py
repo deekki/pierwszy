@@ -27,6 +27,7 @@ class TabPallet(ttk.Frame):
         self.layers = []
         self.transformations = []
         self.transform_vars = []
+        self.items_per_carton = 0
         self.build_ui()
 
     def build_ui(self):
@@ -132,6 +133,9 @@ class TabPallet(ttk.Frame):
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         self.toolbar = NavigationToolbar2Tk(self.canvas, self)
         self.toolbar.pack()
+        self.summary_var = tk.StringVar(value="")
+        self.summary_label = ttk.Label(self, textvariable=self.summary_var)
+        self.summary_label.pack(fill=tk.X, padx=10, pady=5)
         self.canvas.draw()
 
         self.compute_pallet()
@@ -196,6 +200,11 @@ class TabPallet(ttk.Frame):
 
     def update_layout(self):
         self.layout_label.config(text=f"Układ {self.current_layout_idx + 1} z {len(self.layouts)}")
+        num_layers = int(parse_dim(self.num_layers_var))
+        self.layers = []
+        for _ in range(num_layers):
+            _, positions, _ = self.layouts[self.current_layout_idx]
+            self.layers.append(positions)
         self.draw_pallet()
 
     def update_transformations(self, *args):
@@ -296,6 +305,7 @@ class TabPallet(ttk.Frame):
             count, positions, _ = self.layouts[self.current_layout_idx]
             self.layers.append(positions)
         self.update_transformations()
+        self.update_summary()
 
     def draw_pallet(self):
         self.ax.clear()
@@ -312,6 +322,20 @@ class TabPallet(ttk.Frame):
         self.ax.set_aspect('equal')
         self.ax.set_title(f"Liczba kartonów w warstwie: {len(self.layers[0])}")
         self.canvas.draw()
+        self.update_summary()
+
+    def update_summary(self):
+        if not self.layers:
+            self.summary_var.set("")
+            return
+        cartons_per_layer = len(self.layers[0])
+        num_layers = len(self.layers)
+        total_cartons = cartons_per_layer * num_layers
+        msg = f"Kartony na palecie: {total_cartons} ({cartons_per_layer} x {num_layers})"
+        if self.items_per_carton:
+            total_products = total_cartons * self.items_per_carton
+            msg += f" | Produkty: {total_products}"
+        self.summary_var.set(msg)
 
     def show_3d(self):
         window = tk.Toplevel(self)

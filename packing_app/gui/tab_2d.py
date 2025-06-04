@@ -16,8 +16,9 @@ from packing_app.core.algorithms import (
 from core.utils import load_cartons
 
 class TabPacking2D(ttk.Frame):
-    def __init__(self, parent):
+    def __init__(self, parent, pallet_tab=None):
         super().__init__(parent)
+        self.pallet_tab = pallet_tab
         self.style = ttk.Style()
         self.style.configure("Selected.TRadiobutton", background="#e0f0e0")
         self.style.configure("Unselected.TRadiobutton", background="")
@@ -189,6 +190,9 @@ class TabPacking2D(ttk.Frame):
 
         self.btn_compare = ttk.Button(btn_frame, text="Porównaj kartony", command=self.compare_cartons)
         self.btn_compare.pack(side=tk.LEFT, padx=5)
+
+        self.btn_to_pallet = ttk.Button(btn_frame, text="Przenieś do paletyzacji", command=self.transfer_to_pallet)
+        self.btn_to_pallet.pack(side=tk.LEFT, padx=5)
 
         self.fig = plt.Figure(figsize=(12, 6))
         self.axes = self.fig.subplots(1, 3)
@@ -656,4 +660,41 @@ class TabPacking2D(ttk.Frame):
             tree.insert("", tk.END, values=(key, f"{w_c}x{l_c}x{h_c}", c1, c2, c3, f"{best_count} ({best_layout})"))
 
         tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+    def carton_product_count(self):
+        w_c = self.parse_dim_safe(self.carton_w)
+        l_c = self.parse_dim_safe(self.carton_l)
+        margin = self.parse_dim_safe(self.margin)
+        if self.prod_type.get() == "rectangle":
+            w_p = self.parse_dim_safe(self.prod_w)
+            l_p = self.parse_dim_safe(self.prod_l)
+            if not self.validate_dimensions(w_c, l_c, w_p, l_p, margin=margin):
+                return 0
+            c_vert, _ = pack_rectangles_2d(w_c, l_c, w_p, l_p, margin)
+            c_horz, _ = pack_rectangles_2d(w_c, l_c, l_p, w_p, margin)
+            c_mix, pos_mix = pack_rectangles_mixed_greedy(w_c, l_c, w_p, l_p, margin)
+            if self.maximize_mixed.get() and pos_mix:
+                c_mix, _ = maximize_mixed_layout(w_c, l_c, w_p, l_p, margin, pos_mix)
+            return max(c_vert, c_horz, c_mix)
+        else:
+            diam = self.parse_dim_safe(self.prod_diam)
+            if not self.validate_dimensions(w_c, l_c, diam=diam, margin=margin):
+                return 0
+            c_grid = len(pack_circles_grid_bottomleft(w_c, l_c, diam, margin))
+            c_hex = len(pack_hex_top_down(w_c, l_c, diam, margin))
+            c_rev = len(pack_hex_bottom_up(l_c, w_c, diam, margin))
+            return max(c_grid, c_hex, c_rev)
+
+    def transfer_to_pallet(self):
+        if not self.pallet_tab:
+            return
+        self.pallet_tab.box_w_var.set(str(self.parse_dim_safe(self.carton_w)))
+        self.pallet_tab.box_l_var.set(str(self.parse_dim_safe(self.carton_l)))
+        self.pallet_tab.box_h_var.set(str(self.parse_dim_safe(self.carton_h)))
+        self.pallet_tab.items_per_carton = self.carton_product_count()
+        self.pallet_tab.compute_pallet()
+        try:
+            self.master.select(self.pallet_tab)
+        except Exception:
+            pass
 

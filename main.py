@@ -14,9 +14,9 @@ def main():
     notebook = ttk.Notebook(root)
     notebook.pack(fill=tk.BOTH, expand=True)
 
-    tab1 = TabPacking2D(notebook)
-    tab2 = TabBox3D(notebook)
     tab3 = TabPallet(notebook)
+    tab1 = TabPacking2D(notebook, pallet_tab=tab3)
+    tab2 = TabBox3D(notebook)
 
     notebook.add(tab1, text="Pakowanie 2D")
     notebook.add(tab2, text="Pakowanie 3D")
