@@ -931,7 +931,7 @@ class TabPacking2D(ttk.Frame):
         results.sort(key=lambda x: (x[7], x[4]), reverse=True)
 
         compare_window = tk.Toplevel(self)
-        compare_window.title("Porównanie kartonów")
+        compare_window.title("Porównanie kartonów – dwuklik wybiera karton")
         layout1 = "Pionowo" if is_rectangle else "Siatka"
         layout2 = "Poziomo" if is_rectangle else "Hex"
         layout3 = "Mieszane" if is_rectangle else "Hex(rev)"
@@ -953,6 +953,25 @@ class TabPacking2D(ttk.Frame):
             tree.insert("", tk.END, values=(key, f"{w_c}x{l_c}x{h_c}", c1, c2, c3, f"{best_count} ({best_layout})"))
 
         tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        def on_tree_double_click(event):
+            selection = tree.selection()
+            if not selection:
+                return
+            values = tree.item(selection[0], "values")
+            if not values:
+                return
+            dims = values[1].split("x")
+            if len(dims) != 3:
+                return
+            self.carton_choice.set("Manual")
+            self.carton_w.set(dims[0])
+            self.carton_l.set(dims[1])
+            self.carton_h.set(dims[2])
+            compare_window.destroy()
+            self.show_packing()
+
+        tree.bind("<Double-1>", on_tree_double_click)
 
 class TabBox3D(ttk.Frame):
     def __init__(self, parent):
