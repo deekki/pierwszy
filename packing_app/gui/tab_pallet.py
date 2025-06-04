@@ -26,7 +26,6 @@ class TabPallet(ttk.Frame):
         self.current_layout_idx = 0
         self.layers = []
         self.transformations = []
-        self.transform_vars = []
         self.products_per_carton = 1
         self.tape_per_carton = 0.0
         self.film_per_pallet = 0.0
@@ -120,11 +119,27 @@ class TabPallet(ttk.Frame):
         self.center_mode_var = tk.StringVar(value="Cała warstwa")
         ttk.OptionMenu(layers_frame, self.center_mode_var, "Cała warstwa", "Cała warstwa", "Poszczególne obszary").grid(row=0, column=5, padx=5, pady=5)
 
-        self.alternate_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(layers_frame, text="Naprzemienne transformacje", variable=self.alternate_var, command=self.update_transformations).grid(row=0, column=6, padx=5, pady=5)
+        ttk.Label(layers_frame, text="Orientacja pierwszej warstwy:").grid(row=2, column=0, padx=5, pady=5)
+        self.base_transform_var = tk.StringVar(value="Brak")
+        ttk.OptionMenu(
+            layers_frame,
+            self.base_transform_var,
+            "Brak",
+            "Brak",
+            "Obrót 180° (dłuższy bok)",
+            "Obrót 180° (krótszy bok)",
+            "Odbicie lustrzane (dłuższy bok)",
+            "Odbicie lustrzane (krótszy bok)",
+            command=self.update_transformations,
+        ).grid(row=2, column=1, padx=5, pady=5)
 
-        self.transform_frame = ttk.Frame(layers_frame)
-        self.transform_frame.grid(row=2, column=0, columnspan=7, padx=5, pady=5)
+        self.alternate_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            layers_frame,
+            text="Naprzemienne ustawienie",
+            variable=self.alternate_var,
+            command=self.update_transformations,
+        ).grid(row=2, column=2, padx=5, pady=5, sticky="w")
 
         control_frame = ttk.Frame(self)
         control_frame.pack(fill=tk.X, padx=10, pady=5)
@@ -177,15 +192,7 @@ class TabPallet(ttk.Frame):
         except ValueError:
             self.ext_dims_label.config(text="Błąd danych")
 
-    def update_transform_frame(self):
-        for widget in self.transform_frame.winfo_children():
-            widget.destroy()
-        for i in range(int(parse_dim(self.num_layers_var))):
-            ttk.Label(self.transform_frame, text=f"Warstwa {i+1}:").grid(row=i, column=0, padx=5, pady=2)
-            var = tk.StringVar(value="Brak")
-            ttk.OptionMenu(self.transform_frame, var, "Brak", "Brak", "Obrót 180° (dłuższy bok)", "Obrót 180° (krótszy bok)",
-                           "Odbicie lustrzane (dłuższy bok)", "Odbicie lustrzane (krótszy bok)", command=self.update_transformations).grid(row=i, column=1, padx=5, pady=2)
-            self.transform_vars.append(var)
+
 
     def on_pallet_selected(self, *args):
         selected_pallet = next(
@@ -218,10 +225,14 @@ class TabPallet(ttk.Frame):
         self.draw_pallet()
 
     def update_transformations(self, *args):
-        self.transformations = [var.get() for var in self.transform_vars]
-        if self.alternate_var.get():
-            for i in range(len(self.transformations)):
-                self.transformations[i] = self.transform_vars[1].get() if i % 2 else "Brak"
+        num_layers = int(parse_dim(self.num_layers_var))
+        base = self.base_transform_var.get()
+        self.transformations = []
+        for i in range(num_layers):
+            if self.alternate_var.get() and i % 2 == 1:
+                self.transformations.append("Obrót 180° (dłuższy bok)")
+            else:
+                self.transformations.append(base)
         self.draw_pallet()
 
     def apply_transformation(self, positions, transform, pallet_w, pallet_l, box_w, box_l):
@@ -317,8 +328,6 @@ class TabPallet(ttk.Frame):
         positions2 = self.center_layout(positions2, pallet_w, pallet_l)
         self.layouts.append((count2, positions2, "Naprzemienny"))
 
-        self.transform_vars = []
-        self.update_transform_frame()
         self.layers = []
         for _ in range(num_layers):
             count, positions, _ = self.layouts[self.current_layout_idx]
