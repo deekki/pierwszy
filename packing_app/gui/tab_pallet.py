@@ -49,15 +49,21 @@ class TabPallet(ttk.Frame):
 
         ttk.Label(pallet_frame, text="W (mm):").grid(row=0, column=2, padx=5, pady=5)
         self.pallet_w_var = tk.StringVar(value=str(self.predefined_pallets[0]["w"]))
-        ttk.Entry(pallet_frame, textvariable=self.pallet_w_var, width=10).grid(row=0, column=3, padx=5, pady=5)
+        entry_pallet_w = ttk.Entry(pallet_frame, textvariable=self.pallet_w_var, width=10)
+        entry_pallet_w.grid(row=0, column=3, padx=5, pady=5)
+        entry_pallet_w.bind("<Return>", self.compute_pallet)
 
         ttk.Label(pallet_frame, text="L (mm):").grid(row=0, column=4, padx=5, pady=5)
         self.pallet_l_var = tk.StringVar(value=str(self.predefined_pallets[0]["l"]))
-        ttk.Entry(pallet_frame, textvariable=self.pallet_l_var, width=10).grid(row=0, column=5, padx=5, pady=5)
+        entry_pallet_l = ttk.Entry(pallet_frame, textvariable=self.pallet_l_var, width=10)
+        entry_pallet_l.grid(row=0, column=5, padx=5, pady=5)
+        entry_pallet_l.bind("<Return>", self.compute_pallet)
 
         ttk.Label(pallet_frame, text="H (mm):").grid(row=0, column=6, padx=5, pady=5)
         self.pallet_h_var = tk.StringVar(value=str(self.predefined_pallets[0]["h"]))
-        ttk.Entry(pallet_frame, textvariable=self.pallet_h_var, width=10).grid(row=0, column=7, padx=5, pady=5)
+        entry_pallet_h = ttk.Entry(pallet_frame, textvariable=self.pallet_h_var, width=10)
+        entry_pallet_h.grid(row=0, column=7, padx=5, pady=5)
+        entry_pallet_h.bind("<Return>", self.compute_pallet)
 
         carton_frame = ttk.LabelFrame(self, text="Parametry kartonu")
         carton_frame.pack(fill=tk.X, padx=10, pady=5)
@@ -75,20 +81,33 @@ class TabPallet(ttk.Frame):
 
         ttk.Label(carton_frame, text="W (mm):").grid(row=0, column=2, padx=5, pady=5)
         self.box_w_var = tk.StringVar(value=str(self.predefined_cartons[list(self.predefined_cartons.keys())[0]][0]))
-        ttk.Entry(carton_frame, textvariable=self.box_w_var, width=10).grid(row=0, column=3, padx=5, pady=5)
+        entry_box_w = ttk.Entry(carton_frame, textvariable=self.box_w_var, width=10)
+        entry_box_w.grid(row=0, column=3, padx=5, pady=5)
+        entry_box_w.bind("<Return>", self.compute_pallet)
 
         ttk.Label(carton_frame, text="L (mm):").grid(row=0, column=4, padx=5, pady=5)
         self.box_l_var = tk.StringVar(value=str(self.predefined_cartons[list(self.predefined_cartons.keys())[0]][1]))
-        ttk.Entry(carton_frame, textvariable=self.box_l_var, width=10).grid(row=0, column=5, padx=5, pady=5)
+        entry_box_l = ttk.Entry(carton_frame, textvariable=self.box_l_var, width=10)
+        entry_box_l.grid(row=0, column=5, padx=5, pady=5)
+        entry_box_l.bind("<Return>", self.compute_pallet)
 
         ttk.Label(carton_frame, text="H (mm):").grid(row=0, column=6, padx=5, pady=5)
         self.box_h_var = tk.StringVar(value=str(self.predefined_cartons[list(self.predefined_cartons.keys())[0]][2]))
-        ttk.Entry(carton_frame, textvariable=self.box_h_var, width=10).grid(row=0, column=7, padx=5, pady=5)
+        entry_box_h = ttk.Entry(carton_frame, textvariable=self.box_h_var, width=10)
+        entry_box_h.grid(row=0, column=7, padx=5, pady=5)
+        entry_box_h.bind("<Return>", self.compute_pallet)
 
         ttk.Label(carton_frame, text="Grubość tektury (mm):").grid(row=1, column=0, padx=5, pady=5)
         self.cardboard_thickness_var = tk.StringVar(value="3")
-        ttk.Entry(carton_frame, textvariable=self.cardboard_thickness_var, width=10, validate="key",
-                  validatecommand=(self.register(self.validate_number), "%P")).grid(row=1, column=1, padx=5, pady=5)
+        entry_cardboard = ttk.Entry(
+            carton_frame,
+            textvariable=self.cardboard_thickness_var,
+            width=10,
+            validate="key",
+            validatecommand=(self.register(self.validate_number), "%P"),
+        )
+        entry_cardboard.grid(row=1, column=1, padx=5, pady=5)
+        entry_cardboard.bind("<Return>", self.compute_pallet)
 
         ttk.Label(carton_frame, text="Wymiary zewnętrzne (mm):").grid(row=1, column=2, padx=5, pady=5)
         self.ext_dims_label = ttk.Label(carton_frame, text="")
@@ -103,12 +122,15 @@ class TabPallet(ttk.Frame):
 
         ttk.Label(layers_frame, text="Liczba warstw:").grid(row=0, column=0, padx=5, pady=5)
         self.num_layers_var = tk.StringVar(value="1")
-        ttk.Entry(layers_frame, textvariable=self.num_layers_var, width=5).grid(row=0, column=1, padx=5, pady=5)
+        entry_num_layers = ttk.Entry(layers_frame, textvariable=self.num_layers_var, width=5)
+        entry_num_layers.grid(row=0, column=1, padx=5, pady=5)
+        entry_num_layers.bind("<Return>", self.compute_pallet)
 
         ttk.Label(layers_frame, text="Maksymalna wysokość ułożenia (mm):").grid(row=1, column=0, padx=5, pady=5)
         self.max_stack_var = tk.StringVar(value="0")
-        ttk.Entry(layers_frame, textvariable=self.max_stack_var, width=8).grid(row=1, column=1, padx=5, pady=5)
-        self.max_stack_var.trace_add("write", lambda *args: self.compute_pallet())
+        entry_max_stack = ttk.Entry(layers_frame, textvariable=self.max_stack_var, width=8)
+        entry_max_stack.grid(row=1, column=1, padx=5, pady=5)
+        entry_max_stack.bind("<Return>", self.compute_pallet)
         self.include_pallet_height_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(layers_frame, text="Uwzględnij wysokość nośnika", variable=self.include_pallet_height_var, command=self.compute_pallet).grid(row=1, column=2, columnspan=2, padx=5, pady=5, sticky="w")
 
