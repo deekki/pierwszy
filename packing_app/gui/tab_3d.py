@@ -1,11 +1,12 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from packing_app.core.algorithms import random_box_optimizer_3d
-from packing_app.data.constants import PREDEFINED_CARTONS
+from core.utils import load_cartons
 
 class TabBox3D(ttk.Frame):
     def __init__(self, parent):
         super().__init__(parent)
+        self.predefined_cartons = load_cartons()
         self.build_ui()
 
     def build_ui(self):
@@ -41,7 +42,7 @@ class TabBox3D(ttk.Frame):
         units = self.num_units.get()
         product_volume = w_ * l_ * h_
         results = []
-        for key, dims in PREDEFINED_CARTONS.items():
+        for key, dims in self.predefined_cartons.items():
             bw, bl, bh = dims
             bw_ext, bl_ext, bh_ext = bw + 3, bl + 3, bh + 6
             layers = int(bh_ext // h_)

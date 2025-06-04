@@ -5,7 +5,7 @@ matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from packing_app.core.algorithms import pack_rectangles_mixed_greedy
-from packing_app.data.constants import PREDEFINED_CARTONS, PREDEFINED_PALLETS
+from core.utils import load_cartons, load_pallets
 
 
 def parse_dim(var: tk.StringVar) -> float:
@@ -19,6 +19,8 @@ def parse_dim(var: tk.StringVar) -> float:
 class TabPallet(ttk.Frame):
     def __init__(self, parent):
         super().__init__(parent)
+        self.predefined_cartons = load_cartons()
+        self.predefined_pallets = load_pallets()
         self.pack(fill=tk.BOTH, expand=True)
         self.layouts = []
         self.current_layout_idx = 0
@@ -32,42 +34,52 @@ class TabPallet(ttk.Frame):
         pallet_frame.pack(fill=tk.X, padx=10, pady=5)
 
         ttk.Label(pallet_frame, text="Paleta:").grid(row=0, column=0, padx=5, pady=5)
-        self.pallet_var = tk.StringVar(value=PREDEFINED_PALLETS[0]["name"])
-        pallet_menu = ttk.OptionMenu(pallet_frame, self.pallet_var, PREDEFINED_PALLETS[0]["name"],
-                                     *[p["name"] for p in PREDEFINED_PALLETS], command=self.on_pallet_selected)
+        self.pallet_var = tk.StringVar(value=self.predefined_pallets[0]["name"])
+        pallet_menu = ttk.OptionMenu(
+            pallet_frame,
+            self.pallet_var,
+            self.predefined_pallets[0]["name"],
+            *[p["name"] for p in self.predefined_pallets],
+            command=self.on_pallet_selected,
+        )
         pallet_menu.grid(row=0, column=1, padx=5, pady=5)
 
         ttk.Label(pallet_frame, text="W (mm):").grid(row=0, column=2, padx=5, pady=5)
-        self.pallet_w_var = tk.StringVar(value=str(PREDEFINED_PALLETS[0]["w"]))
+        self.pallet_w_var = tk.StringVar(value=str(self.predefined_pallets[0]["w"]))
         ttk.Entry(pallet_frame, textvariable=self.pallet_w_var, width=10).grid(row=0, column=3, padx=5, pady=5)
 
         ttk.Label(pallet_frame, text="L (mm):").grid(row=0, column=4, padx=5, pady=5)
-        self.pallet_l_var = tk.StringVar(value=str(PREDEFINED_PALLETS[0]["l"]))
+        self.pallet_l_var = tk.StringVar(value=str(self.predefined_pallets[0]["l"]))
         ttk.Entry(pallet_frame, textvariable=self.pallet_l_var, width=10).grid(row=0, column=5, padx=5, pady=5)
 
         ttk.Label(pallet_frame, text="H (mm):").grid(row=0, column=6, padx=5, pady=5)
-        self.pallet_h_var = tk.StringVar(value=str(PREDEFINED_PALLETS[0]["h"]))
+        self.pallet_h_var = tk.StringVar(value=str(self.predefined_pallets[0]["h"]))
         ttk.Entry(pallet_frame, textvariable=self.pallet_h_var, width=10).grid(row=0, column=7, padx=5, pady=5)
 
         carton_frame = ttk.LabelFrame(self, text="Parametry kartonu")
         carton_frame.pack(fill=tk.X, padx=10, pady=5)
 
         ttk.Label(carton_frame, text="Karton:").grid(row=0, column=0, padx=5, pady=5)
-        self.carton_var = tk.StringVar(value=list(PREDEFINED_CARTONS.keys())[0])
-        carton_menu = ttk.OptionMenu(carton_frame, self.carton_var, list(PREDEFINED_CARTONS.keys())[0],
-                                     *PREDEFINED_CARTONS.keys(), command=self.on_carton_selected)
+        self.carton_var = tk.StringVar(value=list(self.predefined_cartons.keys())[0])
+        carton_menu = ttk.OptionMenu(
+            carton_frame,
+            self.carton_var,
+            list(self.predefined_cartons.keys())[0],
+            *self.predefined_cartons.keys(),
+            command=self.on_carton_selected,
+        )
         carton_menu.grid(row=0, column=1, padx=5, pady=5)
 
         ttk.Label(carton_frame, text="W (mm):").grid(row=0, column=2, padx=5, pady=5)
-        self.box_w_var = tk.StringVar(value=str(PREDEFINED_CARTONS[list(PREDEFINED_CARTONS.keys())[0]][0]))
+        self.box_w_var = tk.StringVar(value=str(self.predefined_cartons[list(self.predefined_cartons.keys())[0]][0]))
         ttk.Entry(carton_frame, textvariable=self.box_w_var, width=10).grid(row=0, column=3, padx=5, pady=5)
 
         ttk.Label(carton_frame, text="L (mm):").grid(row=0, column=4, padx=5, pady=5)
-        self.box_l_var = tk.StringVar(value=str(PREDEFINED_CARTONS[list(PREDEFINED_CARTONS.keys())[0]][1]))
+        self.box_l_var = tk.StringVar(value=str(self.predefined_cartons[list(self.predefined_cartons.keys())[0]][1]))
         ttk.Entry(carton_frame, textvariable=self.box_l_var, width=10).grid(row=0, column=5, padx=5, pady=5)
 
         ttk.Label(carton_frame, text="H (mm):").grid(row=0, column=6, padx=5, pady=5)
-        self.box_h_var = tk.StringVar(value=str(PREDEFINED_CARTONS[list(PREDEFINED_CARTONS.keys())[0]][2]))
+        self.box_h_var = tk.StringVar(value=str(self.predefined_cartons[list(self.predefined_cartons.keys())[0]][2]))
         ttk.Entry(carton_frame, textvariable=self.box_h_var, width=10).grid(row=0, column=7, padx=5, pady=5)
 
         ttk.Label(carton_frame, text="Grubość tektury (mm):").grid(row=1, column=0, padx=5, pady=5)
@@ -157,14 +169,16 @@ class TabPallet(ttk.Frame):
             self.transform_vars.append(var)
 
     def on_pallet_selected(self, *args):
-        selected_pallet = next(p for p in PREDEFINED_PALLETS if p["name"] == self.pallet_var.get())
+        selected_pallet = next(
+            p for p in self.predefined_pallets if p["name"] == self.pallet_var.get()
+        )
         self.pallet_w_var.set(str(selected_pallet["w"]))
         self.pallet_l_var.set(str(selected_pallet["l"]))
         self.pallet_h_var.set(str(selected_pallet["h"]))
         self.compute_pallet()
 
     def on_carton_selected(self, *args):
-        dims = PREDEFINED_CARTONS[self.carton_var.get()]
+        dims = self.predefined_cartons[self.carton_var.get()]
         self.box_w_var.set(str(dims[0]))
         self.box_l_var.set(str(dims[1]))
         self.box_h_var.set(str(dims[2]))
