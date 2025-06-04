@@ -2,6 +2,7 @@ import math
 import numpy as np
 
 def pack_rectangles_2d(width, height, wprod, lprod, margin=0):
+    """Pack rectangles without rotation on a 2D surface."""
     eff_width = width - margin
     eff_height = height - margin
     if eff_width < wprod or eff_height < lprod:
@@ -17,6 +18,7 @@ def pack_rectangles_2d(width, height, wprod, lprod, margin=0):
     return len(positions), positions
 
 def pack_rectangles_mixed_greedy(width, height, wprod, lprod, margin=0):
+    """Greedy packing allowing rotation to maximize count."""
     eff_width = width - margin
     eff_height = height - margin
     if eff_width < min(wprod, lprod) or eff_height < min(wprod, lprod):
@@ -68,6 +70,7 @@ def pack_rectangles_mixed_greedy(width, height, wprod, lprod, margin=0):
     return best_count, best_positions
 
 def pack_rectangles_mixed_max(width, height, wprod, lprod, margin=0):
+    """Exhaustively search for the best mixed orientation layout."""
     eff_width = width - margin
     eff_height = height - margin
     if eff_width < min(wprod, lprod) or eff_height < min(wprod, lprod):
@@ -98,6 +101,7 @@ def pack_rectangles_mixed_max(width, height, wprod, lprod, margin=0):
     return best_count, best_positions
 
 def split_rect(rect, w, h):
+    """Return leftover rectangles after placing a w x h piece."""
     x, y, W, H = rect
     leftover = []
     if W - w > 0:
@@ -107,6 +111,7 @@ def split_rect(rect, w, h):
     return leftover
 
 def pack_circles_grid_bottomleft(W, H, diam, margin=0):
+    """Place circles in a simple grid starting from the bottom left."""
     eff_W = W - margin
     eff_H = H - margin
     if eff_W < diam or eff_H < diam:
@@ -123,6 +128,7 @@ def pack_circles_grid_bottomleft(W, H, diam, margin=0):
     return centers
 
 def pack_hex_top_down(W, H, diam, margin=0):
+    """Pack circles in a hexagonal grid from top down."""
     eff_W = W - margin
     eff_H = H - margin
     if eff_W < diam or eff_H < diam:
@@ -148,6 +154,7 @@ def pack_hex_top_down(W, H, diam, margin=0):
     return centers
 
 def pack_hex_bottom_up(W, H, diam, margin=0):
+    """Pack circles in a hexagonal grid from bottom up."""
     eff_W = W - margin
     eff_H = H - margin
     if eff_W < diam or eff_H < diam:
@@ -173,6 +180,7 @@ def pack_hex_bottom_up(W, H, diam, margin=0):
     return centers
 
 def check_collision(cushion_pos, product_positions):
+    """Return True if cushion intersects with any product."""
     cx, cy, cw, ch = cushion_pos
     for pos in product_positions:
         px, py, pw, ph = pos
@@ -181,6 +189,7 @@ def check_collision(cushion_pos, product_positions):
     return False
 
 def place_air_cushions(w_c, l_c, occupied_positions, cushion_w=37, cushion_l=175, cushion_h=110, min_gap=5, offset_x=0, offset_y=0):
+    """Place air cushions around occupied positions."""
     positions = []
     left_x = offset_x
     right_x = w_c - cushion_w - offset_x
@@ -213,6 +222,7 @@ def place_air_cushions(w_c, l_c, occupied_positions, cushion_w=37, cushion_l=175
     return positions
 
 def maximize_mixed_layout(w_c, l_c, w_p, l_p, margin, initial_positions):
+    """Fill remaining space on a pallet using mixed orientations."""
     eff_w = w_c - margin
     eff_l = l_c - margin
     free_areas = [(0, 0, eff_w, eff_l)]
@@ -291,6 +301,7 @@ def maximize_mixed_layout(w_c, l_c, w_p, l_p, margin, initial_positions):
             continue
 
 def random_box_optimizer_3d(prod_w, prod_l, prod_h, units):
+    """Search randomly for box dims that best match product volume."""
     best_dims = None
     best_score = 0
     target_volume = prod_w * prod_l * prod_h * units

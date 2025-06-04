@@ -6,6 +6,7 @@ DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
 
 
 def _load_xml(path: str) -> ET.Element:
+    """Load and parse an XML file and return its root element."""
     if not os.path.exists(path):
         raise FileNotFoundError(f"Brak pliku: {path}")
     try:
