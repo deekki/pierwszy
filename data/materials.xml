@@ -1,0 +1,4 @@
+<materials>
+  <material name="tape" weight_per_m="0.02"/>
+  <material name="stretch_film" weight_per_m="0.03"/>
+</materials>

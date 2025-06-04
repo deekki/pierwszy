@@ -27,6 +27,9 @@ class TabPallet(ttk.Frame):
         self.layers = []
         self.transformations = []
         self.transform_vars = []
+        self.products_per_carton = 1
+        self.tape_per_carton = 0.0
+        self.film_per_pallet = 0.0
         self.build_ui()
 
     def build_ui(self):
@@ -132,8 +135,15 @@ class TabPallet(ttk.Frame):
         self.layout_label.pack(side=tk.LEFT, padx=5)
         ttk.Button(control_frame, text="Następny", command=self.next_layout).pack(side=tk.LEFT, padx=5)
         ttk.Button(control_frame, text="Pokaż w 3D", command=self.show_3d).pack(side=tk.LEFT, padx=5)
-        self.totals_label = ttk.Label(control_frame, text="")
-        self.totals_label.pack(side=tk.LEFT, padx=10)
+
+        self.summary_frame = ttk.LabelFrame(self, text="Obliczenia")
+        self.summary_frame.pack(fill=tk.X, padx=10, pady=5)
+        self.totals_label = ttk.Label(self.summary_frame, text="")
+        self.totals_label.pack(side=tk.LEFT, padx=5)
+        self.materials_label = ttk.Label(self.summary_frame, text="")
+        self.materials_label.pack(side=tk.LEFT, padx=5)
+        self.weight_label = ttk.Label(self.summary_frame, text="")
+        self.weight_label.pack(side=tk.LEFT, padx=5)
 
         self.fig = plt.Figure(figsize=(8, 6))
         self.ax = self.fig.add_subplot(111)
@@ -317,13 +327,26 @@ class TabPallet(ttk.Frame):
         if self.layers:
             box_h_ext = box_h + 2 * thickness
             total_cartons = len(self.layers[0]) * num_layers
-            total_products = total_cartons
+            total_products = total_cartons * self.products_per_carton
             stack_height = num_layers * box_h_ext
             if self.include_pallet_height_var.get():
                 stack_height += pallet_h
-            self.totals_label.config(text=f"Kartonów: {total_cartons} | Produkty: {total_products} | Wysokość: {stack_height:.1f} mm")
+
+            self.tape_per_carton = 4 * (box_w + box_l) / 1000
+            self.film_per_pallet = 2 * (pallet_w + pallet_l) / 1000 * 6
+            total_tape = total_cartons * self.tape_per_carton
+
+            self.totals_label.config(
+                text=f"Kartonów: {total_cartons} | Produkty: {total_products} | Wysokość: {stack_height:.1f} mm"
+            )
+            self.materials_label.config(
+                text=f"Taśma: {total_tape:.2f} m | Folia: {self.film_per_pallet:.2f} m"
+            )
+            self.weight_label.config(text="")
         else:
             self.totals_label.config(text="")
+            self.materials_label.config(text="")
+            self.weight_label.config(text="")
 
     def draw_pallet(self):
         self.ax.clear()
