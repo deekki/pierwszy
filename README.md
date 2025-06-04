@@ -8,13 +8,9 @@ This application provides a Tkinter-based GUI for experimenting with packing alg
 - matplotlib
 - numpy
 
-Install matplotlib with:
+Install the Python dependencies with:
 ```bash
-pip install matplotlib
-```
-Install numpy with:
-```bash
-pip install numpy
+pip install -r requirements.txt
 ```
 
 ## Running
