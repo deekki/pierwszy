@@ -3,52 +3,16 @@ from tkinter import ttk, messagebox
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from matplotlib.backends.backend_tkagg import (
+    FigureCanvasTkAgg,
+    NavigationToolbar2Tk,
+)
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import math
 import numpy as np
+from core.utils import load_cartons, load_pallets
 
-PREDEFINED_CARTONS = {
-    "O0024": (360, 260, 90),
-    "O0121": (445, 254, 268),
-    "O0122": (445, 304, 268),
-    "O0148": (365, 230, 140),
-    "O0301": (166, 112, 98),
-    "O0632": (160, 320, 115),
-    "O0658": (285, 230, 110),
-    "O0680": (546, 392, 144),
-    "O0718": (270, 110, 105),
-    "O0820": (341, 284, 136),
-    "O1370": (317, 207, 105),
-    "O1434": (420, 302, 153),
-    "O1460": (270, 165, 130),
-    "O1504": (393, 288, 151),
-    "O2314": (193, 193, 155),
-    "O2315": (355, 284, 196),
-    "O2409": (255, 170, 165),
-    "O2830": (285, 240, 145),
-    "O2829": (285, 240, 100),
-    "O2902": (252, 168, 94),
-    "O3290": (315, 257, 170),
-    "O3467": (426, 252, 160),
-    "O3698": (284, 215, 118),
-    "O3769": (395, 348, 97),
-    "O3815": (380, 270, 132),
-    "O3874": (566, 356, 124),
-    "O3927": (228, 153, 135),
-    "O3928": (705, 288, 135),
-    "O3929": (192, 95, 87),
-    "O3930": (374, 235, 87),
-    "O3961": (158, 107, 110),
-    "O3962": (364, 244, 115),
-}
 
-PREDEFINED_PALLETS = [
-    {"name": "EUR1", "w": 1200, "l": 800, "h": 1600},
-    {"name": "EUR2", "w": 1200, "l": 1000, "h": 1600},
-    {"name": "EUR3", "w": 1000, "l": 600, "h": 1600},
-    {"name": "Half", "w": 800,  "l": 600,  "h": 1600},
-]
 
 def parse_dim(var: tk.StringVar) -> float:
     try:
@@ -592,8 +556,9 @@ class TabPacking2D(ttk.Frame):
         selected_carton = self.carton_choice.get()
         if selected_carton != "Manual":
             key = selected_carton.split()[0]
-            if key in PREDEFINED_CARTONS:
-                w, l, h = PREDEFINED_CARTONS[key]
+            cartons = load_cartons()
+            if key in cartons:
+                w, l, h = cartons[key]
                 if current_w != w or current_l != l or current_h != h:
                     self.carton_choice.set("Manual")
 
@@ -726,7 +691,8 @@ class TabPacking2D(ttk.Frame):
     def update_carton_list(self, *args):
         prod_height = self.parse_dim_safe(self.prod_h_rect) if self.prod_type.get() == "rectangle" else self.parse_dim_safe(self.prod_h_circle)
         cvals = []
-        for k, dims in PREDEFINED_CARTONS.items():
+        cartons = load_cartons()
+        for k, dims in cartons.items():
             w, l, h = dims
             free_space = h - prod_height if prod_height > 0 else float('inf')
             if prod_height > 0 and prod_height > h:
@@ -761,8 +727,9 @@ class TabPacking2D(ttk.Frame):
             val = self.carton_choice.get()
             if val != "Manual":
                 key = val.split(":")[0]
-                if key in PREDEFINED_CARTONS:
-                    w, l, h = PREDEFINED_CARTONS[key]
+                cartons = load_cartons()
+                if key in cartons:
+                    w, l, h = cartons[key]
                     self.carton_w.set(str(w))
                     self.carton_l.set(str(l))
                     self.carton_h.set(str(h))
@@ -933,7 +900,8 @@ class TabPacking2D(ttk.Frame):
 
         margin = self.parse_dim_safe(self.margin)
         results = []
-        for key, dims in PREDEFINED_CARTONS.items():
+        cartons = load_cartons()
+        for key, dims in cartons.items():
             w_c, l_c, h_c = dims
             if h_p > 0 and h_p > h_c:
                 continue
@@ -1024,7 +992,8 @@ class TabBox3D(ttk.Frame):
         units = self.num_units.get()
         product_volume = w_ * l_ * h_
         results = []
-        for key, dims in PREDEFINED_CARTONS.items():
+        cartons = load_cartons()
+        for key, dims in cartons.items():
             bw, bl, bh = dims
             bw_ext, bl_ext, bh_ext = bw + 3, bl + 3, bh + 6
             layers = int(bh_ext // h_)
@@ -1084,42 +1053,54 @@ class TabPallet(ttk.Frame):
         pallet_frame.pack(fill=tk.X, padx=10, pady=5)
 
         ttk.Label(pallet_frame, text="Paleta:").grid(row=0, column=0, padx=5, pady=5)
-        self.pallet_var = tk.StringVar(value=PREDEFINED_PALLETS[0]["name"])
-        pallet_menu = ttk.OptionMenu(pallet_frame, self.pallet_var, PREDEFINED_PALLETS[0]["name"],
-                                     *[p["name"] for p in PREDEFINED_PALLETS], command=self.on_pallet_selected)
+        pallets = load_pallets()
+        self.pallet_var = tk.StringVar(value=pallets[0]["name"])
+        pallet_menu = ttk.OptionMenu(
+            pallet_frame,
+            self.pallet_var,
+            pallets[0]["name"],
+            *[p["name"] for p in pallets],
+            command=self.on_pallet_selected,
+        )
         pallet_menu.grid(row=0, column=1, padx=5, pady=5)
 
         ttk.Label(pallet_frame, text="W (mm):").grid(row=0, column=2, padx=5, pady=5)
-        self.pallet_w_var = tk.StringVar(value=str(PREDEFINED_PALLETS[0]["w"]))
+        self.pallet_w_var = tk.StringVar(value=str(pallets[0]["w"]))
         ttk.Entry(pallet_frame, textvariable=self.pallet_w_var, width=10).grid(row=0, column=3, padx=5, pady=5)
 
         ttk.Label(pallet_frame, text="L (mm):").grid(row=0, column=4, padx=5, pady=5)
-        self.pallet_l_var = tk.StringVar(value=str(PREDEFINED_PALLETS[0]["l"]))
+        self.pallet_l_var = tk.StringVar(value=str(pallets[0]["l"]))
         ttk.Entry(pallet_frame, textvariable=self.pallet_l_var, width=10).grid(row=0, column=5, padx=5, pady=5)
 
         ttk.Label(pallet_frame, text="H (mm):").grid(row=0, column=6, padx=5, pady=5)
-        self.pallet_h_var = tk.StringVar(value=str(PREDEFINED_PALLETS[0]["h"]))
+        self.pallet_h_var = tk.StringVar(value=str(pallets[0]["h"]))
         ttk.Entry(pallet_frame, textvariable=self.pallet_h_var, width=10).grid(row=0, column=7, padx=5, pady=5)
 
         carton_frame = ttk.LabelFrame(self, text="Parametry kartonu")
         carton_frame.pack(fill=tk.X, padx=10, pady=5)
 
         ttk.Label(carton_frame, text="Karton:").grid(row=0, column=0, padx=5, pady=5)
-        self.carton_var = tk.StringVar(value=list(PREDEFINED_CARTONS.keys())[0])
-        carton_menu = ttk.OptionMenu(carton_frame, self.carton_var, list(PREDEFINED_CARTONS.keys())[0],
-                                     *PREDEFINED_CARTONS.keys(), command=self.on_carton_selected)
+        cartons = load_cartons()
+        self.carton_var = tk.StringVar(value=list(cartons.keys())[0])
+        carton_menu = ttk.OptionMenu(
+            carton_frame,
+            self.carton_var,
+            list(cartons.keys())[0],
+            *cartons.keys(),
+            command=self.on_carton_selected,
+        )
         carton_menu.grid(row=0, column=1, padx=5, pady=5)
 
         ttk.Label(carton_frame, text="W (mm):").grid(row=0, column=2, padx=5, pady=5)
-        self.box_w_var = tk.StringVar(value=str(PREDEFINED_CARTONS[list(PREDEFINED_CARTONS.keys())[0]][0]))
+        self.box_w_var = tk.StringVar(value=str(cartons[list(cartons.keys())[0]][0]))
         ttk.Entry(carton_frame, textvariable=self.box_w_var, width=10).grid(row=0, column=3, padx=5, pady=5)
 
         ttk.Label(carton_frame, text="L (mm):").grid(row=0, column=4, padx=5, pady=5)
-        self.box_l_var = tk.StringVar(value=str(PREDEFINED_CARTONS[list(PREDEFINED_CARTONS.keys())[0]][1]))
+        self.box_l_var = tk.StringVar(value=str(cartons[list(cartons.keys())[0]][1]))
         ttk.Entry(carton_frame, textvariable=self.box_l_var, width=10).grid(row=0, column=5, padx=5, pady=5)
 
         ttk.Label(carton_frame, text="H (mm):").grid(row=0, column=6, padx=5, pady=5)
-        self.box_h_var = tk.StringVar(value=str(PREDEFINED_CARTONS[list(PREDEFINED_CARTONS.keys())[0]][2]))
+        self.box_h_var = tk.StringVar(value=str(cartons[list(cartons.keys())[0]][2]))
         ttk.Entry(carton_frame, textvariable=self.box_h_var, width=10).grid(row=0, column=7, padx=5, pady=5)
 
         ttk.Label(carton_frame, text="Grubość tektury (mm):").grid(row=1, column=0, padx=5, pady=5)
@@ -1209,14 +1190,16 @@ class TabPallet(ttk.Frame):
             self.transform_vars.append(var)
 
     def on_pallet_selected(self, *args):
-        selected_pallet = next(p for p in PREDEFINED_PALLETS if p["name"] == self.pallet_var.get())
+        pallets = load_pallets()
+        selected_pallet = next(p for p in pallets if p["name"] == self.pallet_var.get())
         self.pallet_w_var.set(str(selected_pallet["w"]))
         self.pallet_l_var.set(str(selected_pallet["l"]))
         self.pallet_h_var.set(str(selected_pallet["h"]))
         self.compute_pallet()
 
     def on_carton_selected(self, *args):
-        dims = PREDEFINED_CARTONS[self.carton_var.get()]
+        cartons = load_cartons()
+        dims = cartons[self.carton_var.get()]
         self.box_w_var.set(str(dims[0]))
         self.box_l_var.set(str(dims[1]))
         self.box_h_var.set(str(dims[2]))
