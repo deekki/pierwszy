@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
+from core.utils import parse_dim, validate_number
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
@@ -49,14 +50,6 @@ PREDEFINED_PALLETS = [
     {"name": "EUR3", "w": 1000, "l": 600, "h": 1600},
     {"name": "Half", "w": 800,  "l": 600,  "h": 1600},
 ]
-
-def parse_dim(var: tk.StringVar) -> float:
-    try:
-        val = float(var.get().replace(",", "."))
-        return max(0, val)
-    except:
-        messagebox.showwarning("Błąd", "Wprowadzono niepoprawną wartość. Użyto 0.")
-        return 0.0
 
 def pack_rectangles_2d(width, height, wprod, lprod, margin=0):
     eff_width = width - margin
@@ -385,7 +378,7 @@ class TabPacking2D(ttk.Frame):
         f_carton_row2.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
         ttk.Label(f_carton_row2, text="Szerokość [mm]:").pack(side=tk.LEFT, padx=5)
         self.carton_w = tk.StringVar(value="300")
-        entry_carton_w = ttk.Entry(f_carton_row2, textvariable=self.carton_w, width=8, validate="key", validatecommand=(self.register(self.validate_number), "%P"))
+        entry_carton_w = ttk.Entry(f_carton_row2, textvariable=self.carton_w, width=8, validate="key", validatecommand=(self.register(validate_number), "%P"))
         entry_carton_w.pack(side=tk.LEFT, padx=5)
         entry_carton_w.bind("<Return>", self.on_enter_pressed)
 
@@ -393,7 +386,7 @@ class TabPacking2D(ttk.Frame):
         f_carton_row3.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
         ttk.Label(f_carton_row3, text="Długość [mm]:").pack(side=tk.LEFT, padx=5)
         self.carton_l = tk.StringVar(value="200")
-        entry_carton_l = ttk.Entry(f_carton_row3, textvariable=self.carton_l, width=8, validate="key", validatecommand=(self.register(self.validate_number), "%P"))
+        entry_carton_l = ttk.Entry(f_carton_row3, textvariable=self.carton_l, width=8, validate="key", validatecommand=(self.register(validate_number), "%P"))
         entry_carton_l.pack(side=tk.LEFT, padx=5)
         entry_carton_l.bind("<Return>", self.on_enter_pressed)
 
@@ -401,7 +394,7 @@ class TabPacking2D(ttk.Frame):
         f_carton_row4.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
         ttk.Label(f_carton_row4, text="Wysokość [mm]:").pack(side=tk.LEFT, padx=5)
         self.carton_h = tk.StringVar(value="0")
-        entry_carton_h = ttk.Entry(f_carton_row4, textvariable=self.carton_h, width=8, validate="key", validatecommand=(self.register(self.validate_number), "%P"))
+        entry_carton_h = ttk.Entry(f_carton_row4, textvariable=self.carton_h, width=8, validate="key", validatecommand=(self.register(validate_number), "%P"))
         entry_carton_h.pack(side=tk.LEFT, padx=5)
         entry_carton_h.bind("<Return>", self.on_enter_pressed)
 
@@ -427,7 +420,7 @@ class TabPacking2D(ttk.Frame):
         f_rect_row1.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
         ttk.Label(f_rect_row1, text="Długość kartonika [mm]:").pack(side=tk.LEFT, padx=5)
         self.prod_w = tk.StringVar(value="50")
-        entry_prod_w = ttk.Entry(f_rect_row1, textvariable=self.prod_w, width=8, validate="key", validatecommand=(self.register(self.validate_number), "%P"))
+        entry_prod_w = ttk.Entry(f_rect_row1, textvariable=self.prod_w, width=8, validate="key", validatecommand=(self.register(validate_number), "%P"))
         entry_prod_w.pack(side=tk.LEFT, padx=5)
         entry_prod_w.bind("<Return>", self.on_enter_pressed)
 
@@ -435,7 +428,7 @@ class TabPacking2D(ttk.Frame):
         f_rect_row2.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
         ttk.Label(f_rect_row2, text="Szerokość kartonika [mm]:").pack(side=tk.LEFT, padx=5)
         self.prod_l = tk.StringVar(value="30")
-        entry_prod_l = ttk.Entry(f_rect_row2, textvariable=self.prod_l, width=8, validate="key", validatecommand=(self.register(self.validate_number), "%P"))
+        entry_prod_l = ttk.Entry(f_rect_row2, textvariable=self.prod_l, width=8, validate="key", validatecommand=(self.register(validate_number), "%P"))
         entry_prod_l.pack(side=tk.LEFT, padx=5)
         entry_prod_l.bind("<Return>", self.on_enter_pressed)
 
@@ -443,7 +436,7 @@ class TabPacking2D(ttk.Frame):
         f_rect_row3.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
         ttk.Label(f_rect_row3, text="Wysokość kartonika [mm]:").pack(side=tk.LEFT, padx=5)
         self.prod_h_rect = tk.StringVar(value="0")
-        entry_prod_h_rect = ttk.Entry(f_rect_row3, textvariable=self.prod_h_rect, width=8, validate="key", validatecommand=(self.register(self.validate_number), "%P"))
+        entry_prod_h_rect = ttk.Entry(f_rect_row3, textvariable=self.prod_h_rect, width=8, validate="key", validatecommand=(self.register(validate_number), "%P"))
         entry_prod_h_rect.pack(side=tk.LEFT, padx=5)
         entry_prod_h_rect.bind("<Return>", self.on_enter_pressed)
 
@@ -454,7 +447,7 @@ class TabPacking2D(ttk.Frame):
         f_circle_row1.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
         ttk.Label(f_circle_row1, text="Średnica pojemnika [mm]:").pack(side=tk.LEFT, padx=5)
         self.prod_diam = tk.StringVar(value="25")
-        entry_prod_diam = ttk.Entry(f_circle_row1, textvariable=self.prod_diam, width=8, validate="key", validatecommand=(self.register(self.validate_number), "%P"))
+        entry_prod_diam = ttk.Entry(f_circle_row1, textvariable=self.prod_diam, width=8, validate="key", validatecommand=(self.register(validate_number), "%P"))
         entry_prod_diam.pack(side=tk.LEFT, padx=5)
         entry_prod_diam.bind("<Return>", self.on_enter_pressed)
 
@@ -462,7 +455,7 @@ class TabPacking2D(ttk.Frame):
         f_circle_row2.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
         ttk.Label(f_circle_row2, text="Wysokość pojemnika [mm]:").pack(side=tk.LEFT, padx=5)
         self.prod_h_circle = tk.StringVar(value="0")
-        entry_prod_h_circle = ttk.Entry(f_circle_row2, textvariable=self.prod_h_circle, width=8, validate="key", validatecommand=(self.register(self.validate_number), "%P"))
+        entry_prod_h_circle = ttk.Entry(f_circle_row2, textvariable=self.prod_h_circle, width=8, validate="key", validatecommand=(self.register(validate_number), "%P"))
         entry_prod_h_circle.pack(side=tk.LEFT, padx=5)
         entry_prod_h_circle.bind("<Return>", self.on_enter_pressed)
 
@@ -473,7 +466,7 @@ class TabPacking2D(ttk.Frame):
         f_settings_row1.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
         ttk.Label(f_settings_row1, text="Minimalny luz (prawo/góra) [mm]:").pack(side=tk.LEFT, padx=5)
         self.margin = tk.StringVar(value="1")
-        entry_margin = ttk.Entry(f_settings_row1, textvariable=self.margin, width=8, validate="key", validatecommand=(self.register(self.validate_number), "%P"))
+        entry_margin = ttk.Entry(f_settings_row1, textvariable=self.margin, width=8, validate="key", validatecommand=(self.register(validate_number), "%P"))
         entry_margin.pack(side=tk.LEFT, padx=5)
         entry_margin.bind("<Return>", self.on_enter_pressed)
 
@@ -494,7 +487,7 @@ class TabPacking2D(ttk.Frame):
         f_settings_row3.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
         ttk.Label(f_settings_row3, text="Minimalny odstęp między poduszkami [mm]:").pack(side=tk.LEFT, padx=5)
         self.cushion_gap = tk.StringVar(value="5")
-        entry_cushion_gap = ttk.Entry(f_settings_row3, textvariable=self.cushion_gap, width=8, validate="key", validatecommand=(self.register(self.validate_number), "%P"))
+        entry_cushion_gap = ttk.Entry(f_settings_row3, textvariable=self.cushion_gap, width=8, validate="key", validatecommand=(self.register(validate_number), "%P"))
         entry_cushion_gap.pack(side=tk.LEFT, padx=5)
         entry_cushion_gap.bind("<Return>", self.on_enter_pressed)
 
@@ -502,7 +495,7 @@ class TabPacking2D(ttk.Frame):
         f_settings_row4.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
         ttk.Label(f_settings_row4, text="Przesunięcie X [mm]:").pack(side=tk.LEFT, padx=5)
         self.offset_x = tk.StringVar(value="0")
-        entry_offset_x = ttk.Entry(f_settings_row4, textvariable=self.offset_x, width=8, validate="key", validatecommand=(self.register(self.validate_number), "%P"))
+        entry_offset_x = ttk.Entry(f_settings_row4, textvariable=self.offset_x, width=8, validate="key", validatecommand=(self.register(validate_number), "%P"))
         entry_offset_x.pack(side=tk.LEFT, padx=5)
         entry_offset_x.bind("<Return>", self.on_enter_pressed)
 
@@ -510,7 +503,7 @@ class TabPacking2D(ttk.Frame):
         f_settings_row5.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
         ttk.Label(f_settings_row5, text="Przesunięcie Y [mm]:").pack(side=tk.LEFT, padx=5)
         self.offset_y = tk.StringVar(value="0")
-        entry_offset_y = ttk.Entry(f_settings_row5, textvariable=self.offset_y, width=8, validate="key", validatecommand=(self.register(self.validate_number), "%P"))
+        entry_offset_y = ttk.Entry(f_settings_row5, textvariable=self.offset_y, width=8, validate="key", validatecommand=(self.register(validate_number), "%P"))
         entry_offset_y.pack(side=tk.LEFT, padx=5)
         entry_offset_y.bind("<Return>", self.on_enter_pressed)
 
@@ -535,16 +528,6 @@ class TabPacking2D(ttk.Frame):
         self.prod_h_circle.trace_add("write", self.on_prod_h_circle_changed)
         self.update_carton_list()
         self.update_product_fields()
-
-    def validate_number(self, value):
-        if value == "":
-            return True
-        value = value.replace(",", ".")
-        try:
-            float_value = float(value)
-            return 0 <= float_value <= 10000
-        except ValueError:
-            return False
 
     def parse_dim_safe(self, var):
         try:
@@ -1125,7 +1108,7 @@ class TabPallet(ttk.Frame):
         ttk.Label(carton_frame, text="Grubość tektury (mm):").grid(row=1, column=0, padx=5, pady=5)
         self.cardboard_thickness_var = tk.StringVar(value="3")
         ttk.Entry(carton_frame, textvariable=self.cardboard_thickness_var, width=10, validate="key",
-                  validatecommand=(self.register(self.validate_number), "%P")).grid(row=1, column=1, padx=5, pady=5)
+                  validatecommand=(self.register(validate_number), "%P")).grid(row=1, column=1, padx=5, pady=5)
 
         ttk.Label(carton_frame, text="Wymiary zewnętrzne (mm):").grid(row=1, column=2, padx=5, pady=5)
         self.ext_dims_label = ttk.Label(carton_frame, text="")
@@ -1176,15 +1159,6 @@ class TabPallet(ttk.Frame):
 
         self.compute_pallet()
 
-    def validate_number(self, value):
-        if value == "":
-            return True
-        try:
-            float_value = float(value.replace(",", "."))
-            return float_value >= 0
-        except ValueError:
-            return False
-
     def update_external_dimensions(self, *args):
         try:
             thickness = float(self.cardboard_thickness_var.get().replace(",", "."))
@@ -1201,7 +1175,7 @@ class TabPallet(ttk.Frame):
     def update_transform_frame(self):
         for widget in self.transform_frame.winfo_children():
             widget.destroy()
-        for i in range(int(parse_dim(self.num_layers_var))):
+        for i in range(int(parse_dim(self.num_layers_var.get()))):
             ttk.Label(self.transform_frame, text=f"Warstwa {i+1}:").grid(row=i, column=0, padx=5, pady=2)
             var = tk.StringVar(value="Brak")
             ttk.OptionMenu(self.transform_frame, var, "Brak", "Brak", "Obrót 180° (dłuższy bok)", "Obrót 180° (krótszy bok)",
@@ -1306,13 +1280,13 @@ class TabPallet(ttk.Frame):
             return centered_positions
 
     def compute_pallet(self, event=None):
-        pallet_w = parse_dim(self.pallet_w_var)
-        pallet_l = parse_dim(self.pallet_l_var)
-        pallet_h = parse_dim(self.pallet_h_var)
-        box_w = parse_dim(self.box_w_var)
-        box_l = parse_dim(self.box_l_var)
-        box_h = parse_dim(self.box_h_var)
-        num_layers = int(parse_dim(self.num_layers_var))
+        pallet_w = parse_dim(self.pallet_w_var.get())
+        pallet_l = parse_dim(self.pallet_l_var.get())
+        pallet_h = parse_dim(self.pallet_h_var.get())
+        box_w = parse_dim(self.box_w_var.get())
+        box_l = parse_dim(self.box_l_var.get())
+        box_h = parse_dim(self.box_h_var.get())
+        num_layers = int(parse_dim(self.num_layers_var.get()))
 
         if pallet_w == 0 or pallet_l == 0 or pallet_h == 0 or box_w == 0 or box_l == 0 or box_h == 0 or num_layers <= 0:
             messagebox.showwarning("Błąd", "Wszystkie wymiary i liczba warstw muszą być większe od 0.")
@@ -1337,11 +1311,18 @@ class TabPallet(ttk.Frame):
 
     def draw_pallet(self):
         self.ax.clear()
-        pallet_w = parse_dim(self.pallet_w_var)
-        pallet_l = parse_dim(self.pallet_l_var)
+        pallet_w = parse_dim(self.pallet_w_var.get())
+        pallet_l = parse_dim(self.pallet_l_var.get())
         self.ax.add_patch(plt.Rectangle((0, 0), pallet_w, pallet_l, fill=False, edgecolor='black', linewidth=2))
         for layer_idx, positions in enumerate(self.layers):
-            transformed = self.apply_transformation(positions, self.transformations[layer_idx], pallet_w, pallet_l, parse_dim(self.box_w_var) + 2 * parse_dim(self.cardboard_thickness_var), parse_dim(self.box_l_var) + 2 * parse_dim(self.cardboard_thickness_var))
+            transformed = self.apply_transformation(
+                positions,
+                self.transformations[layer_idx],
+                pallet_w,
+                pallet_l,
+                parse_dim(self.box_w_var.get()) + 2 * parse_dim(self.cardboard_thickness_var.get()),
+                parse_dim(self.box_l_var.get()) + 2 * parse_dim(self.cardboard_thickness_var.get()),
+            )
             for x, y, w, h in transformed:
                 color = 'blue' if layer_idx % 2 == 0 else 'green'
                 self.ax.add_patch(plt.Rectangle((x, y), w, h, fill=True, facecolor=color, alpha=0.5, edgecolor='black'))
@@ -1361,13 +1342,13 @@ class TabPallet(ttk.Frame):
         toolbar_3d = NavigationToolbar2Tk(canvas_3d, window)
         toolbar_3d.update()
 
-        pallet_w = parse_dim(self.pallet_w_var)
-        pallet_l = parse_dim(self.pallet_l_var)
-        pallet_h = parse_dim(self.pallet_h_var)
-        box_w = parse_dim(self.box_w_var)
-        box_l = parse_dim(self.box_l_var)
-        box_h = parse_dim(self.box_h_var)
-        thickness = parse_dim(self.cardboard_thickness_var)
+        pallet_w = parse_dim(self.pallet_w_var.get())
+        pallet_l = parse_dim(self.pallet_l_var.get())
+        pallet_h = parse_dim(self.pallet_h_var.get())
+        box_w = parse_dim(self.box_w_var.get())
+        box_l = parse_dim(self.box_l_var.get())
+        box_h = parse_dim(self.box_h_var.get())
+        thickness = parse_dim(self.cardboard_thickness_var.get())
 
         box_w_ext = box_w + 2 * thickness
         box_l_ext = box_l + 2 * thickness
