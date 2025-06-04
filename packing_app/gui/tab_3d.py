@@ -39,7 +39,6 @@ class TabBox3D(ttk.Frame):
         w_ = self.prod_w.get()
         l_ = self.prod_l.get()
         h_ = self.prod_h.get()
-        units = self.num_units.get()
         product_volume = w_ * l_ * h_
         results = []
         for key, dims in self.predefined_cartons.items():

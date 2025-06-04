@@ -196,7 +196,7 @@ class TabPallet(ttk.Frame):
     def update_transform_frame(self):
         for widget in self.transform_frame.winfo_children():
             widget.destroy()
-        layout_options = [l[2] for l in self.layouts]
+        layout_options = [layout[2] for layout in self.layouts]
         transform_options = [
             "Brak",
             "Odbicie wzdłuż dłuższego boku",

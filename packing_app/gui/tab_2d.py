@@ -277,8 +277,8 @@ class TabPacking2D(ttk.Frame):
         if selected_carton != "Manual":
             key = selected_carton.split()[0]
             if key in self.predefined_cartons:
-                w, l, h = self.predefined_cartons[key]
-                if current_w != w or current_l != l or current_h != h:
+                w, length, h = self.predefined_cartons[key]
+                if current_w != w or current_l != length or current_h != h:
                     self.carton_choice.set("Manual")
 
     def draw_carton_and_margin(self, ax, width, height, margin):
@@ -420,13 +420,13 @@ class TabPacking2D(ttk.Frame):
         )
         cvals = []
         for k, dims in self.predefined_cartons.items():
-            w, l, h = dims
+            w, length, h = dims
             free_space = h - prod_height if prod_height > 0 else float('inf')
             if prod_height > 0 and prod_height > h:
-                label = f"{k}: {w}x{l}x{h} (Za niski)"
+                label = f"{k}: {w}x{length}x{h} (Za niski)"
                 cvals.append((label, float('inf')))
             else:
-                label = f"{k}: {w}x{l}x{h} (luz: {free_space:.1f} mm)"
+                label = f"{k}: {w}x{length}x{h} (luz: {free_space:.1f} mm)"
                 cvals.append((label, free_space))
         cvals.sort(key=lambda x: x[1])
         cvals = ["Manual"] + [item[0] for item in cvals]
@@ -451,9 +451,9 @@ class TabPacking2D(ttk.Frame):
             if val != "Manual":
                 key = val.split(":")[0]
                 if key in self.predefined_cartons:
-                    w, l, h = self.predefined_cartons[key]
+                    w, length, h = self.predefined_cartons[key]
                     self.carton_w.set(str(w))
-                    self.carton_l.set(str(l))
+                    self.carton_l.set(str(length))
                     self.carton_h.set(str(h))
             self.show_packing()
         finally:
