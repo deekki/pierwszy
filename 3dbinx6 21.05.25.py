@@ -7,7 +7,6 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import math
 import numpy as np
-from scipy.optimize import differential_evolution
 
 PREDEFINED_CARTONS = {
     "O0024": (360, 260, 90),
