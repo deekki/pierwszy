@@ -1208,11 +1208,11 @@ class TabPallet(ttk.Frame):
     def update_transform_frame(self):
         for widget in self.transform_frame.winfo_children():
             widget.destroy()
+        options = ["Brak", "Odbicie w poziomie", "Odbicie w pionie"]
         for i in range(int(parse_dim(self.num_layers_var))):
             ttk.Label(self.transform_frame, text=f"Warstwa {i+1}:").grid(row=i, column=0, padx=5, pady=2)
-            var = tk.StringVar(value="Brak")
-            ttk.OptionMenu(self.transform_frame, var, "Brak", "Brak", "Obrót 180° (dłuższy bok)", "Obrót 180° (krótszy bok)",
-                           "Odbicie lustrzane (dłuższy bok)", "Odbicie lustrzane (krótszy bok)", command=self.update_transformations).grid(row=i, column=1, padx=5, pady=2)
+            var = tk.StringVar(value=options[0])
+            ttk.OptionMenu(self.transform_frame, var, options[0], *options, command=self.update_transformations).grid(row=i, column=1, padx=5, pady=2)
             self.transform_vars.append(var)
 
     def on_pallet_selected(self, *args):
@@ -1257,19 +1257,11 @@ class TabPallet(ttk.Frame):
         for x, y, w, h in positions:
             if transform == "Brak":
                 new_positions.append((x, y, w, h))
-            elif transform == "Obrót 180° (dłuższy bok)":
+            elif transform == "Odbicie w poziomie":
                 new_x = pallet_w - x - w
                 new_y = y
                 new_positions.append((new_x, new_y, w, h))
-            elif transform == "Obrót 180° (krótszy bok)":
-                new_x = x
-                new_y = pallet_l - y - h
-                new_positions.append((new_x, new_y, w, h))
-            elif transform == "Odbicie lustrzane (dłuższy bok)":
-                new_x = pallet_w - x - w
-                new_y = y
-                new_positions.append((new_x, new_y, w, h))
-            elif transform == "Odbicie lustrzane (krótszy bok)":
+            elif transform == "Odbicie w pionie":
                 new_x = x
                 new_y = pallet_l - y - h
                 new_positions.append((new_x, new_y, w, h))
