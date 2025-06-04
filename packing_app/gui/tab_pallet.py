@@ -24,10 +24,8 @@ class TabPallet(ttk.Frame):
         self.predefined_pallets = load_pallets()
         self.pack(fill=tk.BOTH, expand=True)
         self.layouts = []
-        self.current_layout_idx = 0
         self.layers = []
         self.transformations = []
-        self.transform_vars = []
         self.products_per_carton = 1
         self.tape_per_carton = 0.0
         self.film_per_pallet = 0.0
@@ -143,8 +141,7 @@ class TabPallet(ttk.Frame):
         self.center_mode_var = tk.StringVar(value="Cała warstwa")
         ttk.OptionMenu(layers_frame, self.center_mode_var, "Cała warstwa", "Cała warstwa", "Poszczególne obszary").grid(row=0, column=5, padx=5, pady=5)
 
-        self.alternate_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(layers_frame, text="Naprzemienne transformacje", variable=self.alternate_var, command=self.update_transformations).grid(row=0, column=6, padx=5, pady=5)
+
 
         self.transform_frame = ttk.Frame(layers_frame)
         self.transform_frame.grid(row=2, column=0, columnspan=7, padx=5, pady=5)
@@ -153,10 +150,6 @@ class TabPallet(ttk.Frame):
         control_frame.pack(fill=tk.X, padx=10, pady=5)
 
         ttk.Button(control_frame, text="Oblicz", command=self.compute_pallet).pack(side=tk.LEFT, padx=5)
-        ttk.Button(control_frame, text="Poprzedni", command=self.prev_layout).pack(side=tk.LEFT, padx=5)
-        self.layout_label = ttk.Label(control_frame, text="Układ 1")
-        self.layout_label.pack(side=tk.LEFT, padx=5)
-        ttk.Button(control_frame, text="Następny", command=self.next_layout).pack(side=tk.LEFT, padx=5)
 
         self.summary_frame = ttk.LabelFrame(self, text="Obliczenia")
         self.summary_frame.pack(fill=tk.X, padx=10, pady=5)
@@ -168,7 +161,8 @@ class TabPallet(ttk.Frame):
         self.weight_label.pack(side=tk.LEFT, padx=5)
 
         self.fig = plt.Figure(figsize=(8, 6))
-        self.ax = self.fig.add_subplot(111)
+        self.ax_odd = self.fig.add_subplot(121)
+        self.ax_even = self.fig.add_subplot(122)
         self.canvas = FigureCanvasTkAgg(self.fig, master=self)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         self.toolbar = NavigationToolbar2Tk(self.canvas, self)
@@ -202,12 +196,40 @@ class TabPallet(ttk.Frame):
     def update_transform_frame(self):
         for widget in self.transform_frame.winfo_children():
             widget.destroy()
-        options = ["Brak", "Odbicie w poziomie", "Odbicie w pionie"]
-        for i in range(int(parse_dim(self.num_layers_var))):
-            ttk.Label(self.transform_frame, text=f"Warstwa {i+1}:").grid(row=i, column=0, padx=5, pady=2)
-            var = tk.StringVar(value=options[0])
-            ttk.OptionMenu(self.transform_frame, var, options[0], *options, command=self.update_transformations).grid(row=i, column=1, padx=5, pady=2)
-            self.transform_vars.append(var)
+        layout_options = [l[2] for l in self.layouts]
+        transform_options = [
+            "Brak",
+            "Odbicie wzdłuż dłuższego boku",
+            "Odbicie wzdłuż krótszego boku",
+        ]
+
+        ttk.Label(self.transform_frame, text="Warstwy nieparzyste:").grid(row=0, column=0, padx=5, pady=2)
+        self.odd_layout_var = tk.StringVar(value=layout_options[0])
+        ttk.OptionMenu(self.transform_frame, self.odd_layout_var, layout_options[0], *layout_options, command=self.update_layers).grid(row=0, column=1, padx=5, pady=2)
+        self.odd_transform_var = tk.StringVar(value=transform_options[0])
+        ttk.OptionMenu(self.transform_frame, self.odd_transform_var, transform_options[0], *transform_options, command=self.update_layers).grid(row=0, column=2, padx=5, pady=2)
+
+        ttk.Label(self.transform_frame, text="Warstwy parzyste:").grid(row=1, column=0, padx=5, pady=2)
+        self.even_layout_var = tk.StringVar(value=layout_options[0])
+        ttk.OptionMenu(self.transform_frame, self.even_layout_var, layout_options[0], *layout_options, command=self.update_layers).grid(row=1, column=1, padx=5, pady=2)
+        self.even_transform_var = tk.StringVar(value=transform_options[0])
+        ttk.OptionMenu(self.transform_frame, self.even_transform_var, transform_options[0], *transform_options, command=self.update_layers).grid(row=1, column=2, padx=5, pady=2)
+
+    def update_layers(self, *args):
+        num_layers = getattr(self, 'num_layers', int(parse_dim(self.num_layers_var)))
+        self.layers = []
+        self.transformations = []
+        odd_idx = self.layout_map.get(self.odd_layout_var.get(), 0)
+        even_idx = self.layout_map.get(self.even_layout_var.get(), 0)
+        for i in range(1, num_layers + 1):
+            if i % 2 == 1:
+                self.layers.append(self.layouts[odd_idx][1])
+                transform = self.odd_transform_var.get()
+            else:
+                self.layers.append(self.layouts[even_idx][1])
+                transform = self.even_transform_var.get()
+            self.transformations.append(transform)
+        self.draw_pallet()
 
     def on_pallet_selected(self, *args):
         selected_pallet = next(
@@ -225,39 +247,28 @@ class TabPallet(ttk.Frame):
         self.box_h_var.set(str(dims[2]))
         self.compute_pallet()
 
-    def prev_layout(self):
-        if self.layouts:
-            self.current_layout_idx = (self.current_layout_idx - 1) % len(self.layouts)
-            self.update_layout()
 
-    def next_layout(self):
-        if self.layouts:
-            self.current_layout_idx = (self.current_layout_idx + 1) % len(self.layouts)
-            self.update_layout()
-
-    def update_layout(self):
-        self.layout_label.config(text=f"Układ {self.current_layout_idx + 1} z {len(self.layouts)}")
-        self.draw_pallet()
-
-    def update_transformations(self, *args):
-        self.transformations = [var.get() for var in self.transform_vars]
-        if self.alternate_var.get() and len(self.transform_vars) > 1:
-            for i in range(len(self.transformations)):
-                self.transformations[i] = self.transform_vars[1].get() if i % 2 else "Brak"
-        self.draw_pallet()
 
     def apply_transformation(self, positions, transform, pallet_w, pallet_l, box_w, box_l):
         new_positions = []
         for x, y, w, h in positions:
             if transform == "Brak":
                 new_positions.append((x, y, w, h))
-            elif transform == "Odbicie w poziomie":
-                new_x = pallet_w - x - w
-                new_y = y
+            elif transform == "Odbicie wzdłuż dłuższego boku":
+                if pallet_w >= pallet_l:
+                    new_x = pallet_w - x - w
+                    new_y = y
+                else:
+                    new_x = x
+                    new_y = pallet_l - y - h
                 new_positions.append((new_x, new_y, w, h))
-            elif transform == "Odbicie w pionie":
-                new_x = x
-                new_y = pallet_l - y - h
+            elif transform == "Odbicie wzdłuż krótszego boku":
+                if pallet_w < pallet_l:
+                    new_x = pallet_w - x - w
+                    new_y = y
+                else:
+                    new_x = x
+                    new_y = pallet_l - y - h
                 new_positions.append((new_x, new_y, w, h))
         return new_positions
 
@@ -331,16 +342,17 @@ class TabPallet(ttk.Frame):
         positions2 = self.center_layout(positions2, pallet_w, pallet_l)
         self.layouts.append((count2, positions2, "Naprzemienny"))
 
-        self.transform_vars = []
+        self.layout_map = {name: idx for idx, (_, __, name) in enumerate(self.layouts)}
         self.update_transform_frame()
-        self.layers = []
-        for _ in range(num_layers):
-            count, positions, _ = self.layouts[self.current_layout_idx]
-            self.layers.append(positions)
-        self.update_transformations()
+        self.num_layers = num_layers
+        self.update_layers()
         if self.layers:
             box_h_ext = box_h + 2 * thickness
-            total_cartons = len(self.layers[0]) * num_layers
+            cartons_per_odd = len(self.layers[0]) if self.layers else 0
+            cartons_per_even = len(self.layers[1]) if len(self.layers) > 1 else cartons_per_odd
+            total_cartons = 0
+            for i in range(1, num_layers + 1):
+                total_cartons += cartons_per_odd if i % 2 == 1 else cartons_per_even
             total_products = total_cartons * self.products_per_carton
             stack_height = num_layers * box_h_ext
             if self.include_pallet_height_var.get():
@@ -363,18 +375,30 @@ class TabPallet(ttk.Frame):
             self.weight_label.config(text="")
 
     def draw_pallet(self):
-        self.ax.clear()
         pallet_w = parse_dim(self.pallet_w_var)
         pallet_l = parse_dim(self.pallet_l_var)
-        self.ax.add_patch(plt.Rectangle((0, 0), pallet_w, pallet_l, fill=False, edgecolor='black', linewidth=2))
-        for layer_idx, positions in enumerate(self.layers):
-            transformed = self.apply_transformation(positions, self.transformations[layer_idx], pallet_w, pallet_l, parse_dim(self.box_w_var) + 2 * parse_dim(self.cardboard_thickness_var), parse_dim(self.box_l_var) + 2 * parse_dim(self.cardboard_thickness_var))
-            for x, y, w, h in transformed:
-                color = 'blue' if layer_idx % 2 == 0 else 'green'
-                self.ax.add_patch(plt.Rectangle((x, y), w, h, fill=True, facecolor=color, alpha=0.5, edgecolor='black'))
-        self.ax.set_xlim(-50, pallet_w + 50)
-        self.ax.set_ylim(-50, pallet_l + 50)
-        self.ax.set_aspect('equal')
-        self.ax.set_title(f"Liczba kartonów w warstwie: {len(self.layers[0])}")
+        axes = [self.ax_odd, self.ax_even]
+        labels = ["Warstwa nieparzysta", "Warstwa parzysta"]
+        for idx, ax in enumerate(axes):
+            ax.clear()
+            ax.add_patch(plt.Rectangle((0, 0), pallet_w, pallet_l, fill=False, edgecolor='black', linewidth=2))
+            if idx < len(self.layers):
+                transformed = self.apply_transformation(
+                    self.layers[idx],
+                    self.transformations[idx],
+                    pallet_w,
+                    pallet_l,
+                    parse_dim(self.box_w_var) + 2 * parse_dim(self.cardboard_thickness_var),
+                    parse_dim(self.box_l_var) + 2 * parse_dim(self.cardboard_thickness_var),
+                )
+                for x, y, w, h in transformed:
+                    color = 'blue' if idx == 0 else 'green'
+                    ax.add_patch(
+                        plt.Rectangle((x, y), w, h, fill=True, facecolor=color, alpha=0.5, edgecolor='black')
+                    )
+                ax.set_title(f"{labels[idx]}: {len(self.layers[idx])}")
+            ax.set_xlim(-50, pallet_w + 50)
+            ax.set_ylim(-50, pallet_l + 50)
+            ax.set_aspect('equal')
         self.canvas.draw()
 
