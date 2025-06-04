@@ -26,9 +26,9 @@ def load_cartons() -> dict:
         try:
             code = carton.get('code')
             w = int(carton.get('w'))
-            l = int(carton.get('l'))
+            length = int(carton.get('l'))
             h = int(carton.get('h'))
-            cartons[code] = (w, l, h)
+            cartons[code] = (w, length, h)
         except (TypeError, ValueError) as e:
             raise ValueError(f"Niepoprawne dane kartonu '{carton.attrib}': {e}")
     return cartons
@@ -43,9 +43,9 @@ def load_pallets() -> list:
         try:
             name = pallet.get('name')
             w = int(pallet.get('w'))
-            l = int(pallet.get('l'))
+            length = int(pallet.get('l'))
             h = int(pallet.get('h'))
-            pallets.append({'name': name, 'w': w, 'l': l, 'h': h})
+            pallets.append({'name': name, 'w': w, 'l': length, 'h': h})
         except (TypeError, ValueError) as e:
             raise ValueError(f"Niepoprawne dane palety '{pallet.attrib}': {e}")
     return pallets
