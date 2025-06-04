@@ -219,7 +219,7 @@ class TabPallet(ttk.Frame):
 
     def update_transformations(self, *args):
         self.transformations = [var.get() for var in self.transform_vars]
-        if self.alternate_var.get():
+        if self.alternate_var.get() and len(self.transform_vars) > 1:
             for i in range(len(self.transformations)):
                 self.transformations[i] = self.transform_vars[1].get() if i % 2 else "Brak"
         self.draw_pallet()
