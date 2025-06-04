@@ -1069,17 +1069,6 @@ def random_box_optimizer_3d(prod_w, prod_l, prod_h, units):
             best_dims = (w_, l_, h_)
     return best_dims, best_score
 
-import tkinter as tk
-from tkinter import ttk, messagebox
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-
-def parse_dim(var):
-    try:
-        return float(var.get())
-    except ValueError:
-        return 0
-
 class TabPallet(ttk.Frame):
     def __init__(self, parent):
         super().__init__(parent)
