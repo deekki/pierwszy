@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
+import math
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
@@ -126,6 +127,18 @@ class TabPacking2D(ttk.Frame):
         entry_prod_diam.pack(side=tk.LEFT, padx=5)
         entry_prod_diam.bind("<Return>", self.on_enter_pressed)
 
+        f_circle_row3 = ttk.Frame(self.f_circle_container)
+        f_circle_row3.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
+        ttk.Label(f_circle_row3, text="Obwód [mm]:").pack(side=tk.LEFT, padx=5)
+        self.circle_circ = tk.StringVar(value="0")
+        entry_circle_circ = ttk.Entry(
+            f_circle_row3,
+            textvariable=self.circle_circ,
+            width=8,
+            state="readonly",
+        )
+        entry_circle_circ.pack(side=tk.LEFT, padx=5)
+
         f_circle_row2 = ttk.Frame(self.f_circle_container)
         f_circle_row2.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
         ttk.Label(f_circle_row2, text="Wysokość pojemnika [mm]:").pack(side=tk.LEFT, padx=5)
@@ -201,6 +214,8 @@ class TabPacking2D(ttk.Frame):
         self.carton_h.trace_add("write", self.reset_carton_choice)
         self.prod_h_rect.trace_add("write", self.on_prod_h_rect_changed)
         self.prod_h_circle.trace_add("write", self.on_prod_h_circle_changed)
+        self.prod_diam.trace_add("write", self.on_prod_diam_changed)
+        self.on_prod_diam_changed()
         self.update_carton_list()
         self.update_product_fields()
 
@@ -390,6 +405,11 @@ class TabPacking2D(ttk.Frame):
         if current_h != self.prev_prod_h_circle:
             self.prev_prod_h_circle = current_h
             self.update_carton_list()
+
+    def on_prod_diam_changed(self, *args):
+        diam = self.parse_dim_safe(self.prod_diam)
+        circ = math.floor(math.pi * diam)
+        self.circle_circ.set(str(circ))
 
     def update_carton_list(self, *args):
         prod_height = (
