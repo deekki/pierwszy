@@ -2,7 +2,9 @@ import os
 import xml.etree.ElementTree as ET
 from functools import lru_cache
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
+DATA_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), 'packing_app', 'data'
+)
 
 
 def _load_xml(path: str) -> ET.Element:
