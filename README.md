@@ -6,10 +6,15 @@ This application provides a Tkinter-based GUI for experimenting with packing alg
 - Python 3.10+
 - Tkinter (usually included with standard Python installs)
 - matplotlib
+- numpy
 
 Install matplotlib with:
 ```bash
 pip install matplotlib
+```
+Install numpy with:
+```bash
+pip install numpy
 ```
 
 ## Running
