@@ -1,0 +1,6 @@
+<Pallets>
+  <Pallet name="EUR1" w="1200" l="800" h="144" NormHeight="1600" mass="25"/>
+  <Pallet name="EUR2" w="1200" l="1000" h="156" NormHeight="1600" mass="30"/>
+  <Pallet name="EUR3" w="1000" l="600" h="144" NormHeight="1600" mass="20"/>
+  <Pallet name="Half" w="800" l="600" h="120" NormHeight="1600" mass="15"/>
+</Pallets>

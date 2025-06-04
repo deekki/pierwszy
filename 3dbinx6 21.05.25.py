@@ -7,6 +7,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import math
 import numpy as np
+from core.algorithms import generate_layout_variants, load_pallets_from_xml
 
 PREDEFINED_CARTONS = {
     "O0024": (360, 260, 90),
@@ -43,12 +44,14 @@ PREDEFINED_CARTONS = {
     "O3962": (364, 244, 115),
 }
 
-PREDEFINED_PALLETS = [
-    {"name": "EUR1", "w": 1200, "l": 800, "h": 1600},
-    {"name": "EUR2", "w": 1200, "l": 1000, "h": 1600},
-    {"name": "EUR3", "w": 1000, "l": 600, "h": 1600},
-    {"name": "Half", "w": 800,  "l": 600,  "h": 1600},
-]
+PREDEFINED_PALLETS = load_pallets_from_xml("pallets.xml")
+if not PREDEFINED_PALLETS:
+    PREDEFINED_PALLETS = [
+        {"name": "EUR1", "w": 1200, "l": 800, "h": 1600, "NormHeight": 1600, "mass": 0},
+        {"name": "EUR2", "w": 1200, "l": 1000, "h": 1600, "NormHeight": 1600, "mass": 0},
+        {"name": "EUR3", "w": 1000, "l": 600, "h": 1600, "NormHeight": 1600, "mass": 0},
+        {"name": "Half", "w": 800,  "l": 600,  "h": 1600, "NormHeight": 1600, "mass": 0},
+    ]
 
 def parse_dim(var: tk.StringVar) -> float:
     try:
@@ -1101,6 +1104,10 @@ class TabPallet(ttk.Frame):
         self.pallet_h_var = tk.StringVar(value=str(PREDEFINED_PALLETS[0]["h"]))
         ttk.Entry(pallet_frame, textvariable=self.pallet_h_var, width=10).grid(row=0, column=7, padx=5, pady=5)
 
+        ttk.Label(pallet_frame, text="NormHeight:").grid(row=0, column=8, padx=5, pady=5)
+        self.norm_height_var = tk.StringVar(value=str(PREDEFINED_PALLETS[0].get("NormHeight", "")))
+        ttk.Label(pallet_frame, textvariable=self.norm_height_var).grid(row=0, column=9, padx=5, pady=5)
+
         carton_frame = ttk.LabelFrame(self, text="Parametry kartonu")
         carton_frame.pack(fill=tk.X, padx=10, pady=5)
 
@@ -1156,6 +1163,12 @@ class TabPallet(ttk.Frame):
         self.transform_frame = ttk.Frame(layers_frame)
         self.transform_frame.grid(row=1, column=0, columnspan=7, padx=5, pady=5)
 
+        ttk.Label(layers_frame, text="Maksymalna wysokość całkowita (mm):").grid(row=2, column=0, padx=5, pady=5)
+        self.max_total_height_var = tk.StringVar(value="1600")
+        ttk.Entry(layers_frame, textvariable=self.max_total_height_var, width=10).grid(row=2, column=1, padx=5, pady=5)
+        self.include_pallet_height_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(layers_frame, text="Uwzględnij wysokość palety", variable=self.include_pallet_height_var).grid(row=2, column=2, columnspan=2, padx=5, pady=5)
+
         control_frame = ttk.Frame(self)
         control_frame.pack(fill=tk.X, padx=10, pady=5)
 
@@ -1165,6 +1178,11 @@ class TabPallet(ttk.Frame):
         self.layout_label.pack(side=tk.LEFT, padx=5)
         ttk.Button(control_frame, text="Następny", command=self.next_layout).pack(side=tk.LEFT, padx=5)
         ttk.Button(control_frame, text="Pokaż w 3D", command=self.show_3d).pack(side=tk.LEFT, padx=5)
+
+        self.results_var = tk.StringVar(value="")
+        results_frame = ttk.Frame(self)
+        results_frame.pack(fill=tk.X, padx=10, pady=5)
+        ttk.Label(results_frame, textvariable=self.results_var).pack(side=tk.LEFT)
 
         self.fig = plt.Figure(figsize=(8, 6))
         self.ax = self.fig.add_subplot(111)
@@ -1213,6 +1231,7 @@ class TabPallet(ttk.Frame):
         self.pallet_w_var.set(str(selected_pallet["w"]))
         self.pallet_l_var.set(str(selected_pallet["l"]))
         self.pallet_h_var.set(str(selected_pallet["h"]))
+        self.norm_height_var.set(str(selected_pallet.get("NormHeight", "")))
         self.compute_pallet()
 
     def on_carton_selected(self, *args):
@@ -1318,14 +1337,24 @@ class TabPallet(ttk.Frame):
             messagebox.showwarning("Błąd", "Wszystkie wymiary i liczba warstw muszą być większe od 0.")
             return
 
+        margin = 0
         self.layouts = []
-        count1, positions1 = pack_rectangles_mixed_greedy(pallet_w, pallet_l, box_w, box_l)
-        positions1 = self.center_layout(positions1, pallet_w, pallet_l)
-        self.layouts.append((count1, positions1, "Standardowy"))
+        for name, count, pos in generate_layout_variants(pallet_w, pallet_l, box_w, box_l, margin):
+            pos = self.center_layout(pos, pallet_w, pallet_l)
+            self.layouts.append((count, pos, name))
 
-        count2, positions2 = pack_rectangles_mixed_greedy(pallet_w, pallet_l, box_l, box_w)
-        positions2 = self.center_layout(positions2, pallet_w, pallet_l)
-        self.layouts.append((count2, positions2, "Naprzemienny"))
+        thickness = parse_dim(self.cardboard_thickness_var)
+        box_h_ext = box_h + 2 * thickness
+        include_pal = self.include_pallet_height_var.get()
+        max_total_h = parse_dim(self.max_total_height_var)
+        start_h = pallet_h if include_pal else 0
+        if max_total_h > 0:
+            allowed_layers = int(max((max_total_h - start_h) // box_h_ext, 0))
+            if allowed_layers < num_layers:
+                num_layers = allowed_layers
+        if num_layers <= 0:
+            messagebox.showwarning("Błąd", "Ograniczenie wysokości uniemożliwia ułożenie warstwy.")
+            return
 
         self.transform_vars = []
         self.update_transform_frame()
@@ -1334,6 +1363,17 @@ class TabPallet(ttk.Frame):
             count, positions, _ = self.layouts[self.current_layout_idx]
             self.layers.append(positions)
         self.update_transformations()
+
+        total_boxes = len(self.layers[0]) * num_layers if self.layouts else 0
+        area_util = (total_boxes * (box_w + 2 * thickness) * (box_l + 2 * thickness)) / (pallet_w * pallet_l) * 100 if pallet_w * pallet_l > 0 else 0
+        total_height = start_h + num_layers * box_h_ext
+        total_volume = pallet_w * pallet_l * total_height if total_height > 0 else 0
+        occupied_volume = total_boxes * (box_w + 2 * thickness) * (box_l + 2 * thickness) * box_h_ext
+        volume_util = (occupied_volume / total_volume) * 100 if total_volume > 0 else 0
+        pallet_mass = next((p.get('mass', 0) for p in PREDEFINED_PALLETS if p['name'] == self.pallet_var.get()), 0)
+        self.results_var.set(
+            f"Kartony: {total_boxes}, Powierzchnia: {area_util:.1f}% | Objętość: {volume_util:.1f}% | Wysokość: {total_height:.1f} mm | Masa palety: {pallet_mass:.1f} kg"
+        )
 
     def draw_pallet(self):
         self.ax.clear()
