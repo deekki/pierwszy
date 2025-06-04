@@ -4,8 +4,16 @@ import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from packing_app.core.algorithms import pack_rectangles_2d, pack_rectangles_mixed_greedy, maximize_mixed_layout, place_air_cushions, pack_circles_grid_bottomleft, pack_hex_top_down, pack_hex_bottom_up
-from packing_app.data.constants import PREDEFINED_CARTONS
+from packing_app.core.algorithms import (
+    pack_rectangles_2d,
+    pack_rectangles_mixed_greedy,
+    maximize_mixed_layout,
+    place_air_cushions,
+    pack_circles_grid_bottomleft,
+    pack_hex_top_down,
+    pack_hex_bottom_up,
+)
+from core.utils import load_cartons
 
 class TabPacking2D(ttk.Frame):
     def __init__(self, parent):
@@ -13,6 +21,7 @@ class TabPacking2D(ttk.Frame):
         self.style = ttk.Style()
         self.style.configure("Selected.TRadiobutton", background="#e0f0e0")
         self.style.configure("Unselected.TRadiobutton", background="")
+        self.predefined_cartons = load_cartons()
         self.updating_carton = False
         self.prev_prod_h_rect = "0"
         self.prev_prod_h_circle = "0"
@@ -250,8 +259,8 @@ class TabPacking2D(ttk.Frame):
         selected_carton = self.carton_choice.get()
         if selected_carton != "Manual":
             key = selected_carton.split()[0]
-            if key in PREDEFINED_CARTONS:
-                w, l, h = PREDEFINED_CARTONS[key]
+            if key in self.predefined_cartons:
+                w, l, h = self.predefined_cartons[key]
                 if current_w != w or current_l != l or current_h != h:
                     self.carton_choice.set("Manual")
 
@@ -382,9 +391,13 @@ class TabPacking2D(ttk.Frame):
             self.update_carton_list()
 
     def update_carton_list(self, *args):
-        prod_height = self.parse_dim_safe(self.prod_h_rect) if self.prod_type.get() == "rectangle" else self.parse_dim_safe(self.prod_h_circle)
+        prod_height = (
+            self.parse_dim_safe(self.prod_h_rect)
+            if self.prod_type.get() == "rectangle"
+            else self.parse_dim_safe(self.prod_h_circle)
+        )
         cvals = []
-        for k, dims in PREDEFINED_CARTONS.items():
+        for k, dims in self.predefined_cartons.items():
             w, l, h = dims
             free_space = h - prod_height if prod_height > 0 else float('inf')
             if prod_height > 0 and prod_height > h:
@@ -419,8 +432,8 @@ class TabPacking2D(ttk.Frame):
             val = self.carton_choice.get()
             if val != "Manual":
                 key = val.split(":")[0]
-                if key in PREDEFINED_CARTONS:
-                    w, l, h = PREDEFINED_CARTONS[key]
+                if key in self.predefined_cartons:
+                    w, l, h = self.predefined_cartons[key]
                     self.carton_w.set(str(w))
                     self.carton_l.set(str(l))
                     self.carton_h.set(str(h))
@@ -591,7 +604,7 @@ class TabPacking2D(ttk.Frame):
 
         margin = self.parse_dim_safe(self.margin)
         results = []
-        for key, dims in PREDEFINED_CARTONS.items():
+        for key, dims in self.predefined_cartons.items():
             w_c, l_c, h_c = dims
             if h_p > 0 and h_p > h_c:
                 continue
