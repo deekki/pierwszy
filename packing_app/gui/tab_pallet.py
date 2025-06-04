@@ -4,7 +4,6 @@ import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from packing_app.core.algorithms import pack_rectangles_mixed_greedy
 from core.utils import load_cartons, load_pallets
 
@@ -17,19 +16,6 @@ def parse_dim(var: tk.StringVar) -> float:
         messagebox.showwarning("Błąd", "Wprowadzono niepoprawną wartość. Użyto 0.")
         return 0.0
 
-
-def add_box(ax, x, y, z, dx, dy, dz, color="red", alpha=0.2):
-    """Draw a 3D box using Poly3DCollection."""
-    verts = [
-        [(x, y, z), (x + dx, y, z), (x + dx, y + dy, z), (x, y + dy, z)],
-        [(x, y, z + dz), (x + dx, y, z + dz), (x + dx, y + dy, z + dz), (x, y + dy, z + dz)],
-        [(x, y, z), (x + dx, y, z), (x + dx, y, z + dz), (x, y, z + dz)],
-        [(x + dx, y, z), (x + dx, y + dy, z), (x + dx, y + dy, z + dz), (x + dx, y, z + dz)],
-        [(x, y + dy, z), (x + dx, y + dy, z), (x + dx, y + dy, z + dz), (x, y + dy, z + dz)],
-        [(x, y, z), (x, y + dy, z), (x, y + dy, z + dz), (x, y, z + dz)],
-    ]
-    poly = Poly3DCollection(verts, facecolors=color, edgecolors="black", alpha=alpha)
-    ax.add_collection3d(poly)
 
 class TabPallet(ttk.Frame):
     def __init__(self, parent):
@@ -171,7 +157,6 @@ class TabPallet(ttk.Frame):
         self.layout_label = ttk.Label(control_frame, text="Układ 1")
         self.layout_label.pack(side=tk.LEFT, padx=5)
         ttk.Button(control_frame, text="Następny", command=self.next_layout).pack(side=tk.LEFT, padx=5)
-        ttk.Button(control_frame, text="Pokaż w 3D", command=self.show_3d).pack(side=tk.LEFT, padx=5)
 
         self.summary_frame = ttk.LabelFrame(self, text="Obliczenia")
         self.summary_frame.pack(fill=tk.X, padx=10, pady=5)
@@ -392,42 +377,4 @@ class TabPallet(ttk.Frame):
         self.ax.set_aspect('equal')
         self.ax.set_title(f"Liczba kartonów w warstwie: {len(self.layers[0])}")
         self.canvas.draw()
-
-    def show_3d(self):
-        window = tk.Toplevel(self)
-        window.title("Widok 3D")
-        fig_3d = plt.Figure(figsize=(8, 6))
-        ax_3d = fig_3d.add_subplot(111, projection='3d')
-        canvas_3d = FigureCanvasTkAgg(fig_3d, master=window)
-        canvas_3d.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-        toolbar_3d = NavigationToolbar2Tk(canvas_3d, window)
-        toolbar_3d.update()
-
-        pallet_w = parse_dim(self.pallet_w_var)
-        pallet_l = parse_dim(self.pallet_l_var)
-        pallet_h = parse_dim(self.pallet_h_var)
-        box_w = parse_dim(self.box_w_var)
-        box_l = parse_dim(self.box_l_var)
-        box_h = parse_dim(self.box_h_var)
-        thickness = parse_dim(self.cardboard_thickness_var)
-
-        box_w_ext = box_w + 2 * thickness
-        box_l_ext = box_l + 2 * thickness
-        box_h_ext = box_h + 2 * thickness
-
-        # Draw pallet base. Using a full 3D box improves visibility of edges.
-        add_box(ax_3d, 0, 0, 0, pallet_w, pallet_l, pallet_h, color="red", alpha=0.2)
-        for layer_idx, positions in enumerate(self.layers):
-            transformed = self.apply_transformation(positions, self.transformations[layer_idx], pallet_w, pallet_l, box_w_ext, box_l_ext)
-            color = plt.cm.tab10(layer_idx % 10)
-            for x, y, w, h in transformed:
-                add_box(ax_3d, x, y, layer_idx * box_h_ext, w, h, box_h_ext, color=color, alpha=0.7)
-
-        ax_3d.set_xlim(0, pallet_w)
-        ax_3d.set_ylim(0, pallet_l)
-        ax_3d.set_zlim(0, pallet_h)
-        ax_3d.set_xlabel('W (mm)')
-        ax_3d.set_ylabel('L (mm)')
-        ax_3d.set_zlabel('H (mm)')
-        canvas_3d.draw()
 
