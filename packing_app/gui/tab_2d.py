@@ -79,6 +79,7 @@ class TabPacking2D(ttk.Frame):
         f_type.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
 
         self.prod_type = tk.StringVar(value="rectangle")
+        self.prod_type.trace_add("write", lambda *args: self.update_product_fields())
         self.rb_rect = ttk.Radiobutton(f_type, text="Kartoniki", variable=self.prod_type, value="rectangle", command=self.update_product_fields, style="Selected.TRadiobutton")
         self.rb_rect.pack(side=tk.LEFT, padx=5)
         self.rb_circle = ttk.Radiobutton(f_type, text="Pojemniki/Butelki", variable=self.prod_type, value="circle", command=self.update_product_fields, style="Unselected.TRadiobutton")
