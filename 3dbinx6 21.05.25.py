@@ -8,6 +8,10 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import math
 import numpy as np
 
+from core.models import Carton
+from utils import parse_dim as parse_dim_util
+import algorithms
+
 PREDEFINED_CARTONS = {
     "O0024": (360, 260, 90),
     "O0121": (445, 254, 268),
@@ -51,12 +55,8 @@ PREDEFINED_PALLETS = [
 ]
 
 def parse_dim(var: tk.StringVar) -> float:
-    try:
-        val = float(var.get().replace(",", "."))
-        return max(0, val)
-    except:
-        messagebox.showwarning("Błąd", "Wprowadzono niepoprawną wartość. Użyto 0.")
-        return 0.0
+    """Wrapper around utils.parse_dim for backward compatibility."""
+    return parse_dim_util(var)
 
 def pack_rectangles_2d(width, height, wprod, lprod, margin=0):
     eff_width = width - margin
@@ -605,14 +605,22 @@ class TabPacking2D(ttk.Frame):
 
     def add_air_cushions(self, ax, width, height, positions, h_c):
         if self.use_cushions.get():
-            cushion_positions = place_air_cushions(width, height, positions, min_gap=self.parse_dim_safe(self.cushion_gap), offset_x=self.parse_dim_safe(self.offset_x), offset_y=self.parse_dim_safe(self.offset_y))
+            carton = Carton(width, height, h_c)
+            cushion_positions = algorithms.place_air_cushions(
+                carton,
+                positions,
+                min_gap=self.parse_dim_safe(self.cushion_gap),
+                offset_x=self.parse_dim_safe(self.offset_x),
+                offset_y=self.parse_dim_safe(self.offset_y),
+            )
             for (x0, y0, ww, hh) in cushion_positions:
                 ax.add_patch(plt.Rectangle((x0, y0), ww, hh, fill=True, facecolor='yellow', edgecolor='black', alpha=0.5))
             if h_c > 0 and h_c < 110:
                 messagebox.showinfo("Informacja", "Sprawdź fizycznie, czy poduszka się zmieści (wysokość poduszki: 110 mm).")
 
     def draw_vertical(self, ax, w_c, l_c, w_p, l_p, margin, h_c):
-        c_vert, pos_vert = pack_rectangles_2d(w_c, l_c, w_p, l_p, margin)
+        carton = Carton(w_c, l_c, h_c)
+        c_vert, pos_vert = algorithms.pack_rectangles_2d(carton, w_p, l_p, margin)
         if not pos_vert:
             return 0, [], 0, 0
         mxv, myv = 0, 0
@@ -627,7 +635,8 @@ class TabPacking2D(ttk.Frame):
         return c_vert, pos_vert, mxv, myv
 
     def draw_horizontal(self, ax, w_c, l_c, w_p, l_p, margin, h_c):
-        c_horz, pos_horz = pack_rectangles_2d(w_c, l_c, l_p, w_p, margin)
+        carton = Carton(w_c, l_c, h_c)
+        c_horz, pos_horz = algorithms.pack_rectangles_2d(carton, l_p, w_p, margin)
         if not pos_horz:
             return 0, [], 0, 0
         mxh, myh = 0, 0
@@ -642,12 +651,13 @@ class TabPacking2D(ttk.Frame):
         return c_horz, pos_horz, mxh, myh
 
     def draw_mixed(self, ax, w_c, l_c, w_p, l_p, margin, h_c):
-        c_mix, pos_mix = pack_rectangles_mixed_greedy(w_c, l_c, w_p, l_p, margin)
+        carton = Carton(w_c, l_c, h_c)
+        c_mix, pos_mix = algorithms.pack_rectangles_mixed_greedy(carton, w_p, l_p, margin)
         if not pos_mix:
             return 0, [], 0, 0
 
         if self.maximize_mixed.get():
-            c_mix, pos_mix = maximize_mixed_layout(w_c, l_c, w_p, l_p, margin, pos_mix)
+            c_mix, pos_mix = algorithms.maximize_mixed_layout(carton, w_p, l_p, margin, pos_mix)
 
         mxm, mym = 0, 0
         for (x0, y0, ww, hh) in pos_mix:
@@ -661,7 +671,8 @@ class TabPacking2D(ttk.Frame):
         return c_mix, pos_mix, mxm, mym
 
     def draw_grid(self, ax, w_c, l_c, diam, margin, h_c):
-        grid_centers = pack_circles_grid_bottomleft(w_c, l_c, diam, margin)
+        carton = Carton(w_c, l_c, h_c)
+        grid_centers = algorithms.pack_circles_grid_bottomleft(carton, diam, margin)
         if not grid_centers:
             return 0, [], 0, 0
         r = diam / 2
@@ -678,7 +689,8 @@ class TabPacking2D(ttk.Frame):
         return len(grid_centers), grid_positions, mgx, mgy
 
     def draw_hex(self, ax, w_c, l_c, diam, margin, h_c):
-        hex_top = pack_hex_top_down(w_c, l_c, diam, margin)
+        carton = Carton(w_c, l_c, h_c)
+        hex_top = algorithms.pack_hex_top_down(carton, diam, margin)
         if not hex_top:
             return 0, [], 0, 0
         r = diam / 2
@@ -695,7 +707,8 @@ class TabPacking2D(ttk.Frame):
         return len(hex_top), hex_positions, mhx, mhy
 
     def draw_hex_rev(self, ax, w_c, l_c, diam, margin, h_c):
-        hex_rev = pack_hex_bottom_up(l_c, w_c, diam, margin)
+        carton = Carton(l_c, w_c, h_c)
+        hex_rev = algorithms.pack_hex_bottom_up(carton, diam, margin)
         if not hex_rev:
             return 0, [], 0, 0
         r = diam / 2
@@ -940,18 +953,21 @@ class TabPacking2D(ttk.Frame):
             if is_rectangle:
                 if not self.validate_dimensions(w_c, l_c, w_p, l_p, margin=margin):
                     continue
-                c_vert, _ = pack_rectangles_2d(w_c, l_c, w_p, l_p, margin)
-                c_horz, _ = pack_rectangles_2d(w_c, l_c, l_p, w_p, margin)
-                c_mix, _ = pack_rectangles_mixed_greedy(w_c, l_c, w_p, l_p, margin)
+                carton = Carton(w_c, l_c, h_c)
+                c_vert, _ = algorithms.pack_rectangles_2d(carton, w_p, l_p, margin)
+                c_horz, _ = algorithms.pack_rectangles_2d(carton, l_p, w_p, margin)
+                c_mix, _ = algorithms.pack_rectangles_mixed_greedy(carton, w_p, l_p, margin)
                 best_count = max(c_vert, c_horz, c_mix)
                 best_layout = "Pionowo" if best_count == c_vert else "Poziomo" if best_count == c_horz else "Mieszane"
                 results.append((key, w_c, l_c, h_c, c_vert, c_horz, c_mix, best_count, best_layout))
             else:
                 if not self.validate_dimensions(w_c, l_c, diam=diam, margin=margin):
                     continue
-                c_grid = len(pack_circles_grid_bottomleft(w_c, l_c, diam, margin))
-                c_hex = len(pack_hex_top_down(w_c, l_c, diam, margin))
-                c_rev = len(pack_hex_bottom_up(l_c, w_c, diam, margin))
+                carton = Carton(w_c, l_c, h_c)
+                carton_rev = Carton(l_c, w_c, h_c)
+                c_grid = len(algorithms.pack_circles_grid_bottomleft(carton, diam, margin))
+                c_hex = len(algorithms.pack_hex_top_down(carton, diam, margin))
+                c_rev = len(algorithms.pack_hex_bottom_up(carton_rev, diam, margin))
                 best_count = max(c_grid, c_hex, c_rev)
                 best_layout = "Siatka" if best_count == c_grid else "Hex" if best_count == c_hex else "Hex(rev)"
                 results.append((key, w_c, l_c, h_c, c_grid, c_hex, c_rev, best_count, best_layout))
@@ -1049,24 +1065,16 @@ class TabBox3D(ttk.Frame):
         if best_dims is None:
             messagebox.showinfo("Wynik", "Nie znaleziono rozwiązania.")
         else:
-            wopt, lopt, hopt = best_dims
-            msg = f"Najlepsze wymiary (losowo):\n{wopt:.1f} x {lopt:.1f} x {hopt:.1f} mm\nDopasowanie: {best_score*100:.1f}%"
+            msg = (
+                "Najlepsze wymiary (losowo):\n"
+                f"{best_dims.width:.1f} x {best_dims.length:.1f} x {best_dims.height:.1f} mm\n"
+                f"Dopasowanie: {best_score*100:.1f}%"
+            )
             messagebox.showinfo("Optymalizacja 3D", msg)
 
-def random_box_optimizer_3d(prod_w, prod_l, prod_h, units):
-    best_dims = None
-    best_score = 0
-    target_volume = prod_w * prod_l * prod_h * units
-    for _ in range(200):
-        w_ = np.random.uniform(prod_w, prod_w * 5)
-        l_ = np.random.uniform(prod_l, prod_l * 5)
-        h_ = np.random.uniform(prod_h, prod_h * 5)
-        vol = w_ * l_ * h_
-        ratio = min(vol, target_volume) / max(vol, target_volume)
-        if ratio > best_score:
-            best_score = ratio
-            best_dims = (w_, l_, h_)
-    return best_dims, best_score
+def random_box_optimizer_3d(prod_w: float, prod_l: float, prod_h: float, units: int) -> tuple[Carton | None, float]:
+    """Proxy to algorithms.random_box_optimizer_3d using Carton dataclass."""
+    return algorithms.random_box_optimizer_3d(prod_w, prod_l, prod_h, units)
 
 class TabPallet(ttk.Frame):
     def __init__(self, parent):
@@ -1246,24 +1254,25 @@ class TabPallet(ttk.Frame):
     def apply_transformation(self, positions, transform, pallet_w, pallet_l, box_w, box_l):
         new_positions = []
         for x, y, w, h in positions:
-            if transform == "Brak":
-                new_positions.append((x, y, w, h))
-            elif transform == "Obrót 180° (dłuższy bok)":
-                new_x = pallet_w - x - w
-                new_y = y
-                new_positions.append((new_x, new_y, w, h))
-            elif transform == "Obrót 180° (krótszy bok)":
-                new_x = x
-                new_y = pallet_l - y - h
-                new_positions.append((new_x, new_y, w, h))
-            elif transform == "Odbicie lustrzane (dłuższy bok)":
-                new_x = pallet_w - x - w
-                new_y = y
-                new_positions.append((new_x, new_y, w, h))
-            elif transform == "Odbicie lustrzane (krótszy bok)":
-                new_x = x
-                new_y = pallet_l - y - h
-                new_positions.append((new_x, new_y, w, h))
+            match transform:
+                case "Brak":
+                    new_positions.append((x, y, w, h))
+                case "Obrót 180° (dłuższy bok)":
+                    new_x = pallet_w - x - w
+                    new_y = y
+                    new_positions.append((new_x, new_y, w, h))
+                case "Obrót 180° (krótszy bok)":
+                    new_x = x
+                    new_y = pallet_l - y - h
+                    new_positions.append((new_x, new_y, w, h))
+                case "Odbicie lustrzane (dłuższy bok)":
+                    new_x = pallet_w - x - w
+                    new_y = y
+                    new_positions.append((new_x, new_y, w, h))
+                case "Odbicie lustrzane (krótszy bok)":
+                    new_x = x
+                    new_y = pallet_l - y - h
+                    new_positions.append((new_x, new_y, w, h))
         return new_positions
 
     def group_cartons(self, positions):
@@ -1319,11 +1328,12 @@ class TabPallet(ttk.Frame):
             return
 
         self.layouts = []
-        count1, positions1 = pack_rectangles_mixed_greedy(pallet_w, pallet_l, box_w, box_l)
+        pallet = Carton(pallet_w, pallet_l, pallet_h)
+        count1, positions1 = algorithms.pack_rectangles_mixed_greedy(pallet, box_w, box_l)
         positions1 = self.center_layout(positions1, pallet_w, pallet_l)
         self.layouts.append((count1, positions1, "Standardowy"))
 
-        count2, positions2 = pack_rectangles_mixed_greedy(pallet_w, pallet_l, box_l, box_w)
+        count2, positions2 = algorithms.pack_rectangles_mixed_greedy(pallet, box_l, box_w)
         positions2 = self.center_layout(positions2, pallet_w, pallet_l)
         self.layouts.append((count2, positions2, "Naprzemienny"))
 
