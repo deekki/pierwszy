@@ -47,3 +47,18 @@ def load_pallets() -> list:
         except (TypeError, ValueError) as e:
             raise ValueError(f"Niepoprawne dane palety '{pallet.attrib}': {e}")
     return pallets
+
+
+@lru_cache(maxsize=None)
+def load_materials() -> dict:
+    """Zwraca słownik materiałów {nazwa: waga_na_m} """
+    root = _load_xml(os.path.join(DATA_DIR, 'materials.xml'))
+    materials = {}
+    for mat in root.findall('material'):
+        try:
+            name = mat.get('name')
+            weight = float(mat.get('weight_per_m', '0'))
+            materials[name] = weight
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"Niepoprawne dane materiału '{mat.attrib}': {e}")
+    return materials
