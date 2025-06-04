@@ -4,6 +4,7 @@ import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from packing_app.core.algorithms import pack_rectangles_mixed_greedy
 from core.utils import load_cartons, load_pallets
 
@@ -15,6 +16,20 @@ def parse_dim(var: tk.StringVar) -> float:
     except Exception:
         messagebox.showwarning("Błąd", "Wprowadzono niepoprawną wartość. Użyto 0.")
         return 0.0
+
+
+def add_box(ax, x, y, z, dx, dy, dz, color="red", alpha=0.2):
+    """Draw a 3D box using Poly3DCollection."""
+    verts = [
+        [(x, y, z), (x + dx, y, z), (x + dx, y + dy, z), (x, y + dy, z)],
+        [(x, y, z + dz), (x + dx, y, z + dz), (x + dx, y + dy, z + dz), (x, y + dy, z + dz)],
+        [(x, y, z), (x + dx, y, z), (x + dx, y, z + dz), (x, y, z + dz)],
+        [(x + dx, y, z), (x + dx, y + dy, z), (x + dx, y + dy, z + dz), (x + dx, y, z + dz)],
+        [(x, y + dy, z), (x + dx, y + dy, z), (x + dx, y + dy, z + dz), (x, y + dy, z + dz)],
+        [(x, y, z), (x, y + dy, z), (x, y + dy, z + dz), (x, y, z + dz)],
+    ]
+    poly = Poly3DCollection(verts, facecolors=color, edgecolors="black", alpha=alpha)
+    ax.add_collection3d(poly)
 
 class TabPallet(ttk.Frame):
     def __init__(self, parent):
@@ -386,17 +401,13 @@ class TabPallet(ttk.Frame):
         box_l_ext = box_l + 2 * thickness
         box_h_ext = box_h + 2 * thickness
 
-        ax_3d.bar3d([0], [0], [0], [pallet_w], [pallet_l], [50], color='red', alpha=0.2)
+        # Draw pallet base. Using a full 3D box improves visibility of edges.
+        add_box(ax_3d, 0, 0, 0, pallet_w, pallet_l, pallet_h, color="red", alpha=0.2)
         for layer_idx, positions in enumerate(self.layers):
             transformed = self.apply_transformation(positions, self.transformations[layer_idx], pallet_w, pallet_l, box_w_ext, box_l_ext)
-            xs = [x for x, y, w, h in transformed]
-            ys = [y for x, y, w, h in transformed]
-            zs = [layer_idx * box_h_ext] * len(transformed)
-            dxs = [w for x, y, w, h in transformed]
-            dys = [h for x, y, w, h in transformed]
-            dzs = [box_h_ext] * len(transformed)
             color = plt.cm.tab10(layer_idx % 10)
-            ax_3d.bar3d(xs, ys, zs, dxs, dys, dzs, color=color, alpha=0.7)
+            for x, y, w, h in transformed:
+                add_box(ax_3d, x, y, layer_idx * box_h_ext, w, h, box_h_ext, color=color, alpha=0.7)
 
         ax_3d.set_xlim(0, pallet_w)
         ax_3d.set_ylim(0, pallet_l)
