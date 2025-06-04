@@ -62,3 +62,34 @@ def load_materials() -> dict:
         except (TypeError, ValueError) as e:
             raise ValueError(f"Niepoprawne dane materiału '{mat.attrib}': {e}")
     return materials
+
+
+def load_packaging_materials() -> list:
+    """Load packaging materials from packaging_materials.xml."""
+    path = os.path.join(DATA_DIR, 'packaging_materials.xml')
+    if not os.path.exists(path):
+        return []
+    root = _load_xml(path)
+    materials = []
+    for mat in root.findall('material'):
+        materials.append({
+            'name': mat.get('name', ''),
+            'quantity': mat.get('quantity', ''),
+            'comment': mat.get('comment', '')
+        })
+    return materials
+
+
+def save_packaging_materials(materials: list) -> None:
+    """Save packaging materials to packaging_materials.xml."""
+    root = ET.Element('materials')
+    for mat in materials:
+        ET.SubElement(
+            root,
+            'material',
+            name=mat.get('name', ''),
+            quantity=mat.get('quantity', ''),
+            comment=mat.get('comment', '')
+        )
+    tree = ET.ElementTree(root)
+    tree.write(os.path.join(DATA_DIR, 'packaging_materials.xml'), encoding='utf-8', xml_declaration=True)
