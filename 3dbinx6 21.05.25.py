@@ -1405,11 +1405,6 @@ class TabPallet(ttk.Frame):
         ax_3d.set_zlabel('H (mm)')
         canvas_3d.draw()
 
-root = tk.Tk()
-root.title("Paletyzacja")
-app = TabPallet(root)
-root.mainloop()
-
 class MainApp(tk.Tk):
     def __init__(self):
         super().__init__()
