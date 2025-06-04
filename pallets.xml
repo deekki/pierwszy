@@ -1,0 +1,6 @@
+<pallets>
+  <pallet name="EUR1" w="1200" l="800" h="1600" />
+  <pallet name="EUR2" w="1200" l="1000" h="1600" />
+  <pallet name="EUR3" w="1000" l="600" h="1600" />
+  <pallet name="Half" w="800" l="600" h="1600" />
+</pallets>

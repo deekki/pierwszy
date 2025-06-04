@@ -7,6 +7,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import math
 import numpy as np
+from gui.tab_db import TabDB
 
 PREDEFINED_CARTONS = {
     "O0024": (360, 260, 90),
@@ -1399,16 +1400,29 @@ class MainApp(tk.Tk):
         self.title("Optymalizacja pakowania")
         self.geometry("1200x800")
 
-        notebook = ttk.Notebook(self)
-        notebook.pack(fill=tk.BOTH, expand=True)
+        self.notebook = ttk.Notebook(self)
+        self.notebook.pack(fill=tk.BOTH, expand=True)
 
-        tab1 = TabPacking2D(notebook)
-        tab2 = TabBox3D(notebook)
-        tab3 = TabPallet(notebook)
+        tab1 = TabPacking2D(self.notebook)
+        tab2 = TabBox3D(self.notebook)
+        tab3 = TabPallet(self.notebook)
+        self.tab_db = TabDB(self.notebook)
 
-        notebook.add(tab1, text="Pakowanie 2D")
-        notebook.add(tab2, text="Pakowanie 3D")
-        notebook.add(tab3, text="Paletyzacja")
+        self.notebook.add(tab1, text="Pakowanie 2D")
+        self.notebook.add(tab2, text="Pakowanie 3D")
+        self.notebook.add(tab3, text="Paletyzacja")
+        self.notebook.add(self.tab_db, text="Baza danych")
+        self.notebook.hide(self.tab_db)
+
+        self.bind("<Control-d>", lambda e: self.toggle_db_tab())
+
+    def toggle_db_tab(self):
+        state = self.notebook.tab(self.tab_db, "state")
+        if state == "hidden":
+            self.notebook.add(self.tab_db, text="Baza danych")
+            self.notebook.select(self.tab_db)
+        else:
+            self.notebook.hide(self.tab_db)
 
 if __name__ == "__main__":
     app = MainApp()
