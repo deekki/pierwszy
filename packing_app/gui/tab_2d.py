@@ -19,9 +19,6 @@ from core.utils import load_cartons
 class TabPacking2D(ttk.Frame):
     def __init__(self, parent):
         super().__init__(parent)
-        self.style = ttk.Style()
-        self.style.configure("Selected.TRadiobutton", background="#e0f0e0")
-        self.style.configure("Unselected.TRadiobutton", background="")
         self.predefined_cartons = load_cartons()
         self.updating_carton = False
         self.prev_prod_h_rect = "0"
@@ -82,9 +79,9 @@ class TabPacking2D(ttk.Frame):
 
         self.prod_type = tk.StringVar(value="rectangle")
         self.prod_type.trace_add("write", lambda *args: self.update_product_fields())
-        self.rb_rect = ttk.Radiobutton(f_type, text="Kartoniki", variable=self.prod_type, value="rectangle", command=self.update_product_fields, style="Selected.TRadiobutton")
+        self.rb_rect = ttk.Radiobutton(f_type, text="Kartoniki", variable=self.prod_type, value="rectangle", command=self.update_product_fields)
         self.rb_rect.pack(side=tk.LEFT, padx=5)
-        self.rb_circle = ttk.Radiobutton(f_type, text="Pojemniki/Butelki", variable=self.prod_type, value="circle", command=self.update_product_fields, style="Unselected.TRadiobutton")
+        self.rb_circle = ttk.Radiobutton(f_type, text="Pojemniki/Butelki", variable=self.prod_type, value="circle", command=self.update_product_fields)
         self.rb_circle.pack(side=tk.LEFT, padx=5)
 
         f_product_fields = ttk.Frame(f_prod)
@@ -441,13 +438,9 @@ class TabPacking2D(ttk.Frame):
         if self.prod_type.get() == "rectangle":
             self.f_rect_container.pack(side=tk.LEFT, fill=tk.X, padx=5)
             self.f_circle_container.pack_forget()
-            self.rb_rect.configure(style="Selected.TRadiobutton")
-            self.rb_circle.configure(style="Unselected.TRadiobutton")
         else:
             self.f_rect_container.pack_forget()
             self.f_circle_container.pack(side=tk.LEFT, fill=tk.X, padx=5)
-            self.rb_rect.configure(style="Unselected.TRadiobutton")
-            self.rb_circle.configure(style="Selected.TRadiobutton")
         self.update_carton_list()
         self.show_packing()
 
