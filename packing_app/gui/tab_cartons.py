@@ -34,19 +34,43 @@ class TabCartons(ttk.Frame):
 
         ttk.Label(form, text="W (mm):").grid(row=1, column=0, sticky="e", pady=2)
         self.w_var = tk.StringVar()
-        ttk.Entry(form, textvariable=self.w_var, width=8).grid(row=1, column=1, pady=2)
+        ttk.Entry(
+            form,
+            textvariable=self.w_var,
+            width=8,
+            validate="key",
+            validatecommand=(self.register(self.validate_number), "%P"),
+        ).grid(row=1, column=1, pady=2)
 
         ttk.Label(form, text="L (mm):").grid(row=2, column=0, sticky="e", pady=2)
         self.l_var = tk.StringVar()
-        ttk.Entry(form, textvariable=self.l_var, width=8).grid(row=2, column=1, pady=2)
+        ttk.Entry(
+            form,
+            textvariable=self.l_var,
+            width=8,
+            validate="key",
+            validatecommand=(self.register(self.validate_number), "%P"),
+        ).grid(row=2, column=1, pady=2)
 
         ttk.Label(form, text="H (mm):").grid(row=3, column=0, sticky="e", pady=2)
         self.h_var = tk.StringVar()
-        ttk.Entry(form, textvariable=self.h_var, width=8).grid(row=3, column=1, pady=2)
+        ttk.Entry(
+            form,
+            textvariable=self.h_var,
+            width=8,
+            validate="key",
+            validatecommand=(self.register(self.validate_number), "%P"),
+        ).grid(row=3, column=1, pady=2)
 
         ttk.Label(form, text="Waga:").grid(row=4, column=0, sticky="e", pady=2)
         self.weight_var = tk.StringVar()
-        ttk.Entry(form, textvariable=self.weight_var, width=8).grid(row=4, column=1, pady=2)
+        ttk.Entry(
+            form,
+            textvariable=self.weight_var,
+            width=8,
+            validate="key",
+            validatecommand=(self.register(self.validate_number), "%P"),
+        ).grid(row=4, column=1, pady=2)
 
         btn_frame = ttk.Frame(form)
         btn_frame.grid(row=5, column=0, columnspan=2, pady=5)
@@ -105,4 +129,15 @@ class TabCartons(ttk.Frame):
             messagebox.showinfo("Zapis", "Zapisano dane do pliku.")
         except Exception as e:
             messagebox.showerror("Błąd", str(e))
+
+    def validate_number(self, value: str) -> bool:
+        """Allow only numbers within a reasonable range."""
+        if value == "":
+            return True
+        value = value.replace(",", ".")
+        try:
+            float_value = float(value)
+            return 0 <= float_value <= 10000
+        except ValueError:
+            return False
 
