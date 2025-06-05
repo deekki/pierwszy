@@ -67,23 +67,41 @@ def pack_rectangles_mixed_greedy(width, height, wprod, lprod, margin=0):
             best_positions = temp_positions
     return best_count, best_positions
 
-def compute_interlocked_layout(pallet_w, pallet_l, box_w, box_l, num_layers=4):
-    """Return positions for standard and interlocked stacking."""
+def compute_interlocked_layout(
+    pallet_w,
+    pallet_l,
+    box_w,
+    box_l,
+    num_layers=4,
+    offset_x=None,
+    offset_y=None,
+):
+    """Return positions for standard and interlocked stacking.
+
+    If ``offset_x`` and ``offset_y`` are ``None`` the function attempts to shift
+    the even layers by half of the carton dimension (whichever fits). When the
+    offsets are provided they are used directly.
+    """
+
     count, base_positions = pack_rectangles_mixed_greedy(pallet_w, pallet_l, box_w, box_l)
 
     base_layers = [base_positions for _ in range(num_layers)]
 
-    min_x = min(x for x, y, w, h in base_positions)
-    max_x = max(x + w for x, y, w, h in base_positions)
-    min_y = min(y for x, y, w, h in base_positions)
-    max_y = max(y + h for x, y, w, h in base_positions)
+    if offset_x is None and offset_y is None:
+        min_x = min(x for x, y, w, h in base_positions)
+        max_x = max(x + w for x, y, w, h in base_positions)
+        min_y = min(y for x, y, w, h in base_positions)
+        max_y = max(y + h for x, y, w, h in base_positions)
 
-    shift_x = 0.0
-    shift_y = 0.0
-    if min_x >= box_w / 2 and max_x + box_w / 2 <= pallet_w:
-        shift_x = box_w / 2
-    elif min_y >= box_l / 2 and max_y + box_l / 2 <= pallet_l:
-        shift_y = box_l / 2
+        shift_x = 0.0
+        shift_y = 0.0
+        if min_x >= box_w / 2 and max_x + box_w / 2 <= pallet_w:
+            shift_x = box_w / 2
+        elif min_y >= box_l / 2 and max_y + box_l / 2 <= pallet_l:
+            shift_y = box_l / 2
+    else:
+        shift_x = offset_x if offset_x is not None else 0.0
+        shift_y = offset_y if offset_y is not None else 0.0
 
     interlocked_layers = []
     for layer_idx in range(num_layers):

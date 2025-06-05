@@ -142,7 +142,12 @@ class TabPallet(ttk.Frame):
         entry_max_stack.grid(row=1, column=1, padx=5, pady=5)
         entry_max_stack.bind("<Return>", self.compute_pallet)
         self.include_pallet_height_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(layers_frame, text="Uwzględnij wysokość nośnika", variable=self.include_pallet_height_var, command=self.compute_pallet).grid(row=1, column=2, columnspan=2, padx=5, pady=5, sticky="w")
+        ttk.Checkbutton(
+            layers_frame,
+            text="Uwzględnij wysokość nośnika",
+            variable=self.include_pallet_height_var,
+            command=self.compute_pallet,
+        ).grid(row=1, column=2, columnspan=2, padx=5, pady=5, sticky="w")
 
         ttk.Label(layers_frame, text="Centrowanie:").grid(row=0, column=2, padx=5, pady=5)
         self.center_var = tk.BooleanVar(value=True)
@@ -150,12 +155,30 @@ class TabPallet(ttk.Frame):
 
         ttk.Label(layers_frame, text="Tryb:").grid(row=0, column=4, padx=5, pady=5)
         self.center_mode_var = tk.StringVar(value="Cała warstwa")
-        ttk.OptionMenu(layers_frame, self.center_mode_var, "Cała warstwa", "Cała warstwa", "Poszczególne obszary").grid(row=0, column=5, padx=5, pady=5)
+        ttk.OptionMenu(
+            layers_frame,
+            self.center_mode_var,
+            "Cała warstwa",
+            "Cała warstwa",
+            "Poszczególne obszary",
+        ).grid(row=0, column=5, padx=5, pady=5)
 
+        ttk.Label(layers_frame, text="Przesunięcie X [mm]:").grid(row=2, column=0, padx=5, pady=5)
+        self.offset_x_var = tk.StringVar(value="0")
+        entry_offset_x = ttk.Entry(layers_frame, textvariable=self.offset_x_var, width=8)
+        entry_offset_x.grid(row=2, column=1, padx=5, pady=5)
+        entry_offset_x.bind("<Return>", self.compute_pallet)
+        self.offset_x_var.trace_add("write", lambda *args: self.compute_pallet())
 
+        ttk.Label(layers_frame, text="Przesunięcie Y [mm]:").grid(row=2, column=2, padx=5, pady=5)
+        self.offset_y_var = tk.StringVar(value="0")
+        entry_offset_y = ttk.Entry(layers_frame, textvariable=self.offset_y_var, width=8)
+        entry_offset_y.grid(row=2, column=3, padx=5, pady=5)
+        entry_offset_y.bind("<Return>", self.compute_pallet)
+        self.offset_y_var.trace_add("write", lambda *args: self.compute_pallet())
 
         self.transform_frame = ttk.Frame(layers_frame)
-        self.transform_frame.grid(row=2, column=0, columnspan=7, padx=5, pady=5)
+        self.transform_frame.grid(row=3, column=0, columnspan=7, padx=5, pady=5)
 
         control_frame = ttk.Frame(self)
         control_frame.pack(fill=tk.X, padx=10, pady=5)
@@ -330,6 +353,8 @@ class TabPallet(ttk.Frame):
         box_l = parse_dim(self.box_l_var)
         box_h = parse_dim(self.box_h_var)
         thickness = parse_dim(self.cardboard_thickness_var)
+        offset_x = parse_dim(self.offset_x_var)
+        offset_y = parse_dim(self.offset_y_var)
         num_layers = int(parse_dim(self.num_layers_var))
         max_stack = parse_dim(self.max_stack_var)
 
@@ -355,7 +380,15 @@ class TabPallet(ttk.Frame):
         positions2 = self.center_layout(positions2, pallet_w, pallet_l)
         self.layouts.append((count2, positions2, "Naprzemienny"))
 
-        _, _, interlocked_layers = compute_interlocked_layout(pallet_w, pallet_l, box_w, box_l, num_layers=2)
+        _, _, interlocked_layers = compute_interlocked_layout(
+            pallet_w,
+            pallet_l,
+            box_w,
+            box_l,
+            num_layers=2,
+            offset_x=offset_x,
+            offset_y=offset_y,
+        )
         shifted = self.center_layout(interlocked_layers[1], pallet_w, pallet_l)
         self.layouts.append((len(shifted), shifted, "Przesunięty"))
 
