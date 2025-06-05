@@ -137,3 +137,40 @@ def save_packaging_materials(materials: list) -> None:
         )
     tree = ET.ElementTree(root)
     tree.write(os.path.join(DATA_DIR, 'packaging_materials.xml'), encoding='utf-8', xml_declaration=True)
+
+
+def load_cartons_list() -> list:
+    """Load cartons from cartons.xml as a list of dictionaries."""
+    root = _load_xml(os.path.join(DATA_DIR, 'cartons.xml'))
+    cartons = []
+    for carton in root.findall('carton'):
+        cartons.append(
+            {
+                'code': carton.get('code', ''),
+                'w': carton.get('w', ''),
+                'l': carton.get('l', ''),
+                'h': carton.get('h', ''),
+                'weight': carton.get('weight', ''),
+            }
+        )
+    return cartons
+
+
+def save_cartons(cartons: list) -> None:
+    """Save cartons list back to cartons.xml and clear caches."""
+    root = ET.Element('cartons')
+    for c in cartons:
+        ET.SubElement(
+            root,
+            'carton',
+            code=c.get('code', ''),
+            w=str(c.get('w', '')),
+            l=str(c.get('l', '')),
+            h=str(c.get('h', '')),
+            weight=str(c.get('weight', '')),
+        )
+    tree = ET.ElementTree(root)
+    tree.write(os.path.join(DATA_DIR, 'cartons.xml'), encoding='utf-8', xml_declaration=True)
+    load_cartons.cache_clear()
+    load_cartons_with_weights.cache_clear()
+

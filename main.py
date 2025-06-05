@@ -5,6 +5,7 @@ from packing_app.gui.tab_2d import TabPacking2D
 from packing_app.gui.tab_3d import TabBox3D
 from packing_app.gui.tab_pallet import TabPallet
 from packing_app.gui.tab_materials import TabMaterials
+from packing_app.gui.tab_cartons import TabCartons
 
 
 def main():
@@ -19,12 +20,14 @@ def main():
     tab2 = TabBox3D(notebook)
     tab3 = TabPallet(notebook)
     tab4 = TabMaterials(notebook)
+    tab5 = TabCartons(notebook)
     tab1.set_pallet_tab(tab3)
 
     notebook.add(tab1, text="Pakowanie 2D")
     notebook.add(tab2, text="Pakowanie 3D")
     notebook.add(tab3, text="Paletyzacja")
     notebook.add(tab4, text="Materiały")
+    notebook.add(tab5, text="Kartony")
 
     root.mainloop()
 
