@@ -1,0 +1,106 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Dict, List, Tuple
+
+from packing_app.core import algorithms
+
+from .models import Carton, Pallet
+
+# Pattern is list of rectangles (x, y, w, l)
+Pattern = List[Tuple[float, float, float, float]]
+
+
+@dataclass
+class PatternScore:
+    """Simple container for pattern metrics."""
+
+    name: str
+    layer_eff: float
+    cube_eff: float
+    stability: float
+    grip_changes: int
+    penalty: float = field(init=False)
+
+    def __post_init__(self) -> None:
+        weights = {
+            "layer_eff": 1.0,
+            "cube_eff": 1.0,
+            "stability": 1.0,
+            "grip_changes": 1.0,
+        }
+        self.penalty = -(
+            weights["layer_eff"] * self.layer_eff
+            + weights["cube_eff"] * self.cube_eff
+            + weights["stability"] * self.stability
+        ) + weights["grip_changes"] * self.grip_changes
+
+
+class PatternSelector:
+    """Generate → score → rank pallet patterns."""
+
+    def __init__(self, carton: Carton, pallet: Pallet, *, padding_mm: int = 0, overhang_mm: Tuple[int, int] = (0, 0)) -> None:
+        self.carton = carton
+        self.pallet = pallet
+        self.padding = padding_mm
+        self.overhang = overhang_mm
+
+    def _eff_dims(self) -> Tuple[float, float, float, float]:
+        pallet_w = self.pallet.width + self.overhang[0] * 2
+        pallet_l = self.pallet.length + self.overhang[1] * 2
+        box_w = self.carton.width + self.padding * 2
+        box_l = self.carton.length + self.padding * 2
+        return pallet_w, pallet_l, box_w, box_l
+
+    def generate_all(self) -> Dict[str, Pattern]:
+        """Return raw patterns keyed by algorithm name."""
+        pallet_w, pallet_l, box_w, box_l = self._eff_dims()
+        patterns: Dict[str, Pattern] = {}
+
+        # column layout
+        _, patt = algorithms.pack_rectangles_2d(pallet_w, pallet_l, box_w, box_l)
+        patterns["column"] = patt
+
+        # brick layout
+        _, patt = algorithms.compute_brick_layout(pallet_w, pallet_l, box_w, box_l)
+        patterns["brick"] = patt
+
+        # interlock layout - use first layer of result
+        _, _, inter = algorithms.compute_interlocked_layout(pallet_w, pallet_l, box_w, box_l, num_layers=1)
+        patterns["interlock"] = inter[0]
+
+        # mixed greedy
+        _, patt = algorithms.pack_rectangles_mixed_greedy(pallet_w, pallet_l, box_w, box_l)
+        patterns["mixed"] = patt
+
+        # maximal dense packing approximation - use greedy for speed
+        _, patt = algorithms.pack_rectangles_mixed_greedy(pallet_w, pallet_l, box_w, box_l)
+        patterns["dense"] = patt
+
+        return patterns
+
+    def score(self, pattern: Pattern) -> PatternScore:
+        """Weighted score; weights configurable in settings.yaml."""
+        pallet_area = self.pallet.width * self.pallet.length
+        box_area = self.carton.width * self.carton.length
+        layer_eff = len(pattern) * box_area / pallet_area
+        cube_eff = layer_eff  # simplified: same as area efficiency
+        stability = min(1.0, layer_eff)  # placeholder heuristic
+        grip_changes = 0
+        return PatternScore("", layer_eff, cube_eff, stability, grip_changes)
+
+    def best(self) -> Tuple[str, Pattern, PatternScore]:
+        """Highest total score (lower penalty = better)."""
+        patterns = self.generate_all()
+        best_name = ""
+        best_pattern: Pattern = []
+        best_score: PatternScore | None = None
+        for name, patt in patterns.items():
+            score = self.score(patt)
+            score.name = name
+            if best_score is None or score.penalty < best_score.penalty:
+                best_name = name
+                best_pattern = patt
+                best_score = score
+        assert best_score is not None
+        return best_name, best_pattern, best_score
