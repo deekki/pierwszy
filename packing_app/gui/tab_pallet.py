@@ -5,7 +5,13 @@ matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from packing_app.core.algorithms import pack_rectangles_mixed_greedy, compute_interlocked_layout
-from core.utils import load_cartons, load_pallets
+from core.utils import (
+    load_cartons,
+    load_pallets,
+    load_cartons_with_weights,
+    load_pallets_with_weights,
+    load_materials,
+)
 
 
 def parse_dim(var: tk.StringVar) -> float:
@@ -22,6 +28,9 @@ class TabPallet(ttk.Frame):
         super().__init__(parent)
         self.predefined_cartons = load_cartons()
         self.predefined_pallets = load_pallets()
+        self.carton_weights = {k: v[3] for k, v in load_cartons_with_weights().items()}
+        self.pallet_weights = {p['name']: p['weight'] for p in load_pallets_with_weights()}
+        self.material_weights = load_materials()
         self.pack(fill=tk.BOTH, expand=True)
         self.layouts = []
         self.layers = []
@@ -372,7 +381,12 @@ class TabPallet(ttk.Frame):
             self.materials_label.config(
                 text=f"Taśma: {total_tape:.2f} m | Folia: {self.film_per_pallet:.2f} m"
             )
-            self.weight_label.config(text="")
+            carton_wt = self.carton_weights.get(self.carton_var.get(), 0)
+            pallet_wt = self.pallet_weights.get(self.pallet_var.get(), 0) if self.include_pallet_height_var.get() else 0
+            tape_wt = total_tape * self.material_weights.get("tape", 0)
+            film_wt = self.film_per_pallet * self.material_weights.get("stretch_film", 0)
+            total_mass = carton_wt * total_cartons + tape_wt + film_wt + pallet_wt
+            self.weight_label.config(text=f"Masa: {total_mass:.2f} kg")
         else:
             self.totals_label.config(text="")
             self.materials_label.config(text="")

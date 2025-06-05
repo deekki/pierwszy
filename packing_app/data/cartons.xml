@@ -1,34 +1,34 @@
 <cartons>
-  <carton code="O0024" w="360" l="260" h="90"/>
-  <carton code="O0121" w="445" l="254" h="268"/>
-  <carton code="O0122" w="445" l="304" h="268"/>
-  <carton code="O0148" w="365" l="230" h="140"/>
-  <carton code="O0301" w="166" l="112" h="98"/>
-  <carton code="O0632" w="160" l="320" h="115"/>
-  <carton code="O0658" w="285" l="230" h="110"/>
-  <carton code="O0680" w="546" l="392" h="144"/>
-  <carton code="O0718" w="270" l="110" h="105"/>
-  <carton code="O0820" w="341" l="284" h="136"/>
-  <carton code="O1370" w="317" l="207" h="105"/>
-  <carton code="O1434" w="420" l="302" h="153"/>
-  <carton code="O1460" w="270" l="165" h="130"/>
-  <carton code="O1504" w="393" l="288" h="151"/>
-  <carton code="O2314" w="193" l="193" h="155"/>
-  <carton code="O2315" w="355" l="284" h="196"/>
-  <carton code="O2409" w="255" l="170" h="165"/>
-  <carton code="O2830" w="285" l="240" h="145"/>
-  <carton code="O2829" w="285" l="240" h="100"/>
-  <carton code="O2902" w="252" l="168" h="94"/>
-  <carton code="O3290" w="315" l="257" h="170"/>
-  <carton code="O3467" w="426" l="252" h="160"/>
-  <carton code="O3698" w="284" l="215" h="118"/>
-  <carton code="O3769" w="395" l="348" h="97"/>
-  <carton code="O3815" w="380" l="270" h="132"/>
-  <carton code="O3874" w="566" l="356" h="124"/>
-  <carton code="O3927" w="228" l="153" h="135"/>
-  <carton code="O3928" w="705" l="288" h="135"/>
-  <carton code="O3929" w="192" l="95" h="87"/>
-  <carton code="O3930" w="374" l="235" h="87"/>
-  <carton code="O3961" w="158" l="107" h="110"/>
-  <carton code="O3962" w="364" l="244" h="115"/>
+  <carton code="O0024" w="360" l="260" h="90" weight="0.5"/>
+  <carton code="O0121" w="445" l="254" h="268" weight="0.5"/>
+  <carton code="O0122" w="445" l="304" h="268" weight="0.5"/>
+  <carton code="O0148" w="365" l="230" h="140" weight="0.5"/>
+  <carton code="O0301" w="166" l="112" h="98" weight="0.5"/>
+  <carton code="O0632" w="160" l="320" h="115" weight="0.5"/>
+  <carton code="O0658" w="285" l="230" h="110" weight="0.5"/>
+  <carton code="O0680" w="546" l="392" h="144" weight="0.5"/>
+  <carton code="O0718" w="270" l="110" h="105" weight="0.5"/>
+  <carton code="O0820" w="341" l="284" h="136" weight="0.5"/>
+  <carton code="O1370" w="317" l="207" h="105" weight="0.5"/>
+  <carton code="O1434" w="420" l="302" h="153" weight="0.5"/>
+  <carton code="O1460" w="270" l="165" h="130" weight="0.5"/>
+  <carton code="O1504" w="393" l="288" h="151" weight="0.5"/>
+  <carton code="O2314" w="193" l="193" h="155" weight="0.5"/>
+  <carton code="O2315" w="355" l="284" h="196" weight="0.5"/>
+  <carton code="O2409" w="255" l="170" h="165" weight="0.5"/>
+  <carton code="O2830" w="285" l="240" h="145" weight="0.5"/>
+  <carton code="O2829" w="285" l="240" h="100" weight="0.5"/>
+  <carton code="O2902" w="252" l="168" h="94" weight="0.5"/>
+  <carton code="O3290" w="315" l="257" h="170" weight="0.5"/>
+  <carton code="O3467" w="426" l="252" h="160" weight="0.5"/>
+  <carton code="O3698" w="284" l="215" h="118" weight="0.5"/>
+  <carton code="O3769" w="395" l="348" h="97" weight="0.5"/>
+  <carton code="O3815" w="380" l="270" h="132" weight="0.5"/>
+  <carton code="O3874" w="566" l="356" h="124" weight="0.5"/>
+  <carton code="O3927" w="228" l="153" h="135" weight="0.5"/>
+  <carton code="O3928" w="705" l="288" h="135" weight="0.5"/>
+  <carton code="O3929" w="192" l="95" h="87" weight="0.5"/>
+  <carton code="O3930" w="374" l="235" h="87" weight="0.5"/>
+  <carton code="O3961" w="158" l="107" h="110" weight="0.5"/>
+  <carton code="O3962" w="364" l="244" h="115" weight="0.5"/>
 </cartons>
