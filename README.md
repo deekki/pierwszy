@@ -18,12 +18,14 @@ Launch the interface by executing:
 ```bash
 python main.py
 ```
-The window opens with four tabs:
+The window opens with five tabs:
 
 1. **Pakowanie 2D** – compare layouts of small boxes or bottles inside a chosen carton. Select a predefined carton or fill in your own dimensions. The tab shows vertical, horizontal and mixed layouts and lets you add air cushions.
 2. **Pakowanie 3D** – find good carton sizes for a given product using a random search and the list of predefined cartons.
 3. **Paletyzacja** – plan layers of cartons on a pallet. Choose a pallet type and a carton type from drop‑downs, adjust dimensions and transformations and preview the stacking in 2D. The maximum stack height field defaults to **1600&nbsp;mm** (set it to 0 to remove the limit).
 4. **Materiały** – manage a simple list of packaging materials stored in
    `packing_app/data/packaging_materials.xml`.
+5. **Kartony** – edit the list of carton definitions found in
+   `packing_app/data/cartons.xml`.
 
 Predefined cartons and pallets come from the data files and can be selected from the drop‑down menus on each tab.
