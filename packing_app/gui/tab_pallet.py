@@ -4,7 +4,11 @@ import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-from packing_app.core.algorithms import pack_rectangles_mixed_greedy, compute_interlocked_layout
+from packing_app.core.algorithms import (
+    pack_rectangles_mixed_greedy,
+    compute_interlocked_layout,
+    pack_rectangles_brick,
+)
 from core.utils import (
     load_cartons,
     load_pallets,
@@ -354,6 +358,14 @@ class TabPallet(ttk.Frame):
         count2, positions2 = pack_rectangles_mixed_greedy(pallet_w, pallet_l, box_l, box_w)
         positions2 = self.center_layout(positions2, pallet_w, pallet_l)
         self.layouts.append((count2, positions2, "Naprzemienny"))
+
+        count_brick, pos_brick = pack_rectangles_brick(pallet_w, pallet_l, box_w, box_l)
+        pos_brick = self.center_layout(pos_brick, pallet_w, pallet_l)
+        self.layouts.append((count_brick, pos_brick, "Ceglany"))
+
+        count_brick_rot, pos_brick_rot = pack_rectangles_brick(pallet_w, pallet_l, box_l, box_w)
+        pos_brick_rot = self.center_layout(pos_brick_rot, pallet_w, pallet_l)
+        self.layouts.append((count_brick_rot, pos_brick_rot, "Ceglany (obracany)"))
 
         _, _, interlocked_layers = compute_interlocked_layout(pallet_w, pallet_l, box_w, box_l, num_layers=2)
         shifted = self.center_layout(interlocked_layers[1], pallet_w, pallet_l)

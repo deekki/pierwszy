@@ -16,6 +16,28 @@ def pack_rectangles_2d(width, height, wprod, lprod, margin=0):
             positions.append((x0, y0, wprod, lprod))
     return len(positions), positions
 
+def pack_rectangles_brick(width, height, wprod, lprod, margin=0):
+    """Pack rectangles in a brick (staggered) pattern.
+
+    Alternate rows are offset by half the rectangle width to create a
+    brick-like layout. Only rows that fully fit on the pallet are used.
+    """
+    eff_width = width - margin
+    eff_height = height - margin
+    if eff_width < wprod or eff_height < lprod:
+        return 0, []
+
+    n_rows = int(eff_height // lprod)
+    positions = []
+    for row in range(n_rows):
+        offset = 0 if row % 2 == 0 else wprod / 2
+        max_cols = int((eff_width - offset) // wprod)
+        for col in range(max_cols):
+            x0 = offset + col * wprod
+            y0 = row * lprod
+            positions.append((x0, y0, wprod, lprod))
+    return len(positions), positions
+
 def pack_rectangles_mixed_greedy(width, height, wprod, lprod, margin=0):
     eff_width = width - margin
     eff_height = height - margin
