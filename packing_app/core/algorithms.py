@@ -67,8 +67,23 @@ def pack_rectangles_mixed_greedy(width, height, wprod, lprod, margin=0):
             best_positions = temp_positions
     return best_count, best_positions
 
-def compute_interlocked_layout(pallet_w, pallet_l, box_w, box_l, num_layers=4):
-    """Return positions for standard and interlocked stacking."""
+def compute_interlocked_layout(
+    pallet_w, pallet_l, box_w, box_l, num_layers=4, shift_even=True
+):
+    """Return positions for standard and interlocked stacking.
+
+    Parameters
+    ----------
+    pallet_w, pallet_l : float
+        Dimensions of the pallet in mm.
+    box_w, box_l : float
+        Dimensions of the carton in mm.
+    num_layers : int, optional
+        Number of layers to generate. Default is 4.
+    shift_even : bool, optional
+        If ``True`` (default), even layers (2nd, 4th, ...) are shifted.
+        If ``False``, odd layers are shifted instead.
+    """
     count, base_positions = pack_rectangles_mixed_greedy(pallet_w, pallet_l, box_w, box_l)
 
     base_layers = [base_positions for _ in range(num_layers)]
@@ -87,11 +102,15 @@ def compute_interlocked_layout(pallet_w, pallet_l, box_w, box_l, num_layers=4):
 
     interlocked_layers = []
     for layer_idx in range(num_layers):
-        if layer_idx % 2 == 0:
-            interlocked_layers.append(base_positions)
-        else:
-            shifted = [(x + shift_x, y + shift_y, w, h) for x, y, w, h in base_positions]
+        is_even = layer_idx % 2 == 1  # 1-based: even layer when index is odd
+        should_shift = (shift_even and is_even) or (not shift_even and not is_even)
+        if should_shift:
+            shifted = [
+                (x + shift_x, y + shift_y, w, h) for x, y, w, h in base_positions
+            ]
             interlocked_layers.append(shifted)
+        else:
+            interlocked_layers.append(base_positions)
 
     return count, base_layers, interlocked_layers
 
