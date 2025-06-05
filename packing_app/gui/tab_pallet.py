@@ -330,6 +330,8 @@ class TabPallet(ttk.Frame):
         box_l = parse_dim(self.box_l_var)
         box_h = parse_dim(self.box_h_var)
         thickness = parse_dim(self.cardboard_thickness_var)
+        box_w_ext = box_w + 2 * thickness
+        box_l_ext = box_l + 2 * thickness
         num_layers = int(parse_dim(self.num_layers_var))
         max_stack = parse_dim(self.max_stack_var)
 
@@ -347,15 +349,31 @@ class TabPallet(ttk.Frame):
             return
 
         self.layouts = []
-        count1, positions1 = pack_rectangles_mixed_greedy(pallet_w, pallet_l, box_w, box_l)
+        count1, positions1 = pack_rectangles_mixed_greedy(
+            pallet_w,
+            pallet_l,
+            box_w_ext,
+            box_l_ext,
+        )
         positions1 = self.center_layout(positions1, pallet_w, pallet_l)
         self.layouts.append((count1, positions1, "Standardowy"))
 
-        count2, positions2 = pack_rectangles_mixed_greedy(pallet_w, pallet_l, box_l, box_w)
+        count2, positions2 = pack_rectangles_mixed_greedy(
+            pallet_w,
+            pallet_l,
+            box_l_ext,
+            box_w_ext,
+        )
         positions2 = self.center_layout(positions2, pallet_w, pallet_l)
         self.layouts.append((count2, positions2, "Naprzemienny"))
 
-        _, _, interlocked_layers = compute_interlocked_layout(pallet_w, pallet_l, box_w, box_l, num_layers=2)
+        _, _, interlocked_layers = compute_interlocked_layout(
+            pallet_w,
+            pallet_l,
+            box_w_ext,
+            box_l_ext,
+            num_layers=2,
+        )
         shifted = self.center_layout(interlocked_layers[1], pallet_w, pallet_l)
         self.layouts.append((len(shifted), shifted, "Przesunięty"))
 
