@@ -318,6 +318,8 @@ def maximize_mixed_layout(w_c, l_c, w_p, l_p, margin, initial_positions):
         if not placed:
             continue
 
+    return count, occupied_positions
+
 def random_box_optimizer_3d(prod_w, prod_l, prod_h, units):
     best_dims = None
     best_score = 0
