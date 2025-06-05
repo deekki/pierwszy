@@ -40,7 +40,13 @@ class TabMaterials(ttk.Frame):
 
         ttk.Label(form, text="Waga:").grid(row=3, column=0, sticky="e", pady=2)
         self.weight_var = tk.StringVar()
-        ttk.Entry(form, textvariable=self.weight_var, width=25).grid(row=3, column=1, pady=2)
+        ttk.Entry(
+            form,
+            textvariable=self.weight_var,
+            width=25,
+            validate="key",
+            validatecommand=(self.register(self.validate_number), "%P"),
+        ).grid(row=3, column=1, pady=2)
 
         ttk.Label(form, text="Typ:").grid(row=4, column=0, sticky="e", pady=2)
         self.type_var = tk.StringVar()
@@ -110,4 +116,13 @@ class TabMaterials(ttk.Frame):
             messagebox.showinfo("Zapis", "Zapisano dane do pliku.")
         except Exception as e:
             messagebox.showerror("Błąd", str(e))
+
+    def validate_number(self, value: str) -> bool:
+        if value == "":
+            return True
+        value = value.replace(",", ".")
+        try:
+            return float(value) >= 0
+        except ValueError:
+            return False
 
