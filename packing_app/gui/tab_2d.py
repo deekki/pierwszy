@@ -734,6 +734,13 @@ class TabPacking2D(ttk.Frame):
         l_c = self.parse_dim_safe(self.carton_l)
         h_c = self.parse_dim_safe(self.carton_h)
         margin = self.parse_dim_safe(self.margin)
+        carton_code = None
+        val = self.carton_choice.get()
+        if val != "Manual":
+            carton_code = val.split(":")[0]
+        if carton_code:
+            self.pallet_tab.carton_var.set(carton_code)
+            self.pallet_tab.on_carton_selected()
         if self.prod_type.get() == "rectangle":
             w_p = self.parse_dim_safe(self.prod_w)
             l_p = self.parse_dim_safe(self.prod_l)
