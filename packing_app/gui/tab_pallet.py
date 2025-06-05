@@ -126,7 +126,9 @@ class TabPallet(ttk.Frame):
         entry_num_layers.bind("<Return>", self.compute_pallet)
 
         ttk.Label(layers_frame, text="Maksymalna wysokość ułożenia (mm):").grid(row=1, column=0, padx=5, pady=5)
-        self.max_stack_var = tk.StringVar(value="0")
+        # Default maximum stack height is 1600 mm which roughly corresponds to
+        # a common limit for palletized loads. Set to 0 to disable the limit.
+        self.max_stack_var = tk.StringVar(value="1600")
         entry_max_stack = ttk.Entry(layers_frame, textvariable=self.max_stack_var, width=8)
         entry_max_stack.grid(row=1, column=1, padx=5, pady=5)
         entry_max_stack.bind("<Return>", self.compute_pallet)
@@ -323,11 +325,13 @@ class TabPallet(ttk.Frame):
         max_stack = parse_dim(self.max_stack_var)
 
         if max_stack > 0:
-            avail = max_stack - (pallet_h if self.include_pallet_height_var.get() else 0)
+            avail = max_stack - (
+                pallet_h if self.include_pallet_height_var.get() else 0
+            )
             box_h_ext = box_h + 2 * thickness
             if box_h_ext > 0:
-                num_layers = int(avail // box_h_ext)
-                self.num_layers_var.set(str(max(num_layers, 0)))
+                num_layers = max(int(avail // box_h_ext), 0)
+                self.num_layers_var.set(str(num_layers))
 
         if pallet_w == 0 or pallet_l == 0 or pallet_h == 0 or box_w == 0 or box_l == 0 or box_h == 0 or num_layers <= 0:
             messagebox.showwarning("Błąd", "Wszystkie wymiary i liczba warstw muszą być większe od 0.")
