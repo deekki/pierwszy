@@ -144,6 +144,14 @@ class TabPallet(ttk.Frame):
         self.include_pallet_height_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(layers_frame, text="Uwzględnij wysokość nośnika", variable=self.include_pallet_height_var, command=self.compute_pallet).grid(row=1, column=2, columnspan=2, padx=5, pady=5, sticky="w")
 
+        self.shift_even_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            layers_frame,
+            text="Przesuwaj warstwy parzyste",
+            variable=self.shift_even_var,
+            command=self.compute_pallet,
+        ).grid(row=1, column=4, columnspan=2, padx=5, pady=5, sticky="w")
+
         ttk.Label(layers_frame, text="Centrowanie:").grid(row=0, column=2, padx=5, pady=5)
         self.center_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(layers_frame, variable=self.center_var, command=self.compute_pallet).grid(row=0, column=3, padx=5, pady=5)
@@ -373,8 +381,10 @@ class TabPallet(ttk.Frame):
             box_w_ext,
             box_l_ext,
             num_layers=2,
+            shift_even=self.shift_even_var.get(),
         )
-        shifted = self.center_layout(interlocked_layers[1], pallet_w, pallet_l)
+        idx_shifted = 1 if self.shift_even_var.get() else 0
+        shifted = self.center_layout(interlocked_layers[idx_shifted], pallet_w, pallet_l)
         self.layouts.append((len(shifted), shifted, "Przesunięty"))
 
         self.layout_map = {name: idx for idx, (_, __, name) in enumerate(self.layouts)}
