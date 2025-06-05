@@ -4,10 +4,11 @@ import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-from packing_app.core.algorithms import (
-    pack_rectangles_mixed_greedy,
-    compute_interlocked_layout,
-    compute_brick_layout,
+from palletizer_core import (
+    Carton,
+    Pallet,
+    PatternSelector,
+    EvenOddSequencer,
 )
 from core.utils import (
     load_cartons,
@@ -42,6 +43,9 @@ class TabPallet(ttk.Frame):
         self.products_per_carton = 1
         self.tape_per_carton = 0.0
         self.film_per_pallet = 0.0
+        self.best_layout_name = ""
+        self.best_even = []
+        self.best_odd = []
         self.build_ui()
 
     def build_ui(self):
@@ -231,8 +235,10 @@ class TabPallet(ttk.Frame):
         prev_odd_transform = getattr(self, "odd_transform_var", None)
         prev_even_transform = getattr(self, "even_transform_var", None)
 
-        odd_default = layout_options[0]
-        even_default = layout_options[0]
+        odd_default = (
+            self.best_layout_name if self.best_layout_name in layout_options else layout_options[0]
+        )
+        even_default = odd_default
         if prev_odd_layout and prev_odd_layout.get() in layout_options:
             odd_default = prev_odd_layout.get()
         if prev_even_layout and prev_even_layout.get() in layout_options:
@@ -256,14 +262,18 @@ class TabPallet(ttk.Frame):
         num_layers = getattr(self, 'num_layers', int(parse_dim(self.num_layers_var)))
         self.layers = []
         self.transformations = []
-        odd_idx = self.layout_map.get(self.odd_layout_var.get(), 0)
-        even_idx = self.layout_map.get(self.even_layout_var.get(), 0)
+        odd_name = self.odd_layout_var.get()
+        even_name = self.even_layout_var.get()
+        odd_idx = self.layout_map.get(odd_name, 0)
+        even_idx = self.layout_map.get(even_name, 0)
+        odd_layout = self.best_odd if odd_name == self.best_layout_name else self.layouts[odd_idx][1]
+        even_layout = self.best_even if even_name == self.best_layout_name else self.layouts[even_idx][1]
         for i in range(1, num_layers + 1):
             if i % 2 == 1:
-                self.layers.append(self.layouts[odd_idx][1])
+                self.layers.append(odd_layout)
                 transform = self.odd_transform_var.get()
             else:
-                self.layers.append(self.layouts[even_idx][1])
+                self.layers.append(even_layout)
                 transform = self.even_transform_var.get()
             self.transformations.append(transform)
         self.draw_pallet()
@@ -375,44 +385,26 @@ class TabPallet(ttk.Frame):
             return
 
         self.layouts = []
-        count1, positions1 = pack_rectangles_mixed_greedy(
-            pallet_w,
-            pallet_l,
-            box_w_ext,
-            box_l_ext,
-        )
-        positions1 = self.center_layout(positions1, pallet_w, pallet_l)
-        self.layouts.append((count1, positions1, "Standardowy"))
 
-        count2, positions2 = pack_rectangles_mixed_greedy(
-            pallet_w,
-            pallet_l,
-            box_l_ext,
-            box_w_ext,
-        )
-        positions2 = self.center_layout(positions2, pallet_w, pallet_l)
-        self.layouts.append((count2, positions2, "Naprzemienny"))
+        carton = Carton(box_w_ext, box_l_ext, box_h)
+        pallet = Pallet(pallet_w, pallet_l, pallet_h)
+        selector = PatternSelector(carton, pallet)
+        patterns = selector.generate_all()
 
-        _, _, interlocked_layers = compute_interlocked_layout(
-            pallet_w,
-            pallet_l,
-            box_w_ext,
-            box_l_ext,
-            num_layers=2,
-            shift_even=self.shift_even_var.get(),
-        )
-        idx_shifted = 1 if self.shift_even_var.get() else 0
-        shifted = self.center_layout(interlocked_layers[idx_shifted], pallet_w, pallet_l)
-        self.layouts.append((len(shifted), shifted, "Przesunięty"))
+        for name, patt in patterns.items():
+            centered = self.center_layout(patt, pallet_w, pallet_l)
+            self.layouts.append((len(centered), centered, name.capitalize()))
 
-        count_brick, positions_brick = compute_brick_layout(
-            pallet_w,
-            pallet_l,
-            box_w_ext,
-            box_l_ext,
-        )
-        positions_brick = self.center_layout(positions_brick, pallet_w, pallet_l)
-        self.layouts.append((count_brick, positions_brick, "Cegiełka"))
+        best_name, best_pattern, _ = selector.best()
+        seq = EvenOddSequencer(best_pattern, carton, pallet)
+        even_base, odd_shifted = seq.best_shift()
+        if self.shift_even_var.get():
+            self.best_even = self.center_layout(odd_shifted, pallet_w, pallet_l)
+            self.best_odd = self.center_layout(even_base, pallet_w, pallet_l)
+        else:
+            self.best_even = self.center_layout(even_base, pallet_w, pallet_l)
+            self.best_odd = self.center_layout(odd_shifted, pallet_w, pallet_l)
+        self.best_layout_name = best_name.capitalize()
 
         self.layout_map = {name: idx for idx, (_, __, name) in enumerate(self.layouts)}
         self.update_transform_frame()
