@@ -35,6 +35,24 @@ def load_cartons() -> dict:
 
 
 @lru_cache(maxsize=None)
+def load_cartons_with_weights() -> dict:
+    """Return cartons with weight included {code: (w, l, h, weight)}."""
+    root = _load_xml(os.path.join(DATA_DIR, 'cartons.xml'))
+    cartons = {}
+    for carton in root.findall('carton'):
+        try:
+            code = carton.get('code')
+            w = int(carton.get('w'))
+            length = int(carton.get('l'))
+            h = int(carton.get('h'))
+            weight = float(carton.get('weight', '0'))
+            cartons[code] = (w, length, h, weight)
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"Niepoprawne dane kartonu '{carton.attrib}': {e}")
+    return cartons
+
+
+@lru_cache(maxsize=None)
 def load_pallets() -> list:
     """Zwraca listę palet w formacie [{'name':.., 'w':.., 'l':.., 'h':..}]"""
     root = _load_xml(os.path.join(DATA_DIR, 'pallets.xml'))
@@ -46,6 +64,24 @@ def load_pallets() -> list:
             length = int(pallet.get('l'))
             h = int(pallet.get('h'))
             pallets.append({'name': name, 'w': w, 'l': length, 'h': h})
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"Niepoprawne dane palety '{pallet.attrib}': {e}")
+    return pallets
+
+
+@lru_cache(maxsize=None)
+def load_pallets_with_weights() -> list:
+    """Return list of pallets with weight info."""
+    root = _load_xml(os.path.join(DATA_DIR, 'pallets.xml'))
+    pallets = []
+    for pallet in root.findall('pallet'):
+        try:
+            name = pallet.get('name')
+            w = int(pallet.get('w'))
+            length = int(pallet.get('l'))
+            h = int(pallet.get('h'))
+            weight = float(pallet.get('weight', '0'))
+            pallets.append({'name': name, 'w': w, 'l': length, 'h': h, 'weight': weight})
         except (TypeError, ValueError) as e:
             raise ValueError(f"Niepoprawne dane palety '{pallet.attrib}': {e}")
     return pallets
