@@ -4,7 +4,11 @@ import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-from packing_app.core.algorithms import pack_rectangles_mixed_greedy, compute_interlocked_layout
+from packing_app.core.algorithms import (
+    pack_rectangles_mixed_greedy,
+    compute_interlocked_layout,
+    compute_brick_layout,
+)
 from core.utils import (
     load_cartons,
     load_pallets,
@@ -222,17 +226,31 @@ class TabPallet(ttk.Frame):
             "Odbicie wzdłuż krótszego boku",
         ]
 
+        prev_odd_layout = getattr(self, "odd_layout_var", None)
+        prev_even_layout = getattr(self, "even_layout_var", None)
+        prev_odd_transform = getattr(self, "odd_transform_var", None)
+        prev_even_transform = getattr(self, "even_transform_var", None)
+
+        odd_default = layout_options[0]
+        even_default = layout_options[0]
+        if prev_odd_layout and prev_odd_layout.get() in layout_options:
+            odd_default = prev_odd_layout.get()
+        if prev_even_layout and prev_even_layout.get() in layout_options:
+            even_default = prev_even_layout.get()
+        odd_tr_default = prev_odd_transform.get() if prev_odd_transform else transform_options[0]
+        even_tr_default = prev_even_transform.get() if prev_even_transform else transform_options[0]
+
         ttk.Label(self.transform_frame, text="Warstwy nieparzyste:").grid(row=0, column=0, padx=5, pady=2)
-        self.odd_layout_var = tk.StringVar(value=layout_options[0])
-        ttk.OptionMenu(self.transform_frame, self.odd_layout_var, layout_options[0], *layout_options, command=self.update_layers).grid(row=0, column=1, padx=5, pady=2)
-        self.odd_transform_var = tk.StringVar(value=transform_options[0])
-        ttk.OptionMenu(self.transform_frame, self.odd_transform_var, transform_options[0], *transform_options, command=self.update_layers).grid(row=0, column=2, padx=5, pady=2)
+        self.odd_layout_var = tk.StringVar(value=odd_default)
+        ttk.OptionMenu(self.transform_frame, self.odd_layout_var, odd_default, *layout_options, command=self.update_layers).grid(row=0, column=1, padx=5, pady=2)
+        self.odd_transform_var = tk.StringVar(value=odd_tr_default)
+        ttk.OptionMenu(self.transform_frame, self.odd_transform_var, odd_tr_default, *transform_options, command=self.update_layers).grid(row=0, column=2, padx=5, pady=2)
 
         ttk.Label(self.transform_frame, text="Warstwy parzyste:").grid(row=1, column=0, padx=5, pady=2)
-        self.even_layout_var = tk.StringVar(value=layout_options[0])
-        ttk.OptionMenu(self.transform_frame, self.even_layout_var, layout_options[0], *layout_options, command=self.update_layers).grid(row=1, column=1, padx=5, pady=2)
-        self.even_transform_var = tk.StringVar(value=transform_options[0])
-        ttk.OptionMenu(self.transform_frame, self.even_transform_var, transform_options[0], *transform_options, command=self.update_layers).grid(row=1, column=2, padx=5, pady=2)
+        self.even_layout_var = tk.StringVar(value=even_default)
+        ttk.OptionMenu(self.transform_frame, self.even_layout_var, even_default, *layout_options, command=self.update_layers).grid(row=1, column=1, padx=5, pady=2)
+        self.even_transform_var = tk.StringVar(value=even_tr_default)
+        ttk.OptionMenu(self.transform_frame, self.even_transform_var, even_tr_default, *transform_options, command=self.update_layers).grid(row=1, column=2, padx=5, pady=2)
 
     def update_layers(self, *args):
         num_layers = getattr(self, 'num_layers', int(parse_dim(self.num_layers_var)))
@@ -386,6 +404,15 @@ class TabPallet(ttk.Frame):
         idx_shifted = 1 if self.shift_even_var.get() else 0
         shifted = self.center_layout(interlocked_layers[idx_shifted], pallet_w, pallet_l)
         self.layouts.append((len(shifted), shifted, "Przesunięty"))
+
+        count_brick, positions_brick = compute_brick_layout(
+            pallet_w,
+            pallet_l,
+            box_w_ext,
+            box_l_ext,
+        )
+        positions_brick = self.center_layout(positions_brick, pallet_w, pallet_l)
+        self.layouts.append((count_brick, positions_brick, "Cegiełka"))
 
         self.layout_map = {name: idx for idx, (_, __, name) in enumerate(self.layouts)}
         self.update_transform_frame()
