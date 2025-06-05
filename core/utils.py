@@ -77,7 +77,10 @@ def load_packaging_materials() -> list:
         materials.append({
             'name': mat.get('name', ''),
             'quantity': mat.get('quantity', ''),
-            'comment': mat.get('comment', '')
+            'comment': mat.get('comment', ''),
+            'weight': mat.get('weight', ''),
+            'type': mat.get('type', ''),
+            'supplier': mat.get('supplier', '')
         })
     return materials
 
@@ -91,7 +94,10 @@ def save_packaging_materials(materials: list) -> None:
             'material',
             name=mat.get('name', ''),
             quantity=mat.get('quantity', ''),
-            comment=mat.get('comment', '')
+            comment=mat.get('comment', ''),
+            weight=mat.get('weight', ''),
+            type=mat.get('type', ''),
+            supplier=mat.get('supplier', '')
         )
     tree = ET.ElementTree(root)
     tree.write(os.path.join(DATA_DIR, 'packaging_materials.xml'), encoding='utf-8', xml_declaration=True)

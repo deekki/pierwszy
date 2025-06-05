@@ -38,8 +38,20 @@ class TabMaterials(ttk.Frame):
         self.comment_var = tk.StringVar()
         ttk.Entry(form, textvariable=self.comment_var, width=25).grid(row=2, column=1, pady=2)
 
+        ttk.Label(form, text="Waga:").grid(row=3, column=0, sticky="e", pady=2)
+        self.weight_var = tk.StringVar()
+        ttk.Entry(form, textvariable=self.weight_var, width=25).grid(row=3, column=1, pady=2)
+
+        ttk.Label(form, text="Typ:").grid(row=4, column=0, sticky="e", pady=2)
+        self.type_var = tk.StringVar()
+        ttk.Entry(form, textvariable=self.type_var, width=25).grid(row=4, column=1, pady=2)
+
+        ttk.Label(form, text="Dostawca:").grid(row=5, column=0, sticky="e", pady=2)
+        self.supplier_var = tk.StringVar()
+        ttk.Entry(form, textvariable=self.supplier_var, width=25).grid(row=5, column=1, pady=2)
+
         btn_frame = ttk.Frame(form)
-        btn_frame.grid(row=3, column=0, columnspan=2, pady=5)
+        btn_frame.grid(row=6, column=0, columnspan=2, pady=5)
         ttk.Button(btn_frame, text="Dodaj / Aktualizuj", command=self.add_update).pack(side=tk.LEFT, padx=2)
         ttk.Button(btn_frame, text="Usuń", command=self.delete_item).pack(side=tk.LEFT, padx=2)
         ttk.Button(btn_frame, text="Zapisz", command=self.save).pack(side=tk.LEFT, padx=2)
@@ -54,6 +66,12 @@ class TabMaterials(ttk.Frame):
     def on_select(self, event):
         if not self.listbox.curselection():
             self.selected_index = None
+            self.name_var.set("")
+            self.qty_var.set("")
+            self.comment_var.set("")
+            self.weight_var.set("")
+            self.type_var.set("")
+            self.supplier_var.set("")
             return
         idx = self.listbox.curselection()[0]
         self.selected_index = idx
@@ -61,12 +79,18 @@ class TabMaterials(ttk.Frame):
         self.name_var.set(mat.get("name", ""))
         self.qty_var.set(mat.get("quantity", ""))
         self.comment_var.set(mat.get("comment", ""))
+        self.weight_var.set(mat.get("weight", ""))
+        self.type_var.set(mat.get("type", ""))
+        self.supplier_var.set(mat.get("supplier", ""))
 
     def add_update(self):
         data = {
             "name": self.name_var.get(),
             "quantity": self.qty_var.get(),
             "comment": self.comment_var.get(),
+            "weight": self.weight_var.get(),
+            "type": self.type_var.get(),
+            "supplier": self.supplier_var.get(),
         }
         if self.selected_index is None:
             self.materials.append(data)
