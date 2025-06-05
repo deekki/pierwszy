@@ -447,8 +447,17 @@ class TabPacking2D(ttk.Frame):
                 cvals.append((label, free_space))
         cvals.sort(key=lambda x: x[1])
         cvals = ["Manual"] + [item[0] for item in cvals]
-        self.cb_carton['values'] = cvals
-        if self.carton_choice.get() not in cvals:
+        self.cb_carton["values"] = cvals
+        current = self.carton_choice.get()
+        if current == "Manual":
+            return
+        if current in cvals:
+            return
+        code = current.split(":")[0]
+        match = next((val for val in cvals if val.startswith(f"{code}:")), None)
+        if match:
+            self.carton_choice.set(match)
+        else:
             self.carton_choice.set("Manual")
 
     def update_layout_options(self):
@@ -715,11 +724,13 @@ class TabPacking2D(ttk.Frame):
             dims = values[1].split("x")
             if len(dims) != 3:
                 return
-            self.carton_choice.set("Manual")
+            code = values[0]
+            self.carton_choice.set(code)
             self.carton_w.set(dims[0])
             self.carton_l.set(dims[1])
             self.carton_h.set(dims[2])
             compare_window.destroy()
+            self.update_carton_list()
             self.show_packing()
 
         tree.bind("<Double-1>", on_tree_double_click)
