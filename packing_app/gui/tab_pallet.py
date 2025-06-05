@@ -324,17 +324,35 @@ class TabPallet(ttk.Frame):
         return new_positions
 
     def group_cartons(self, positions):
+        """Group cartons that touch or overlap using AABB collision detection."""
+
+        def collide(a, b):
+            ax, ay, aw, ah = a
+            bx, by, bw, bh = b
+            return not (
+                ax + aw < bx
+                or bx + bw < ax
+                or ay + ah < by
+                or by + bh < ay
+            )
+
         groups = []
         used = set()
-        for i, (x1, y1, w1, h1) in enumerate(positions):
+        for i in range(len(positions)):
             if i in used:
                 continue
-            current_group = [(x1, y1, w1, h1)]
+            stack = [i]
             used.add(i)
-            for j, (x2, y2, w2, h2) in enumerate(positions):
-                if j not in used and (abs(x1 - x2) < w1 or abs(y1 - y2) < h1):
-                    current_group.append((x2, y2, w2, h2))
-                    used.add(j)
+            current_group = []
+            while stack:
+                idx = stack.pop()
+                current_group.append(positions[idx])
+                for j in range(len(positions)):
+                    if j in used:
+                        continue
+                    if collide(positions[idx], positions[j]):
+                        used.add(j)
+                        stack.append(j)
             groups.append(current_group)
         return groups
 
