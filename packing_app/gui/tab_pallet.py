@@ -172,7 +172,11 @@ class TabPallet(ttk.Frame):
         control_frame = ttk.Frame(self)
         control_frame.pack(fill=tk.X, padx=10, pady=5)
 
-        ttk.Button(control_frame, text="Oblicz", command=self.compute_pallet).pack(side=tk.LEFT, padx=5)
+        self.compute_btn = ttk.Button(control_frame, text="Oblicz", command=self.compute_pallet)
+        self.compute_btn.pack(side=tk.LEFT, padx=5)
+        self.status_var = tk.StringVar(value="")
+        self.status_label = ttk.Label(control_frame, textvariable=self.status_var)
+        self.status_label.pack(side=tk.LEFT, padx=5)
 
         self.summary_frame = ttk.LabelFrame(self, text="Obliczenia")
         self.summary_frame.pack(fill=tk.X, padx=10, pady=5)
@@ -349,6 +353,12 @@ class TabPallet(ttk.Frame):
             return centered_positions
 
     def compute_pallet(self, event=None):
+        if hasattr(self, "status_var"):
+            self.status_var.set("Obliczanie...")
+            self.status_label.update_idletasks()
+        if hasattr(self, "compute_btn"):
+            self.compute_btn.state(["disabled"])
+
         pallet_w = parse_dim(self.pallet_w_var)
         pallet_l = parse_dim(self.pallet_l_var)
         pallet_h = parse_dim(self.pallet_h_var)
@@ -478,4 +488,8 @@ class TabPallet(ttk.Frame):
             ax.set_ylim(-50, pallet_l + 50)
             ax.set_aspect('equal')
         self.canvas.draw()
+        if hasattr(self, "status_var"):
+            self.status_var.set("")
+        if hasattr(self, "compute_btn"):
+            self.compute_btn.state(["!disabled"])
 
