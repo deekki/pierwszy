@@ -95,3 +95,26 @@ def save_packaging_materials(materials: list) -> None:
         )
     tree = ET.ElementTree(root)
     tree.write(os.path.join(DATA_DIR, 'packaging_materials.xml'), encoding='utf-8', xml_declaration=True)
+
+
+def save_cartons(cartons: list) -> None:
+    """Save carton definitions to cartons.xml.
+
+    Parameters
+    ----------
+    cartons: list of dicts
+        Items like {'code': 'A123', 'w': 100, 'l': 200, 'h': 50}
+    """
+    root = ET.Element('cartons')
+    for carton in cartons:
+        ET.SubElement(
+            root,
+            'carton',
+            code=str(carton.get('code', '')),
+            w=str(carton.get('w', '')),
+            l=str(carton.get('l', '')),
+            h=str(carton.get('h', '')),
+        )
+    tree = ET.ElementTree(root)
+    tree.write(os.path.join(DATA_DIR, 'cartons.xml'), encoding='utf-8', xml_declaration=True)
+    load_cartons.cache_clear()
