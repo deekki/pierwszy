@@ -202,8 +202,25 @@ class TabPacking2D(ttk.Frame):
         self.btn_compare = ttk.Button(btn_frame, text="Porównaj kartony", command=self.compare_cartons)
         self.btn_compare.pack(side=tk.LEFT, padx=5)
 
-        self.btn_to_pallet = ttk.Button(btn_frame, text="Przenieś do paletyzacji", command=self.move_to_pallet)
+        self.btn_to_pallet = ttk.Button(
+            btn_frame,
+            text="Przenieś wybrany układ do paletyzacji",
+            command=self.move_to_pallet,
+        )
         self.btn_to_pallet.pack(side=tk.LEFT, padx=5)
+
+        ttk.Label(btn_frame, text="Układ:").pack(side=tk.LEFT, padx=5)
+        self.layout_choice = tk.StringVar(value="Pionowo")
+        self.layout_menu = ttk.OptionMenu(
+            btn_frame,
+            self.layout_choice,
+            "Pionowo",
+            "Pionowo",
+            "Poziomo",
+            "Mieszane",
+        )
+        self.layout_menu.pack(side=tk.LEFT, padx=5)
+        self.update_layout_options()
 
         self.fig = plt.Figure(figsize=(12, 6))
         self.axes = self.fig.subplots(1, 3)
@@ -434,6 +451,18 @@ class TabPacking2D(ttk.Frame):
         if self.carton_choice.get() not in cvals:
             self.carton_choice.set("Manual")
 
+    def update_layout_options(self):
+        if self.prod_type.get() == "rectangle":
+            options = ["Pionowo", "Poziomo", "Mieszane"]
+        else:
+            options = ["Siatka", "Hex", "Hex(rev)"]
+        menu = self.layout_menu["menu"]
+        menu.delete(0, "end")
+        for opt in options:
+            menu.add_command(label=opt, command=lambda val=opt: self.layout_choice.set(val))
+        if self.layout_choice.get() not in options:
+            self.layout_choice.set(options[0])
+
     def update_product_fields(self):
         if self.prod_type.get() == "rectangle":
             self.f_rect_container.pack(side=tk.LEFT, fill=tk.X, padx=5)
@@ -441,6 +470,7 @@ class TabPacking2D(ttk.Frame):
         else:
             self.f_rect_container.pack_forget()
             self.f_circle_container.pack(side=tk.LEFT, fill=tk.X, padx=5)
+        self.update_layout_options()
         self.update_carton_list()
         self.show_packing()
 
@@ -712,7 +742,12 @@ class TabPacking2D(ttk.Frame):
             c1, _ = pack_rectangles_2d(w_c, l_c, w_p, l_p, margin)
             c2, _ = pack_rectangles_2d(w_c, l_c, l_p, w_p, margin)
             c3, _ = pack_rectangles_mixed_greedy(w_c, l_c, w_p, l_p, margin)
-            best = max(c1, c2, c3)
+            layout_map = {
+                "Pionowo": c1,
+                "Poziomo": c2,
+                "Mieszane": c3,
+            }
+            best = layout_map.get(self.layout_choice.get(), max(c1, c2, c3))
         else:
             diam = self.parse_dim_safe(self.prod_diam)
             if not self.validate_dimensions(w_c, l_c, diam=diam, margin=margin):
@@ -720,7 +755,8 @@ class TabPacking2D(ttk.Frame):
             c1 = len(pack_circles_grid_bottomleft(w_c, l_c, diam, margin))
             c2 = len(pack_hex_top_down(w_c, l_c, diam, margin))
             c3 = len(pack_hex_bottom_up(l_c, w_c, diam, margin))
-            best = max(c1, c2, c3)
+            layout_map = {"Siatka": c1, "Hex": c2, "Hex(rev)": c3}
+            best = layout_map.get(self.layout_choice.get(), max(c1, c2, c3))
 
         self.pallet_tab.box_w_var.set(str(w_c))
         self.pallet_tab.box_l_var.set(str(l_c))
