@@ -30,7 +30,7 @@ def parse_dim(var: tk.StringVar) -> float:
 
 
 class LayerEditor(tk.Toplevel):
-    """Simple canvas-based editor for carton positions."""
+    """Canvas-based editor for adjusting carton positions."""
 
     def __init__(
         self,
@@ -47,14 +47,12 @@ class LayerEditor(tk.Toplevel):
 
         size = 600
         self.scale = size / max(pallet_w, pallet_l) if max(pallet_w, pallet_l) > 0 else 1
-        self.pallet_w = pallet_w
-        self.pallet_l = pallet_l
 
         self.canvas = tk.Canvas(self, width=pallet_w * self.scale, height=pallet_l * self.scale, bg="white")
         self.canvas.pack(fill=tk.BOTH, expand=True)
 
         self.rects: List[int] = []
-        for idx, (x, y, w, h) in enumerate(self.positions):
+        for x, y, w, h in self.positions:
             r = self.canvas.create_rectangle(
                 x * self.scale,
                 y * self.scale,
@@ -71,8 +69,7 @@ class LayerEditor(tk.Toplevel):
         self.canvas.bind("<B1-Motion>", self.on_move)
         self.canvas.bind("<ButtonRelease-1>", self.on_release)
 
-        btn = ttk.Button(self, text="Zapisz", command=self.on_save)
-        btn.pack(pady=5)
+        ttk.Button(self, text="Zapisz", command=self.on_save).pack(pady=5)
 
     def on_press(self, event) -> None:
         items = self.canvas.find_closest(event.x, event.y)
@@ -93,8 +90,7 @@ class LayerEditor(tk.Toplevel):
             return
         idx = self.rects.index(self._cur_rect)
         x1, y1, x2, y2 = self.canvas.coords(self._cur_rect)
-        w = self.positions[idx][2]
-        h = self.positions[idx][3]
+        w, h = self.positions[idx][2:]
         self.positions[idx] = [x1 / self.scale, y1 / self.scale, w, h]
         self._cur_rect = None
 
@@ -532,7 +528,6 @@ class TabPallet(ttk.Frame):
         self.layout_map = {name: idx for idx, (_, __, name) in enumerate(self.layouts)}
         self.update_transform_frame()
         self.num_layers = num_layers
-
         if self.mode_var.get() == "Manualny":
             if self.manual_odd is None:
                 self.manual_odd = self.best_odd
@@ -614,7 +609,7 @@ class TabPallet(ttk.Frame):
             self.compute_btn.state(["!disabled"])
 
     def load_generated_pattern(self) -> None:
-        """Load algorithm generated layout into manual mode."""
+        """Load algorithm-generated layout into manual mode."""
         self.manual_odd = self.best_odd
         self.manual_even = self.best_even
         self.compute_pallet()
@@ -624,19 +619,16 @@ class TabPallet(ttk.Frame):
             return
         pallet_w = parse_dim(self.pallet_w_var)
         pallet_l = parse_dim(self.pallet_l_var)
-        if which == "odd":
-            positions = self.manual_odd
-        else:
-            positions = self.manual_even
+        positions = self.manual_odd if which == "odd" else self.manual_even
         if not positions:
             messagebox.showwarning("Brak danych", "Najpierw wczytaj wzór.")
             return
 
-        def callback(new_pos: List[tuple]) -> None:
+        def callback(data: List[tuple]) -> None:
             if which == "odd":
-                self.manual_odd = new_pos
+                self.manual_odd = data
             else:
-                self.manual_even = new_pos
+                self.manual_even = data
             self.compute_pallet()
 
         LayerEditor(self, positions, pallet_w, pallet_l, callback)
