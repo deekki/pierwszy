@@ -486,18 +486,21 @@ class TabPallet(ttk.Frame):
             ax.clear()
             ax.add_patch(plt.Rectangle((0, 0), pallet_w, pallet_l, fill=False, edgecolor='black', linewidth=2))
             if idx < len(self.layers):
-                if self.modify_mode_var.get():
-                    coords = self.layers[idx]
-                else:
+                # Work on a copy so stored layers remain untouched when not in
+                # modify mode.  This prevents cumulative transformations when
+                # `draw_pallet` is called repeatedly.
+                coords = list(self.layers[idx])
+                if not self.modify_mode_var.get():
                     coords = self.apply_transformation(
-                        self.layers[idx],
+                        coords,
                         self.transformations[idx],
                         pallet_w,
                         pallet_l,
-                        parse_dim(self.box_w_var) + 2 * parse_dim(self.cardboard_thickness_var),
-                        parse_dim(self.box_l_var) + 2 * parse_dim(self.cardboard_thickness_var),
+                        parse_dim(self.box_w_var)
+                        + 2 * parse_dim(self.cardboard_thickness_var),
+                        parse_dim(self.box_l_var)
+                        + 2 * parse_dim(self.cardboard_thickness_var),
                     )
-                    self.layers[idx] = coords
                 for i, (x, y, w, h) in enumerate(coords):
                     color = 'blue' if idx == 0 else 'green'
                     patch = plt.Rectangle((x, y), w, h, fill=True, facecolor=color, alpha=0.5, edgecolor='black')
