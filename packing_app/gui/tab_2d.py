@@ -210,13 +210,13 @@ class TabPacking2D(ttk.Frame):
         self.btn_to_pallet.pack(side=tk.LEFT, padx=5)
 
         ttk.Label(btn_frame, text="Układ:").pack(side=tk.LEFT, padx=5)
-        self.layout_choice = tk.StringVar(value="Pionowo")
+        self.layout_choice = tk.StringVar(value="Poziomo")
         self.layout_menu = ttk.OptionMenu(
             btn_frame,
             self.layout_choice,
-            "Pionowo",
-            "Pionowo",
             "Poziomo",
+            "Poziomo",
+            "Pionowo",
             "Mieszane",
         )
         self.layout_menu.pack(side=tk.LEFT, padx=5)
@@ -462,7 +462,7 @@ class TabPacking2D(ttk.Frame):
 
     def update_layout_options(self):
         if self.prod_type.get() == "rectangle":
-            options = ["Pionowo", "Poziomo", "Mieszane"]
+            options = ["Poziomo", "Pionowo", "Mieszane"]
         else:
             options = ["Siatka", "Hex", "Hex(rev)"]
         menu = self.layout_menu["menu"]
@@ -534,7 +534,7 @@ class TabPacking2D(ttk.Frame):
                 vol_total = w_c * l_c * h_c if h_c > 0 else float('inf')
                 vol_util = (vol_occupied / vol_total) * 100 if vol_total > 0 else 0
                 self.axes[0].set_title(
-                    f"Pionowo: {c_vert} kartoników\n"
+                    f"Poziomo: {c_vert} kartoników\n"
                     f"Wolne miejsce na prawo={w_c - mxv:.1f}\n"
                     f"Wolne miejsce do góry={l_c - myv:.1f}\n"
                     f"Zajętość pow.: {area_util:.1f}%\n"
@@ -542,7 +542,7 @@ class TabPacking2D(ttk.Frame):
                     fontsize=10
                 )
             else:
-                self.axes[0].set_title("Pionowo: brak możliwości", fontsize=10)
+                self.axes[0].set_title("Poziomo: brak możliwości", fontsize=10)
 
             if pos_horz:
                 area_occupied = c_horz * w_p * l_p
@@ -551,7 +551,7 @@ class TabPacking2D(ttk.Frame):
                 vol_total = w_c * l_c * h_c if h_c > 0 else float('inf')
                 vol_util = (vol_occupied / vol_total) * 100 if vol_total > 0 else 0
                 self.axes[1].set_title(
-                    f"Poziomo: {c_horz} kartoników\n"
+                    f"Pionowo: {c_horz} kartoników\n"
                     f"Wolne miejsce na prawo={w_c - mxh:.1f}\n"
                     f"Wolne miejsce do góry={l_c - myh:.1f}\n"
                     f"Zajętość pow.: {area_util:.1f}%\n"
@@ -559,7 +559,7 @@ class TabPacking2D(ttk.Frame):
                     fontsize=10
                 )
             else:
-                self.axes[1].set_title("Poziomo: brak możliwości", fontsize=10)
+                self.axes[1].set_title("Pionowo: brak możliwości", fontsize=10)
 
             if pos_mix:
                 area_occupied = c_mix * w_p * l_p
@@ -672,7 +672,7 @@ class TabPacking2D(ttk.Frame):
                 c_horz, _ = pack_rectangles_2d(w_c, l_c, l_p, w_p, margin)
                 c_mix, _ = pack_rectangles_mixed_greedy(w_c, l_c, w_p, l_p, margin)
                 best_count = max(c_vert, c_horz, c_mix)
-                best_layout = "Pionowo" if best_count == c_vert else "Poziomo" if best_count == c_horz else "Mieszane"
+                best_layout = "Poziomo" if best_count == c_vert else "Pionowo" if best_count == c_horz else "Mieszane"
                 results.append((key, w_c, l_c, h_c, c_vert, c_horz, c_mix, best_count, best_layout))
             else:
                 if not self.validate_dimensions(w_c, l_c, diam=diam, margin=margin):
@@ -692,8 +692,8 @@ class TabPacking2D(ttk.Frame):
 
         compare_window = tk.Toplevel(self)
         compare_window.title("Porównanie kartonów – dwuklik wybiera karton")
-        layout1 = "Pionowo" if is_rectangle else "Siatka"
-        layout2 = "Poziomo" if is_rectangle else "Hex"
+        layout1 = "Poziomo" if is_rectangle else "Siatka"
+        layout2 = "Pionowo" if is_rectangle else "Hex"
         layout3 = "Mieszane" if is_rectangle else "Hex(rev)"
         tree = ttk.Treeview(compare_window, columns=("Karton", "Wymiary", layout1, layout2, layout3, "Najlepszy"), show="headings")
         tree.heading("Karton", text="Karton")
@@ -761,8 +761,8 @@ class TabPacking2D(ttk.Frame):
             c2, _ = pack_rectangles_2d(w_c, l_c, l_p, w_p, margin)
             c3, _ = pack_rectangles_mixed_greedy(w_c, l_c, w_p, l_p, margin)
             layout_map = {
-                "Pionowo": c1,
-                "Poziomo": c2,
+                "Poziomo": c1,
+                "Pionowo": c2,
                 "Mieszane": c3,
             }
             best = layout_map.get(self.layout_choice.get(), max(c1, c2, c3))
