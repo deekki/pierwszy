@@ -36,3 +36,20 @@ def test_interlock_selected_by_default():
     assert "interlock" in patterns and patterns["interlock"], "interlock layout missing"
     assert name == "Interlock"
 
+
+def test_center_layout_keeps_groups_separate():
+    dummy = Dummy()
+    # Enable centering and use the per-area mode
+    dummy.center_var = types.SimpleNamespace(get=lambda: True)
+    dummy.center_mode_var = types.SimpleNamespace(get=lambda: "Poszczególne obszary")
+
+    # Two groups positioned at opposite sides of the pallet
+    positions = [(0, 0, 50, 50), (150, 0, 50, 50)]
+    pallet_w, pallet_l = 200, 100
+
+    centered = dummy.center_layout(positions, pallet_w, pallet_l)
+    groups_after = dummy.group_cartons(centered)
+
+    # Groups should remain disjoint after centering
+    assert len(groups_after) == 2
+
