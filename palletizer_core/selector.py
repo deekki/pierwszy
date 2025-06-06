@@ -26,7 +26,9 @@ DEFAULT_WEIGHTS = {
 @lru_cache(maxsize=None)
 def load_weights() -> Dict[str, float]:
     """Load scoring weights from settings.yaml if present."""
-    settings_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "settings.yaml")
+    settings_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)), "settings.yaml"
+    )
     if os.path.exists(settings_path):
         try:
             with open(settings_path, "r", encoding="utf-8") as f:
@@ -61,17 +63,27 @@ class PatternScore:
 
     def __post_init__(self) -> None:
         weights = load_weights()
-        self.penalty = -(
-            weights["layer_eff"] * self.layer_eff
-            + weights["cube_eff"] * self.cube_eff
-            + weights["stability"] * self.stability
-        ) + weights["grip_changes"] * self.grip_changes
+        self.penalty = (
+            -(
+                weights["layer_eff"] * self.layer_eff
+                + weights["cube_eff"] * self.cube_eff
+                + weights["stability"] * self.stability
+            )
+            + weights["grip_changes"] * self.grip_changes
+        )
 
 
 class PatternSelector:
     """Generate → score → rank pallet patterns."""
 
-    def __init__(self, carton: Carton, pallet: Pallet, *, padding_mm: int = 0, overhang_mm: Tuple[int, int] = (0, 0)) -> None:
+    def __init__(
+        self,
+        carton: Carton,
+        pallet: Pallet,
+        *,
+        padding_mm: int = 0,
+        overhang_mm: Tuple[int, int] = (0, 0),
+    ) -> None:
         self.carton = carton
         self.pallet = pallet
         self.padding = padding_mm
@@ -84,8 +96,15 @@ class PatternSelector:
         box_l = self.carton.length + self.padding * 2
         return pallet_w, pallet_l, box_w, box_l
 
-    def generate_all(self) -> Dict[str, Pattern]:
-        """Return raw patterns keyed by algorithm name."""
+    def generate_all(self, *, maximize_mixed: bool = False) -> Dict[str, Pattern]:
+        """Return raw patterns keyed by algorithm name.
+
+        Parameters
+        ----------
+        maximize_mixed : bool, optional
+            If ``True``, apply :func:`maximize_mixed_layout` after the greedy
+            mixed layout to obtain a denser variant.
+        """
         pallet_w, pallet_l, box_w, box_l = self._eff_dims()
         patterns: Dict[str, Pattern] = {}
 
@@ -98,16 +117,23 @@ class PatternSelector:
         patterns["brick"] = patt
 
         # interlock layout - use first layer of result
-        _, _, inter = algorithms.compute_interlocked_layout(pallet_w, pallet_l, box_w, box_l, num_layers=1)
+        _, _, inter = algorithms.compute_interlocked_layout(
+            pallet_w, pallet_l, box_w, box_l, num_layers=1
+        )
         patterns["interlock"] = inter[0]
 
         # mixed greedy
-        _, patt = algorithms.pack_rectangles_mixed_greedy(pallet_w, pallet_l, box_w, box_l)
-        patterns["mixed"] = patt
+        _, mixed = algorithms.pack_rectangles_mixed_greedy(
+            pallet_w, pallet_l, box_w, box_l
+        )
+        patterns["mixed"] = mixed
 
-        # maximal dense packing approximation - use greedy for speed
-        _, patt = algorithms.pack_rectangles_mixed_greedy(pallet_w, pallet_l, box_w, box_l)
-        patterns["dense"] = patt
+        # optionally maximize the mixed layout for higher density
+        if maximize_mixed:
+            _, dense = algorithms.maximize_mixed_layout(
+                pallet_w, pallet_l, box_w, box_l, 0, mixed
+            )
+            patterns["mixed_max"] = dense
 
         return patterns
 
@@ -121,9 +147,11 @@ class PatternSelector:
         grip_changes = 0
         return PatternScore("", layer_eff, cube_eff, stability, grip_changes)
 
-    def best(self) -> Tuple[str, Pattern, PatternScore]:
+    def best(
+        self, *, maximize_mixed: bool = False
+    ) -> Tuple[str, Pattern, PatternScore]:
         """Highest total score (lower penalty = better)."""
-        patterns = self.generate_all()
+        patterns = self.generate_all(maximize_mixed=maximize_mixed)
         best_name = ""
         best_pattern: Pattern = []
         best_score: PatternScore | None = None
