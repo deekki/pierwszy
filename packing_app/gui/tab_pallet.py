@@ -46,6 +46,13 @@ class TabPallet(ttk.Frame):
         self.best_layout_name = ""
         self.best_even = []
         self.best_odd = []
+        self.modify_mode_var = tk.BooleanVar(value=False)
+        self.patches = []
+        self.selected_patch = None
+        self.drag_offset = (0, 0)
+        self.press_cid = None
+        self.motion_cid = None
+        self.release_cid = None
         self.build_ui()
 
     def build_ui(self):
@@ -185,6 +192,12 @@ class TabPallet(ttk.Frame):
 
         self.compute_btn = ttk.Button(control_frame, text="Oblicz", command=self.compute_pallet)
         self.compute_btn.pack(side=tk.LEFT, padx=5)
+        ttk.Checkbutton(
+            control_frame,
+            text="Tryb edycji",
+            variable=self.modify_mode_var,
+            command=self.toggle_edit_mode,
+        ).pack(side=tk.LEFT, padx=5)
         self.status_var = tk.StringVar(value="")
         self.status_label = ttk.Label(control_frame, textvariable=self.status_var)
         self.status_label.pack(side=tk.LEFT, padx=5)
@@ -456,42 +469,7 @@ class TabPallet(ttk.Frame):
             self.update_transform_frame()
             self.num_layers = num_layers
             self.update_layers()
-            if self.layers:
-                box_h_ext = box_h + 2 * thickness
-                cartons_per_odd = len(self.layers[0]) if self.layers else 0
-                cartons_per_even = len(self.layers[1]) if len(self.layers) > 1 else cartons_per_odd
-                total_cartons = 0
-                for i in range(1, num_layers + 1):
-                    total_cartons += cartons_per_odd if i % 2 == 1 else cartons_per_even
-                total_products = total_cartons * self.products_per_carton
-                stack_height = num_layers * box_h_ext
-                if self.include_pallet_height_var.get():
-                    stack_height += pallet_h
-
-                self.tape_per_carton = 4 * (box_w + box_l) / 1000
-                self.film_per_pallet = 2 * (pallet_w + pallet_l) / 1000 * 6
-                total_tape = total_cartons * self.tape_per_carton
-
-                self.totals_label.config(
-                    text=f"Kartonów: {total_cartons} | Produkty: {total_products} | Wysokość: {stack_height:.1f} mm"
-                )
-                self.materials_label.config(
-                    text=f"Taśma: {total_tape:.2f} m | Folia: {self.film_per_pallet:.2f} m"
-                )
-                carton_wt = self.carton_weights.get(self.carton_var.get(), 0)
-                pallet_wt = (
-                    self.pallet_weights.get(self.pallet_var.get(), 0)
-                    if self.include_pallet_height_var.get()
-                    else 0
-                )
-                tape_wt = total_tape * self.material_weights.get("tape", 0)
-                film_wt = self.film_per_pallet * self.material_weights.get("stretch_film", 0)
-                total_mass = carton_wt * total_cartons + tape_wt + film_wt + pallet_wt
-                self.weight_label.config(text=f"Masa: {total_mass:.2f} kg")
-            else:
-                self.totals_label.config(text="")
-                self.materials_label.config(text="")
-                self.weight_label.config(text="")
+            self.update_summary()
         finally:
             if hasattr(self, "status_var"):
                 self.status_var.set("")
@@ -503,23 +481,28 @@ class TabPallet(ttk.Frame):
         pallet_l = parse_dim(self.pallet_l_var)
         axes = [self.ax_odd, self.ax_even]
         labels = ["Warstwa nieparzysta", "Warstwa parzysta"]
+        self.patches = [[] for _ in axes]
         for idx, ax in enumerate(axes):
             ax.clear()
             ax.add_patch(plt.Rectangle((0, 0), pallet_w, pallet_l, fill=False, edgecolor='black', linewidth=2))
             if idx < len(self.layers):
-                transformed = self.apply_transformation(
-                    self.layers[idx],
-                    self.transformations[idx],
-                    pallet_w,
-                    pallet_l,
-                    parse_dim(self.box_w_var) + 2 * parse_dim(self.cardboard_thickness_var),
-                    parse_dim(self.box_l_var) + 2 * parse_dim(self.cardboard_thickness_var),
-                )
-                for x, y, w, h in transformed:
-                    color = 'blue' if idx == 0 else 'green'
-                    ax.add_patch(
-                        plt.Rectangle((x, y), w, h, fill=True, facecolor=color, alpha=0.5, edgecolor='black')
+                if self.modify_mode_var.get():
+                    coords = self.layers[idx]
+                else:
+                    coords = self.apply_transformation(
+                        self.layers[idx],
+                        self.transformations[idx],
+                        pallet_w,
+                        pallet_l,
+                        parse_dim(self.box_w_var) + 2 * parse_dim(self.cardboard_thickness_var),
+                        parse_dim(self.box_l_var) + 2 * parse_dim(self.cardboard_thickness_var),
                     )
+                    self.layers[idx] = coords
+                for i, (x, y, w, h) in enumerate(coords):
+                    color = 'blue' if idx == 0 else 'green'
+                    patch = plt.Rectangle((x, y), w, h, fill=True, facecolor=color, alpha=0.5, edgecolor='black')
+                    ax.add_patch(patch)
+                    self.patches[idx].append((patch, i))
                 ax.set_title(f"{labels[idx]}: {len(self.layers[idx])}")
             ax.set_xlim(-50, pallet_w + 50)
             ax.set_ylim(-50, pallet_l + 50)
@@ -529,4 +512,94 @@ class TabPallet(ttk.Frame):
             self.status_var.set("")
         if hasattr(self, "compute_btn"):
             self.compute_btn.state(["!disabled"])
+
+    def toggle_edit_mode(self):
+        if self.modify_mode_var.get():
+            self.press_cid = self.canvas.mpl_connect("button_press_event", self.on_press)
+            self.motion_cid = self.canvas.mpl_connect("motion_notify_event", self.on_motion)
+            self.release_cid = self.canvas.mpl_connect("button_release_event", self.on_release)
+        else:
+            for cid in [self.press_cid, self.motion_cid, self.release_cid]:
+                if cid is not None:
+                    self.canvas.mpl_disconnect(cid)
+            self.press_cid = self.motion_cid = self.release_cid = None
+            self.selected_patch = None
+            self.draw_pallet()
+
+    def on_press(self, event):
+        if not self.modify_mode_var.get() or event.inaxes not in [self.ax_odd, self.ax_even]:
+            return
+        layer_idx = 0 if event.inaxes is self.ax_odd else 1
+        for patch, idx in self.patches[layer_idx]:
+            contains, _ = patch.contains(event)
+            if contains:
+                x, y = patch.get_xy()
+                self.selected_patch = (layer_idx, idx, patch)
+                self.drag_offset = (x - event.xdata, y - event.ydata)
+                break
+
+    def on_motion(self, event):
+        if not self.selected_patch or event.xdata is None or event.ydata is None:
+            return
+        layer_idx, idx, patch = self.selected_patch
+        new_x = event.xdata + self.drag_offset[0]
+        new_y = event.ydata + self.drag_offset[1]
+        patch.set_xy((new_x, new_y))
+        x, y, w, h = self.layers[layer_idx][idx]
+        self.layers[layer_idx][idx] = (new_x, new_y, w, h)
+        self.canvas.draw_idle()
+
+    def on_release(self, event):
+        if self.selected_patch:
+            self.selected_patch = None
+            self.draw_pallet()
+            self.update_summary()
+
+    def update_summary(self):
+        if not self.layers:
+            self.totals_label.config(text="")
+            self.materials_label.config(text="")
+            self.weight_label.config(text="")
+            return
+
+        pallet_w = parse_dim(self.pallet_w_var)
+        pallet_l = parse_dim(self.pallet_l_var)
+        pallet_h = parse_dim(self.pallet_h_var)
+        box_w = parse_dim(self.box_w_var)
+        box_l = parse_dim(self.box_l_var)
+        box_h = parse_dim(self.box_h_var)
+        thickness = parse_dim(self.cardboard_thickness_var)
+
+        num_layers = getattr(self, "num_layers", int(parse_dim(self.num_layers_var)))
+        box_h_ext = box_h + 2 * thickness
+        cartons_per_odd = len(self.layers[0]) if self.layers else 0
+        cartons_per_even = len(self.layers[1]) if len(self.layers) > 1 else cartons_per_odd
+        total_cartons = sum(
+            cartons_per_odd if i % 2 == 1 else cartons_per_even for i in range(1, num_layers + 1)
+        )
+        total_products = total_cartons * self.products_per_carton
+        stack_height = num_layers * box_h_ext
+        if self.include_pallet_height_var.get():
+            stack_height += pallet_h
+
+        self.tape_per_carton = 4 * (box_w + box_l) / 1000
+        self.film_per_pallet = 2 * (pallet_w + pallet_l) / 1000 * 6
+        total_tape = total_cartons * self.tape_per_carton
+
+        self.totals_label.config(
+            text=f"Kartonów: {total_cartons} | Produkty: {total_products} | Wysokość: {stack_height:.1f} mm"
+        )
+        self.materials_label.config(
+            text=f"Taśma: {total_tape:.2f} m | Folia: {self.film_per_pallet:.2f} m"
+        )
+        carton_wt = self.carton_weights.get(self.carton_var.get(), 0)
+        pallet_wt = (
+            self.pallet_weights.get(self.pallet_var.get(), 0)
+            if self.include_pallet_height_var.get()
+            else 0
+        )
+        tape_wt = total_tape * self.material_weights.get("tape", 0)
+        film_wt = self.film_per_pallet * self.material_weights.get("stretch_film", 0)
+        total_mass = carton_wt * total_cartons + tape_wt + film_wt + pallet_wt
+        self.weight_label.config(text=f"Masa: {total_mass:.2f} kg")
 
