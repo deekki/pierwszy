@@ -542,9 +542,9 @@ class TabPallet(ttk.Frame):
             self.transformations = []
             for i in range(1, num_layers + 1):
                 if i % 2 == 1:
-                    self.layers.append(self.manual_odd)
+                    self.layers.append([p[:] for p in self.manual_odd])
                 else:
-                    self.layers.append(self.manual_even)
+                    self.layers.append([p[:] for p in self.manual_even])
                 self.transformations.append("Brak")
         else:
             self.update_layers()
