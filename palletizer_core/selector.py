@@ -93,10 +93,6 @@ class PatternSelector:
         _, patt = algorithms.pack_rectangles_2d(pallet_w, pallet_l, box_w, box_l)
         patterns["column"] = patt
 
-        # brick layout
-        _, patt = algorithms.compute_brick_layout(pallet_w, pallet_l, box_w, box_l)
-        patterns["brick"] = patt
-
         # interlock layout - use first layer of result
         _, _, inter = algorithms.compute_interlocked_layout(pallet_w, pallet_l, box_w, box_l, num_layers=1)
         patterns["interlock"] = inter[0]
