@@ -166,6 +166,7 @@ class TabPallet(ttk.Frame):
         self.box_w_var.trace_add("write", self.update_external_dimensions)
         self.box_l_var.trace_add("write", self.update_external_dimensions)
         self.box_h_var.trace_add("write", self.update_external_dimensions)
+        self.update_external_dimensions()
 
         layers_frame = ttk.LabelFrame(self, text="Ustawienia warstw")
         layers_frame.pack(fill=tk.X, padx=10, pady=5)
