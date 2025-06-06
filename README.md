@@ -32,7 +32,7 @@ The window opens with five tabs:
 If you run the application by double-clicking the Python file, the console may close before you see any errors. You can create a `run_app.bat` file to keep the window open:
 ```bat
 @echo off
-cd /d "C:\Users\lusówkowianin\Desktop\pierwszy-main"
+cd /d "%~dp0"
 python main.py
 pause
 ```
