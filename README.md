@@ -7,6 +7,7 @@ This application provides a Tkinter-based GUI for experimenting with packing alg
 - Tkinter (usually included with standard Python installs)
 - matplotlib
 - numpy
+- pyyaml
 
 Install the Python dependencies with:
 ```bash
