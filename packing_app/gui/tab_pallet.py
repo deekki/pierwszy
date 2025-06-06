@@ -493,6 +493,41 @@ class TabPallet(ttk.Frame):
                 )
             return centered_positions
 
+    def _get_default_layout(
+        self,
+        selector: PatternSelector,
+        carton: Carton,
+        pallet: Pallet,
+        pallet_w: float,
+        pallet_l: float,
+    ) -> tuple[dict, str, list, list]:
+        """Return available patterns and best even/odd layers.
+
+        The interlock layout is preferred when available. The returned display
+        name always matches the pattern used for sequencing.
+        """
+
+        patterns = selector.generate_all(maximize_mixed=self.maximize_mixed.get())
+        if "interlock" in patterns:
+            best_name = "Interlock"
+            best_pattern = patterns["interlock"]
+        else:
+            raw_name, best_pattern, _ = selector.best(
+                maximize_mixed=self.maximize_mixed.get()
+            )
+            best_name = raw_name.replace("_", " ").capitalize()
+
+        seq = EvenOddSequencer(best_pattern, carton, pallet)
+        even_base, odd_shifted = seq.best_shift()
+        if self.shift_even_var.get():
+            best_even = self.center_layout(odd_shifted, pallet_w, pallet_l)
+            best_odd = self.center_layout(even_base, pallet_w, pallet_l)
+        else:
+            best_even = self.center_layout(even_base, pallet_w, pallet_l)
+            best_odd = self.center_layout(odd_shifted, pallet_w, pallet_l)
+
+        return patterns, best_name, best_even, best_odd
+
     def compute_pallet(self, event=None):
         """Calculate carton layouts on the pallet.
 
@@ -546,32 +581,21 @@ class TabPallet(ttk.Frame):
             carton = Carton(box_w_ext, box_l_ext, box_h)
             pallet = Pallet(pallet_w, pallet_l, pallet_h)
             selector = PatternSelector(carton, pallet)
-            patterns = selector.generate_all(maximize_mixed=self.maximize_mixed.get())
+
+            patterns, best_name, self.best_even, self.best_odd = self._get_default_layout(
+                selector,
+                carton,
+                pallet,
+                pallet_w,
+                pallet_l,
+            )
 
             for name, patt in patterns.items():
                 centered = self.center_layout(patt, pallet_w, pallet_l)
                 display = name.replace("_", " ").capitalize()
                 self.layouts.append((len(centered), centered, display))
 
-            # Force the interlock pattern to be the default selection
-            interlock_pattern = patterns.get("interlock")
-            if interlock_pattern is None:
-                best_name, best_pattern, _ = selector.best(
-                    maximize_mixed=self.maximize_mixed.get()
-                )
-            else:
-                best_name = "interlock"
-                best_pattern = interlock_pattern
-
-            seq = EvenOddSequencer(best_pattern, carton, pallet)
-            even_base, odd_shifted = seq.best_shift()
-            if self.shift_even_var.get():
-                self.best_even = self.center_layout(odd_shifted, pallet_w, pallet_l)
-                self.best_odd = self.center_layout(even_base, pallet_w, pallet_l)
-            else:
-                self.best_even = self.center_layout(even_base, pallet_w, pallet_l)
-                self.best_odd = self.center_layout(odd_shifted, pallet_w, pallet_l)
-            self.best_layout_name = best_name.replace("_", " ").capitalize()
+            self.best_layout_name = best_name
 
             self.layout_map = {
                 name: idx for idx, (_, __, name) in enumerate(self.layouts)
