@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
+from typing import List, Callable
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
@@ -28,6 +29,80 @@ def parse_dim(var: tk.StringVar) -> float:
         return 0.0
 
 
+class LayerEditor(tk.Toplevel):
+    """Simple canvas-based editor for carton positions."""
+
+    def __init__(
+        self,
+        parent: tk.Widget,
+        positions: List[tuple],
+        pallet_w: float,
+        pallet_l: float,
+        callback: Callable[[List[tuple]], None],
+    ) -> None:
+        super().__init__(parent)
+        self.title("Edycja warstwy")
+        self.callback = callback
+        self.positions = [list(p) for p in positions]
+
+        size = 600
+        self.scale = size / max(pallet_w, pallet_l) if max(pallet_w, pallet_l) > 0 else 1
+        self.pallet_w = pallet_w
+        self.pallet_l = pallet_l
+
+        self.canvas = tk.Canvas(self, width=pallet_w * self.scale, height=pallet_l * self.scale, bg="white")
+        self.canvas.pack(fill=tk.BOTH, expand=True)
+
+        self.rects: List[int] = []
+        for idx, (x, y, w, h) in enumerate(self.positions):
+            r = self.canvas.create_rectangle(
+                x * self.scale,
+                y * self.scale,
+                (x + w) * self.scale,
+                (y + h) * self.scale,
+                fill="lightblue",
+                outline="black",
+            )
+            self.rects.append(r)
+
+        self._cur_rect: int | None = None
+        self._start = (0, 0)
+        self.canvas.bind("<ButtonPress-1>", self.on_press)
+        self.canvas.bind("<B1-Motion>", self.on_move)
+        self.canvas.bind("<ButtonRelease-1>", self.on_release)
+
+        btn = ttk.Button(self, text="Zapisz", command=self.on_save)
+        btn.pack(pady=5)
+
+    def on_press(self, event) -> None:
+        items = self.canvas.find_closest(event.x, event.y)
+        if items:
+            self._cur_rect = items[0]
+            self._start = (event.x, event.y)
+
+    def on_move(self, event) -> None:
+        if self._cur_rect is None:
+            return
+        dx = event.x - self._start[0]
+        dy = event.y - self._start[1]
+        self.canvas.move(self._cur_rect, dx, dy)
+        self._start = (event.x, event.y)
+
+    def on_release(self, event) -> None:
+        if self._cur_rect is None:
+            return
+        idx = self.rects.index(self._cur_rect)
+        x1, y1, x2, y2 = self.canvas.coords(self._cur_rect)
+        w = self.positions[idx][2]
+        h = self.positions[idx][3]
+        self.positions[idx] = [x1 / self.scale, y1 / self.scale, w, h]
+        self._cur_rect = None
+
+    def on_save(self) -> None:
+        self.callback(self.positions)
+        self.destroy()
+
+
 class TabPallet(ttk.Frame):
     def __init__(self, parent):
         super().__init__(parent)
@@ -46,6 +121,9 @@ class TabPallet(ttk.Frame):
         self.best_layout_name = ""
         self.best_even = []
         self.best_odd = []
+        self.manual_even: List[tuple] | None = None
+        self.manual_odd: List[tuple] | None = None
+        self.mode_var = tk.StringVar(value="Automatyczny")
         self.build_ui()
 
     def build_ui(self):
@@ -178,6 +256,23 @@ class TabPallet(ttk.Frame):
 
         self.compute_btn = ttk.Button(control_frame, text="Oblicz", command=self.compute_pallet)
         self.compute_btn.pack(side=tk.LEFT, padx=5)
+
+        ttk.Label(control_frame, text="Tryb:").pack(side=tk.LEFT, padx=5)
+        ttk.OptionMenu(
+            control_frame,
+            self.mode_var,
+            "Automatyczny",
+            "Automatyczny",
+            "Manualny",
+            command=lambda *_: self.compute_pallet(),
+        ).pack(side=tk.LEFT, padx=5)
+
+        self.btn_load = ttk.Button(control_frame, text="Wczytaj wzór", command=self.load_generated_pattern)
+        self.btn_edit_odd = ttk.Button(control_frame, text="Edytuj nieparzystą", command=lambda: self.open_editor("odd"))
+        self.btn_edit_even = ttk.Button(control_frame, text="Edytuj parzystą", command=lambda: self.open_editor("even"))
+        self.btn_load.pack(side=tk.LEFT, padx=5)
+        self.btn_edit_odd.pack(side=tk.LEFT, padx=5)
+        self.btn_edit_even.pack(side=tk.LEFT, padx=5)
         self.status_var = tk.StringVar(value="")
         self.status_label = ttk.Label(control_frame, textvariable=self.status_var)
         self.status_label.pack(side=tk.LEFT, padx=5)
@@ -437,7 +532,22 @@ class TabPallet(ttk.Frame):
         self.layout_map = {name: idx for idx, (_, __, name) in enumerate(self.layouts)}
         self.update_transform_frame()
         self.num_layers = num_layers
-        self.update_layers()
+
+        if self.mode_var.get() == "Manualny":
+            if self.manual_odd is None:
+                self.manual_odd = self.best_odd
+            if self.manual_even is None:
+                self.manual_even = self.best_even
+            self.layers = []
+            self.transformations = []
+            for i in range(1, num_layers + 1):
+                if i % 2 == 1:
+                    self.layers.append(self.manual_odd)
+                else:
+                    self.layers.append(self.manual_even)
+                self.transformations.append("Brak")
+        else:
+            self.update_layers()
         if self.layers:
             box_h_ext = box_h + 2 * thickness
             cartons_per_odd = len(self.layers[0]) if self.layers else 0
@@ -502,4 +612,32 @@ class TabPallet(ttk.Frame):
             self.status_var.set("")
         if hasattr(self, "compute_btn"):
             self.compute_btn.state(["!disabled"])
+
+    def load_generated_pattern(self) -> None:
+        """Load algorithm generated layout into manual mode."""
+        self.manual_odd = self.best_odd
+        self.manual_even = self.best_even
+        self.compute_pallet()
+
+    def open_editor(self, which: str) -> None:
+        if self.mode_var.get() != "Manualny":
+            return
+        pallet_w = parse_dim(self.pallet_w_var)
+        pallet_l = parse_dim(self.pallet_l_var)
+        if which == "odd":
+            positions = self.manual_odd
+        else:
+            positions = self.manual_even
+        if not positions:
+            messagebox.showwarning("Brak danych", "Najpierw wczytaj wzór.")
+            return
+
+        def callback(new_pos: List[tuple]) -> None:
+            if which == "odd":
+                self.manual_odd = new_pos
+            else:
+                self.manual_even = new_pos
+            self.compute_pallet()
+
+        LayerEditor(self, positions, pallet_w, pallet_l, callback)
 
