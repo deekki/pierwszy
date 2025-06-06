@@ -493,6 +493,20 @@ class TabPallet(ttk.Frame):
                 centered_positions.extend(
                     [(x + offset_x, y + offset_y, w, h) for x, y, w, h in group]
                 )
+
+            # If centering individual groups makes them collide, fall back to
+            # centering the entire layer instead of merging the groups.
+            if len(self.group_cartons(centered_positions)) != len(groups):
+                x_min = min(x for x, y, w, h in positions)
+                x_max = max(x + w for x, y, w, h in positions)
+                y_min = min(y for x, y, w, h in positions)
+                y_max = max(y + h for x, y, w, h in positions)
+                offset_x = (pallet_w - (x_max - x_min)) / 2 - x_min
+                offset_y = (pallet_l - (y_max - y_min)) / 2 - y_min
+                return [
+                    (x + offset_x, y + offset_y, w, h)
+                    for x, y, w, h in positions
+                ]
             return centered_positions
 
     def _get_default_layout(
