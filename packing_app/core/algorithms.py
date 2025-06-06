@@ -263,6 +263,8 @@ def place_air_cushions(w_c, l_c, occupied_positions, cushion_w=37, cushion_l=175
 def maximize_mixed_layout(w_c, l_c, w_p, l_p, margin, initial_positions):
     eff_w = w_c - margin
     eff_l = l_c - margin
+    if not ((w_p <= eff_w and l_p <= eff_l) or (l_p <= eff_w and w_p <= eff_l)):
+        return 0, []
     free_areas = [(0, 0, eff_w, eff_l)]
     occupied_positions = initial_positions.copy()
     count = len(occupied_positions)
