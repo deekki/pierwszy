@@ -36,3 +36,7 @@ python main.py
 pause
 ```
 Running this script from Explorer will show any error messages and wait for a key press before closing.
+
+## License
+This project is licensed under the [MIT License](LICENSE).
+
