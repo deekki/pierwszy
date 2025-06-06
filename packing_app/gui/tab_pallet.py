@@ -166,7 +166,14 @@ class TabPallet(ttk.Frame):
 
         ttk.Label(layers_frame, text="Tryb:").grid(row=0, column=4, padx=5, pady=5)
         self.center_mode_var = tk.StringVar(value="Cała warstwa")
-        ttk.OptionMenu(layers_frame, self.center_mode_var, "Cała warstwa", "Cała warstwa", "Poszczególne obszary").grid(row=0, column=5, padx=5, pady=5)
+        ttk.OptionMenu(
+            layers_frame,
+            self.center_mode_var,
+            "Cała warstwa",
+            "Cała warstwa",
+            "Poszczególne obszary",
+            command=self.compute_pallet,
+        ).grid(row=0, column=5, padx=5, pady=5)
 
 
 
