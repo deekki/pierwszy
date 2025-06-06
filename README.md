@@ -26,3 +26,13 @@ The window opens with five tabs:
     When centering cartons, the **Cała warstwa** mode centers the entire pattern as one block. In contrast, **Poszczególne obszary** centers every separate group of touching cartons individually. Cartons that only meet at their edges are considered separate groups.
 4. **Materiały** – manage the catalogue of packaging materials. Add, edit or delete items together with their quantities, type, supplier and weight.
 5. **Kartony** – edit predefined carton definitions, modify dimensions and weight or add your own carton codes for use in the other tabs.
+
+## Windows batch file
+If you run the application by double-clicking the Python file, the console may close before you see any errors. You can create a `run_app.bat` file to keep the window open:
+```bat
+@echo off
+cd /d "C:\Users\lusówkowianin\Desktop\pierwszy-main"
+python main.py
+pause
+```
+Running this script from Explorer will show any error messages and wait for a key press before closing.
