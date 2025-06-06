@@ -240,7 +240,14 @@ class TabPallet(ttk.Frame):
 
         ttk.Label(layers_frame, text="Tryb:").grid(row=0, column=4, padx=5, pady=5)
         self.center_mode_var = tk.StringVar(value="Cała warstwa")
-        ttk.OptionMenu(layers_frame, self.center_mode_var, "Cała warstwa", "Cała warstwa", "Poszczególne obszary").grid(row=0, column=5, padx=5, pady=5)
+        ttk.OptionMenu(
+            layers_frame,
+            self.center_mode_var,
+            "Cała warstwa",
+            "Cała warstwa",
+            "Poszczególne obszary",
+            command=self.compute_pallet,
+        ).grid(row=0, column=5, padx=5, pady=5)
 
 
 
@@ -421,10 +428,10 @@ class TabPallet(ttk.Frame):
             ax, ay, aw, ah = a
             bx, by, bw, bh = b
             return not (
-                ax + aw < bx
-                or bx + bw < ax
-                or ay + ah < by
-                or by + bh < ay
+                ax + aw <= bx
+                or bx + bw <= ax
+                or ay + ah <= by
+                or by + bh <= ay
             )
 
         groups = []
@@ -478,42 +485,48 @@ class TabPallet(ttk.Frame):
         if hasattr(self, "compute_btn"):
             self.compute_btn.state(["disabled"])
 
-        pallet_w = parse_dim(self.pallet_w_var)
-        pallet_l = parse_dim(self.pallet_l_var)
-        pallet_h = parse_dim(self.pallet_h_var)
-        box_w = parse_dim(self.box_w_var)
-        box_l = parse_dim(self.box_l_var)
-        box_h = parse_dim(self.box_h_var)
-        thickness = parse_dim(self.cardboard_thickness_var)
-        box_w_ext = box_w + 2 * thickness
-        box_l_ext = box_l + 2 * thickness
-        num_layers = int(parse_dim(self.num_layers_var))
-        max_stack = parse_dim(self.max_stack_var)
+        try:
+            pallet_w = parse_dim(self.pallet_w_var)
+            pallet_l = parse_dim(self.pallet_l_var)
+            pallet_h = parse_dim(self.pallet_h_var)
+            box_w = parse_dim(self.box_w_var)
+            box_l = parse_dim(self.box_l_var)
+            box_h = parse_dim(self.box_h_var)
+            thickness = parse_dim(self.cardboard_thickness_var)
+            box_w_ext = box_w + 2 * thickness
+            box_l_ext = box_l + 2 * thickness
+            num_layers = int(parse_dim(self.num_layers_var))
+            max_stack = parse_dim(self.max_stack_var)
 
-        if max_stack > 0:
-            avail = max_stack - (
-                pallet_h if self.include_pallet_height_var.get() else 0
-            )
-            box_h_ext = box_h + 2 * thickness
-            if box_h_ext > 0:
-                num_layers = max(int(avail // box_h_ext), 0)
-                self.num_layers_var.set(str(num_layers))
+            if max_stack > 0:
+                avail = max_stack - (
+                    pallet_h if self.include_pallet_height_var.get() else 0
+                )
+                box_h_ext = box_h + 2 * thickness
+                if box_h_ext > 0:
+                    num_layers = max(int(avail // box_h_ext), 0)
+                    self.num_layers_var.set(str(num_layers))
 
-        if pallet_w == 0 or pallet_l == 0 or pallet_h == 0 or box_w == 0 or box_l == 0 or box_h == 0 or num_layers <= 0:
-            messagebox.showwarning("Błąd", "Wszystkie wymiary i liczba warstw muszą być większe od 0.")
-            return
+            if (
+                pallet_w == 0
+                or pallet_l == 0
+                or pallet_h == 0
+                or box_w == 0
+                or box_l == 0
+                or box_h == 0
+                or num_layers <= 0
+            ):
+                messagebox.showwarning(
+                    "Błąd", "Wszystkie wymiary i liczba warstw muszą być większe od 0."
+                )
+                return
 
-        self.layouts = []
+            self.layouts = []
 
-        carton = Carton(box_w_ext, box_l_ext, box_h)
-        pallet = Pallet(pallet_w, pallet_l, pallet_h)
-        selector = PatternSelector(carton, pallet)
-        patterns = selector.generate_all()
-
-        for name, patt in patterns.items():
-            centered = self.center_layout(patt, pallet_w, pallet_l)
-            self.layouts.append((len(centered), centered, name.capitalize()))
-
+            carton = Carton(box_w_ext, box_l_ext, box_h)
+            pallet = Pallet(pallet_w, pallet_l, pallet_h)
+            selector = PatternSelector(carton, pallet)
+            patterns = selector.generate_all()
         best_name, best_pattern, _ = selector.best()
         seq = EvenOddSequencer(best_pattern, carton, pallet)
         even_base, odd_shifted = seq.best_shift()
@@ -554,27 +567,66 @@ class TabPallet(ttk.Frame):
             stack_height = num_layers * box_h_ext
             if self.include_pallet_height_var.get():
                 stack_height += pallet_h
+            for name, patt in patterns.items():
+                centered = self.center_layout(patt, pallet_w, pallet_l)
+                self.layouts.append((len(centered), centered, name.capitalize()))
 
-            self.tape_per_carton = 4 * (box_w + box_l) / 1000
-            self.film_per_pallet = 2 * (pallet_w + pallet_l) / 1000 * 6
-            total_tape = total_cartons * self.tape_per_carton
+            best_name, best_pattern, _ = selector.best()
+            seq = EvenOddSequencer(best_pattern, carton, pallet)
+            even_base, odd_shifted = seq.best_shift()
+            if self.shift_even_var.get():
+                self.best_even = self.center_layout(odd_shifted, pallet_w, pallet_l)
+                self.best_odd = self.center_layout(even_base, pallet_w, pallet_l)
+            else:
+                self.best_even = self.center_layout(even_base, pallet_w, pallet_l)
+                self.best_odd = self.center_layout(odd_shifted, pallet_w, pallet_l)
+            self.best_layout_name = best_name.capitalize()
 
-            self.totals_label.config(
-                text=f"Kartonów: {total_cartons} | Produkty: {total_products} | Wysokość: {stack_height:.1f} mm"
-            )
-            self.materials_label.config(
-                text=f"Taśma: {total_tape:.2f} m | Folia: {self.film_per_pallet:.2f} m"
-            )
-            carton_wt = self.carton_weights.get(self.carton_var.get(), 0)
-            pallet_wt = self.pallet_weights.get(self.pallet_var.get(), 0) if self.include_pallet_height_var.get() else 0
-            tape_wt = total_tape * self.material_weights.get("tape", 0)
-            film_wt = self.film_per_pallet * self.material_weights.get("stretch_film", 0)
-            total_mass = carton_wt * total_cartons + tape_wt + film_wt + pallet_wt
-            self.weight_label.config(text=f"Masa: {total_mass:.2f} kg")
-        else:
-            self.totals_label.config(text="")
-            self.materials_label.config(text="")
-            self.weight_label.config(text="")
+            self.layout_map = {name: idx for idx, (_, __, name) in enumerate(self.layouts)}
+            self.update_transform_frame()
+            self.num_layers = num_layers
+            self.update_layers()
+            if self.layers:
+                box_h_ext = box_h + 2 * thickness
+                cartons_per_odd = len(self.layers[0]) if self.layers else 0
+                cartons_per_even = len(self.layers[1]) if len(self.layers) > 1 else cartons_per_odd
+                total_cartons = 0
+                for i in range(1, num_layers + 1):
+                    total_cartons += cartons_per_odd if i % 2 == 1 else cartons_per_even
+                total_products = total_cartons * self.products_per_carton
+                stack_height = num_layers * box_h_ext
+                if self.include_pallet_height_var.get():
+                    stack_height += pallet_h
+
+                self.tape_per_carton = 4 * (box_w + box_l) / 1000
+                self.film_per_pallet = 2 * (pallet_w + pallet_l) / 1000 * 6
+                total_tape = total_cartons * self.tape_per_carton
+
+                self.totals_label.config(
+                    text=f"Kartonów: {total_cartons} | Produkty: {total_products} | Wysokość: {stack_height:.1f} mm"
+                )
+                self.materials_label.config(
+                    text=f"Taśma: {total_tape:.2f} m | Folia: {self.film_per_pallet:.2f} m"
+                )
+                carton_wt = self.carton_weights.get(self.carton_var.get(), 0)
+                pallet_wt = (
+                    self.pallet_weights.get(self.pallet_var.get(), 0)
+                    if self.include_pallet_height_var.get()
+                    else 0
+                )
+                tape_wt = total_tape * self.material_weights.get("tape", 0)
+                film_wt = self.film_per_pallet * self.material_weights.get("stretch_film", 0)
+                total_mass = carton_wt * total_cartons + tape_wt + film_wt + pallet_wt
+                self.weight_label.config(text=f"Masa: {total_mass:.2f} kg")
+            else:
+                self.totals_label.config(text="")
+                self.materials_label.config(text="")
+                self.weight_label.config(text="")
+        finally:
+            if hasattr(self, "status_var"):
+                self.status_var.set("")
+            if hasattr(self, "compute_btn"):
+                self.compute_btn.state(["!disabled"])
 
     def draw_pallet(self):
         pallet_w = parse_dim(self.pallet_w_var)
