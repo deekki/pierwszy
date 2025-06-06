@@ -330,10 +330,10 @@ class TabPallet(ttk.Frame):
             ax, ay, aw, ah = a
             bx, by, bw, bh = b
             return not (
-                ax + aw < bx
-                or bx + bw < ax
-                or ay + ah < by
-                or by + bh < ay
+                ax + aw <= bx
+                or bx + bw <= ax
+                or ay + ah <= by
+                or by + bh <= ay
             )
 
         groups = []
