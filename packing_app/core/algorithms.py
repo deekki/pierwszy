@@ -114,27 +114,6 @@ def compute_interlocked_layout(
 
     return count, base_layers, interlocked_layers
 
-def compute_brick_layout(pallet_w, pallet_l, box_w, box_l, margin=0):
-    """Pack rows with every other row shifted by half box width."""
-    eff_w = pallet_w - margin
-    eff_l = pallet_l - margin
-    if eff_w < box_w or eff_l < box_l:
-        return 0, []
-
-    n_rows = int(eff_l // box_l)
-    positions = []
-    for r in range(n_rows):
-        offset = 0.0
-        if r % 2 == 1 and eff_w >= box_w * 1.5:
-            offset = box_w / 2
-        n_cols = int((eff_w - offset) // box_w)
-        for c in range(n_cols):
-            x = offset + c * box_w
-            y = r * box_l
-            if x + box_w <= eff_w and y + box_l <= eff_l:
-                positions.append((x, y, box_w, box_l))
-
-    return len(positions), positions
 
 def pack_rectangles_mixed_max(width, height, wprod, lprod, margin=0):
     eff_width = width - margin
