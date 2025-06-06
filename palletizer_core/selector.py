@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import Dict, List, Tuple
+
+import yaml
+import os
 
 from packing_app.core import algorithms
 
@@ -9,6 +13,39 @@ from .models import Carton, Pallet
 
 # Pattern is list of rectangles (x, y, w, l)
 Pattern = List[Tuple[float, float, float, float]]
+
+
+DEFAULT_WEIGHTS = {
+    "layer_eff": 1.0,
+    "cube_eff": 1.0,
+    "stability": 1.0,
+    "grip_changes": 1.0,
+}
+
+
+@lru_cache(maxsize=None)
+def load_weights() -> Dict[str, float]:
+    """Load scoring weights from settings.yaml if present."""
+    settings_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "settings.yaml")
+    if os.path.exists(settings_path):
+        try:
+            with open(settings_path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+            if not isinstance(data, dict):
+                data = {}
+        except Exception:
+            data = {}
+    else:
+        data = {}
+
+    weights = DEFAULT_WEIGHTS.copy()
+    for key in DEFAULT_WEIGHTS:
+        if key in data:
+            try:
+                weights[key] = float(data[key])
+            except (TypeError, ValueError):
+                pass
+    return weights
 
 
 @dataclass
@@ -23,12 +60,7 @@ class PatternScore:
     penalty: float = field(init=False)
 
     def __post_init__(self) -> None:
-        weights = {
-            "layer_eff": 1.0,
-            "cube_eff": 1.0,
-            "stability": 1.0,
-            "grip_changes": 1.0,
-        }
+        weights = load_weights()
         self.penalty = -(
             weights["layer_eff"] * self.layer_eff
             + weights["cube_eff"] * self.cube_eff
