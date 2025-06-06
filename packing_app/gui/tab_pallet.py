@@ -454,7 +454,8 @@ class TabPallet(ttk.Frame):
                 centered = self.center_layout(patt, pallet_w, pallet_l)
                 self.layouts.append((len(centered), centered, name.capitalize()))
 
-            best_name, best_pattern, _ = selector.best()
+            best_pattern = patterns.get("interlock")
+            best_name = "interlock"
             seq = EvenOddSequencer(best_pattern, carton, pallet)
             even_base, odd_shifted = seq.best_shift()
             if self.shift_even_var.get():
@@ -463,7 +464,7 @@ class TabPallet(ttk.Frame):
             else:
                 self.best_even = self.center_layout(even_base, pallet_w, pallet_l)
                 self.best_odd = self.center_layout(odd_shifted, pallet_w, pallet_l)
-            self.best_layout_name = best_name.capitalize()
+            self.best_layout_name = "Interlock"
 
             self.layout_map = {name: idx for idx, (_, __, name) in enumerate(self.layouts)}
             self.update_transform_frame()
