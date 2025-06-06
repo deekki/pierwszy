@@ -457,12 +457,8 @@ class TabPallet(ttk.Frame):
             best_name, best_pattern, _ = selector.best()
             seq = EvenOddSequencer(best_pattern, carton, pallet)
             even_base, odd_shifted = seq.best_shift()
-            if self.shift_even_var.get():
-                self.best_even = self.center_layout(odd_shifted, pallet_w, pallet_l)
-                self.best_odd = self.center_layout(even_base, pallet_w, pallet_l)
-            else:
-                self.best_even = self.center_layout(even_base, pallet_w, pallet_l)
-                self.best_odd = self.center_layout(odd_shifted, pallet_w, pallet_l)
+            self.best_even = self.center_layout(even_base, pallet_w, pallet_l)
+            self.best_odd = self.center_layout(odd_shifted, pallet_w, pallet_l)
             self.best_layout_name = best_name.capitalize()
 
             self.layout_map = {name: idx for idx, (_, __, name) in enumerate(self.layouts)}
