@@ -494,6 +494,11 @@ class TabPallet(ttk.Frame):
             return centered_positions
 
     def compute_pallet(self, event=None):
+        """Calculate carton layouts on the pallet.
+
+        The interlock pattern is always selected as the default layout. Other
+        patterns are still generated for manual selection.
+        """
         if hasattr(self, "status_var"):
             self.status_var.set("Obliczanie...")
             self.status_label.update_idletasks()
@@ -548,9 +553,16 @@ class TabPallet(ttk.Frame):
                 display = name.replace("_", " ").capitalize()
                 self.layouts.append((len(centered), centered, display))
 
-            best_name, best_pattern, _ = selector.best(
-                maximize_mixed=self.maximize_mixed.get()
-            )
+            # Force the interlock pattern to be the default selection
+            interlock_pattern = patterns.get("interlock")
+            if interlock_pattern is None:
+                best_name, best_pattern, _ = selector.best(
+                    maximize_mixed=self.maximize_mixed.get()
+                )
+            else:
+                best_name = "interlock"
+                best_pattern = interlock_pattern
+
             seq = EvenOddSequencer(best_pattern, carton, pallet)
             even_base, odd_shifted = seq.best_shift()
             if self.shift_even_var.get():

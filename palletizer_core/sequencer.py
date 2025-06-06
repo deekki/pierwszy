@@ -25,11 +25,13 @@ class EvenOddSequencer:
     def best_shift(self) -> Tuple[Pattern, Pattern]:
         """Return even and best odd layer."""
         even = self.pattern
+        # Try offsets that interlock alternating layers. Skip the no-op shift
+        # to avoid immediately selecting it as ``best``.
         shifts = [
-            (0.0, 0.0),
             (self.carton.width / 2, 0.0),
             (0.0, self.carton.length / 2),
             (self.carton.width / 2, self.carton.length / 2),
+            (0.0, 0.0),
         ]
         best: Pattern | None = None
         for dx, dy in shifts:
