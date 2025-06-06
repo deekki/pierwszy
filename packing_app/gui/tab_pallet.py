@@ -311,12 +311,13 @@ class TabPallet(ttk.Frame):
         prev_odd_transform = getattr(self, "odd_transform_var", None)
         prev_even_transform = getattr(self, "even_transform_var", None)
 
-        odd_default = (
-            self.best_layout_name
-            if self.best_layout_name in layout_options
-            else layout_options[0]
-        )
-        even_default = odd_default
+        interlock_name = "Interlock"
+        if interlock_name in layout_options:
+            odd_default = interlock_name
+            even_default = interlock_name
+        else:
+            odd_default = layout_options[0]
+            even_default = odd_default
         if prev_odd_layout and prev_odd_layout.get() in layout_options:
             odd_default = prev_odd_layout.get()
         if prev_even_layout and prev_even_layout.get() in layout_options:
@@ -553,15 +554,15 @@ class TabPallet(ttk.Frame):
                 display = name.replace("_", " ").capitalize()
                 self.layouts.append((len(centered), centered, display))
 
-            # Force the interlock pattern to be the default selection
-            interlock_pattern = patterns.get("interlock")
-            if interlock_pattern is None:
+            # Force the interlock pattern to be the default selection when
+            # available.  Fallback to the best scored pattern otherwise.
+            if "interlock" in patterns:
+                best_name = "interlock"
+                best_pattern = patterns["interlock"]
+            else:
                 best_name, best_pattern, _ = selector.best(
                     maximize_mixed=self.maximize_mixed.get()
                 )
-            else:
-                best_name = "interlock"
-                best_pattern = interlock_pattern
 
             seq = EvenOddSequencer(best_pattern, carton, pallet)
             even_base, odd_shifted = seq.best_shift()

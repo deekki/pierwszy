@@ -113,10 +113,14 @@ class PatternSelector:
         patterns["column"] = patt
 
         # interlock layout - use first layer of result
-        _, _, inter = algorithms.compute_interlocked_layout(
-            pallet_w, pallet_l, box_w, box_l, num_layers=1
-        )
-        patterns["interlock"] = inter[0]
+        try:
+            _, _, inter = algorithms.compute_interlocked_layout(
+                pallet_w, pallet_l, box_w, box_l, num_layers=1
+            )
+            patterns["interlock"] = inter[0] if inter else []
+        except Exception:
+            # Gracefully handle invalid dimensions and still expose an entry
+            patterns["interlock"] = []
 
         # mixed greedy
         _, mixed = algorithms.pack_rectangles_mixed_greedy(
