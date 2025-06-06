@@ -86,7 +86,7 @@ def compute_interlocked_layout(
     """
     count, base_positions = pack_rectangles_mixed_greedy(pallet_w, pallet_l, box_w, box_l)
 
-    base_layers = [base_positions for _ in range(num_layers)]
+    base_layers = [list(base_positions) for _ in range(num_layers)]
 
     min_x = min(x for x, y, w, h in base_positions)
     max_x = max(x + w for x, y, w, h in base_positions)
