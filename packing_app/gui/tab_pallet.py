@@ -702,6 +702,16 @@ class TabPallet(ttk.Frame):
                     )
                     ax.add_patch(patch)
                     self.patches[idx].append((patch, i))
+                    ax.text(
+                        x + w / 2,
+                        y + h / 2,
+                        str(i + 1),
+                        ha="center",
+                        va="center",
+                        fontsize=8,
+                        color="black",
+                        zorder=10,
+                    )
                 ax.set_title(f"{labels[idx]}: {len(self.layers[idx])}")
             ax.set_xlim(-50, pallet_w + 50)
             ax.set_ylim(-50, pallet_l + 50)
