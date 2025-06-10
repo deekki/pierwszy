@@ -67,6 +67,62 @@ def pack_rectangles_mixed_greedy(width, height, wprod, lprod, margin=0):
             best_positions = temp_positions
     return best_count, best_positions
 
+
+def pack_rectangles_row_by_row(width, height, wprod, lprod, margin=0):
+    """Alternate carton orientation on each row.
+
+    The algorithm fills consecutive rows starting at the bottom of the pallet.
+    Odd rows use the natural carton orientation while even rows are rotated by
+    90 degrees.  Boxes are packed as tightly as possible in each row without
+    optimisation for remaining space.
+    """
+    eff_width = width - margin
+    eff_height = height - margin
+    positions = []
+    y = 0.0
+    row_idx = 0
+    while True:
+        if row_idx % 2 == 0:
+            row_h = lprod
+            col_w = wprod
+        else:
+            row_h = wprod
+            col_w = lprod
+        if y + row_h > eff_height or col_w <= 0 or row_h <= 0:
+            break
+        n_cols = int(eff_width // col_w)
+        for c in range(n_cols):
+            x = c * col_w
+            positions.append((x, y, col_w, row_h))
+        y += row_h
+        row_idx += 1
+
+    return len(positions), positions
+
+
+def pack_pinwheel(width, height, wprod, lprod, margin=0):
+    """Pack cartons in repeating 2x2 pinwheel blocks."""
+    eff_width = width - margin
+    eff_height = height - margin
+    block_w = wprod + lprod
+    block_h = wprod + lprod
+    if eff_width < block_w or eff_height < block_h:
+        return 0, []
+
+    n_x = int(eff_width // block_w)
+    n_y = int(eff_height // block_h)
+    positions = []
+    for ix in range(n_x):
+        for iy in range(n_y):
+            x0 = ix * block_w
+            y0 = iy * block_h
+            positions.append((x0, y0, wprod, lprod))
+            positions.append((x0 + wprod, y0, lprod, wprod))
+            positions.append((x0 + wprod, y0 + lprod, wprod, lprod))
+            positions.append((x0, y0 + lprod, lprod, wprod))
+
+    return len(positions), positions
+
 def compute_interlocked_layout(
     pallet_w, pallet_l, box_w, box_l, num_layers=4, shift_even=True
 ):
