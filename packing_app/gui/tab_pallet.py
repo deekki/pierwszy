@@ -17,6 +17,7 @@ from core.utils import (
     load_cartons_with_weights,
     load_pallets_with_weights,
     load_materials,
+    load_slip_sheets,
 )
 
 
@@ -39,6 +40,7 @@ class TabPallet(ttk.Frame):
             p["name"]: p["weight"] for p in load_pallets_with_weights()
         }
         self.material_weights = load_materials()
+        self.predefined_slip_sheets = [s["weight"] for s in load_slip_sheets()]
         self.pack(fill=tk.BOTH, expand=True)
         self.layouts = []
         self.layers = []
@@ -256,16 +258,17 @@ class TabPallet(ttk.Frame):
         ttk.Label(layers_frame, text="Waga przekładki (kg):").grid(
             row=2, column=2, padx=5, pady=5
         )
-        self.slip_weight_var = tk.StringVar(value="0")
-        entry_slip_weight = ttk.Entry(
-            layers_frame,
-            textvariable=self.slip_weight_var,
-            width=5,
-            validate="key",
-            validatecommand=(self.register(self.validate_number), "%P"),
+        default_weight = (
+            str(self.predefined_slip_sheets[0]) if self.predefined_slip_sheets else "0"
         )
-        entry_slip_weight.grid(row=2, column=3, padx=5, pady=5)
-        entry_slip_weight.bind("<Return>", self.compute_pallet)
+        self.slip_weight_var = tk.StringVar(value=default_weight)
+        ttk.OptionMenu(
+            layers_frame,
+            self.slip_weight_var,
+            default_weight,
+            *[str(w) for w in self.predefined_slip_sheets],
+            command=lambda *_: self.compute_pallet(),
+        ).grid(row=2, column=3, padx=5, pady=5)
 
         self.transform_frame = ttk.Frame(layers_frame)
         self.transform_frame.grid(row=3, column=0, columnspan=7, padx=5, pady=5)

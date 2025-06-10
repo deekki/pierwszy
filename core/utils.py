@@ -183,7 +183,12 @@ def load_slip_sheets() -> list:
     root = _load_xml(path)
     sheets = []
     for sheet in root.findall("sheet"):
-        sheets.append({"weight": sheet.get("weight", "")})
+        weight = sheet.get("weight", "0")
+        try:
+            weight = float(weight)
+        except ValueError:
+            weight = 0.0
+        sheets.append({"weight": weight})
     return sheets
 
 
