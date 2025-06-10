@@ -743,10 +743,49 @@ class TabPallet(ttk.Frame):
         layer_idx, idx, patch = self.selected_patch
         new_x = event.xdata + self.drag_offset[0]
         new_y = event.ydata + self.drag_offset[1]
-        patch.set_xy((new_x, new_y))
+
         x, y, w, h = self.layers[layer_idx][idx]
+
+        pallet_w = parse_dim(self.pallet_w_var)
+        pallet_l = parse_dim(self.pallet_l_var)
+        threshold = 10
+
+        # Snap to pallet bounds
+        if abs(new_x) < threshold:
+            new_x = 0
+        elif abs(new_x + w - pallet_w) < threshold:
+            new_x = pallet_w - w
+
+        if abs(new_y) < threshold:
+            new_y = 0
+        elif abs(new_y + h - pallet_l) < threshold:
+            new_y = pallet_l - h
+
+        # Keep carton inside pallet bounds
+        new_x = min(max(new_x, 0), pallet_w - w)
+        new_y = min(max(new_y, 0), pallet_l - h)
+
+        # Snap to neighboring cartons
+        for i, (ox, oy, ow, oh) in enumerate(self.layers[layer_idx]):
+            if i == idx:
+                continue
+            # Horizontal snapping when vertically overlapping
+            if not (new_y + h <= oy or new_y >= oy + oh):
+                if abs(new_x + w - ox) < threshold:
+                    new_x = ox - w
+                elif abs(new_x - (ox + ow)) < threshold:
+                    new_x = ox + ow
+            # Vertical snapping when horizontally overlapping
+            if not (new_x + w <= ox or new_x >= ox + ow):
+                if abs(new_y + h - oy) < threshold:
+                    new_y = oy - h
+                elif abs(new_y - (oy + oh)) < threshold:
+                    new_y = oy + oh
+
+        patch.set_xy((new_x, new_y))
         self.layers[layer_idx][idx] = (new_x, new_y, w, h)
         self.canvas.draw_idle()
+        self.update_summary()
 
     def on_release(self, event):
         if self.selected_patch:
