@@ -46,7 +46,7 @@ def test_even_odd_sequencer_shift():
     seq = EvenOddSequencer(pattern, carton, pallet)
     even, odd = seq.best_shift()
 
-    shifted = [(x + carton.width / 2, y, w, l) for x, y, w, l in even]
+    shifted = [(x + carton.width / 2, y, w, length) for x, y, w, length in even]
     assert odd == shifted
 
 

@@ -164,7 +164,7 @@ class PatternSelector:
         # to the fraction of their area that is unsupported.
         if pattern:
             com_x = sum(x + w / 2 for x, _, w, _ in pattern) / len(pattern)
-            com_y = sum(y + l / 2 for _, y, _, l in pattern) / len(pattern)
+            com_y = sum(y + length / 2 for _, y, _, length in pattern) / len(pattern)
             center_x = self.pallet.width / 2
             center_y = self.pallet.length / 2
             dist = ((com_x - center_x) ** 2 + (com_y - center_y) ** 2) ** 0.5
@@ -172,9 +172,9 @@ class PatternSelector:
             com_factor = max(0.0, 1 - dist / max_dist)
 
             total_inside = 0.0
-            for x, y, w, l in pattern:
+            for x, y, w, length in pattern:
                 overlap_w = max(0.0, min(x + w, self.pallet.width) - max(x, 0.0))
-                overlap_l = max(0.0, min(y + l, self.pallet.length) - max(y, 0.0))
+                overlap_l = max(0.0, min(y + length, self.pallet.length) - max(y, 0.0))
                 total_inside += overlap_w * overlap_l
             support_fraction = total_inside / (len(pattern) * box_area)
 

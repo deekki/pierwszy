@@ -1,5 +1,3 @@
-import pytest
-
 from packing_app.core.algorithms import maximize_mixed_layout, pack_pinwheel
 
 
@@ -23,9 +21,9 @@ def test_pinwheel_layout_fits_and_no_collisions():
     box_w, box_l = 250, 150
     _, positions = pack_pinwheel(pallet_w, pallet_l, box_w, box_l)
 
-    for x, y, w, l in positions:
+    for x, y, w, length in positions:
         assert 0 <= x <= pallet_w - w
-        assert 0 <= y <= pallet_l - l
+        assert 0 <= y <= pallet_l - length
 
     for i, pos in enumerate(positions):
         for other in positions[i + 1 :]:
@@ -37,9 +35,9 @@ def test_pinwheel_fallback_for_small_area():
     box_w, box_l = 180, 100
     _, positions = pack_pinwheel(pallet_w, pallet_l, box_w, box_l)
 
-    for x, y, w, l in positions:
+    for x, y, w, length in positions:
         assert 0 <= x <= pallet_w - w
-        assert 0 <= y <= pallet_l - l
+        assert 0 <= y <= pallet_l - length
 
     for i, pos in enumerate(positions):
         for other in positions[i + 1 :]:

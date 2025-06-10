@@ -44,7 +44,7 @@ class EvenOddSequencer:
         min_x = min(x for x, _, _, _ in self.pattern)
         max_x = max(x + w for x, _, w, _ in self.pattern)
         min_y = min(y for _, y, _, _ in self.pattern)
-        max_y = max(y + l for _, y, _, l in self.pattern)
+        max_y = max(y + length for _, y, _, length in self.pattern)
 
         left = min_x
         right = self.pallet.width - max_x
