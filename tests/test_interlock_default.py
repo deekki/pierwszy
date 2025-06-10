@@ -1,9 +1,4 @@
-import sys
 import types
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
 
 from palletizer_core import Carton, Pallet, PatternSelector
 from packing_app.gui.tab_pallet import TabPallet
