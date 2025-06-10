@@ -534,6 +534,32 @@ class TabPallet(ttk.Frame):
                 ]
             return centered_positions
 
+    def snap_position(self, x, y, w, h, pallet_w, pallet_l, boxes, tol=10):
+        """Snap coordinates to pallet edges or nearby cartons."""
+
+        if abs(x) <= tol:
+            x = 0
+        if abs(y) <= tol:
+            y = 0
+        if abs(pallet_w - (x + w)) <= tol:
+            x = pallet_w - w
+        if abs(pallet_l - (y + h)) <= tol:
+            y = pallet_l - h
+
+        for bx, by, bw, bh in boxes:
+            if abs(x - (bx + bw)) <= tol:
+                x = bx + bw
+            if abs((x + w) - bx) <= tol:
+                x = bx - w
+            if abs(y - (by + bh)) <= tol:
+                y = by + bh
+            if abs((y + h) - by) <= tol:
+                y = by - h
+
+        x = min(max(x, 0), pallet_w - w)
+        y = min(max(y, 0), pallet_l - h)
+        return x, y
+
     def _get_default_layout(
         self,
         selector: PatternSelector,
@@ -800,10 +826,33 @@ class TabPallet(ttk.Frame):
         self.canvas.draw_idle()
 
     def on_release(self, event):
-        if self.selected_patch:
-            self.selected_patch = None
-            self.draw_pallet()
-            self.update_summary()
+        if not self.selected_patch:
+            return
+
+        layer_idx, idx, patch = self.selected_patch
+        new_x, new_y = patch.get_xy()
+        x, y, w, h = self.layers[layer_idx][idx]
+        pallet_w = parse_dim(self.pallet_w_var)
+        pallet_l = parse_dim(self.pallet_l_var)
+        thickness = parse_dim(self.cardboard_thickness_var)
+        box_w_ext = parse_dim(self.box_w_var) + 2 * thickness
+        box_l_ext = parse_dim(self.box_l_var) + 2 * thickness
+        orig_x, orig_y, _, _ = self.inverse_transformation(
+            [(new_x, new_y, w, h)],
+            self.transformations[layer_idx],
+            pallet_w,
+            pallet_l,
+            box_w_ext,
+            box_l_ext,
+        )[0]
+        other_boxes = [b for i, b in enumerate(self.layers[layer_idx]) if i != idx]
+        snap_x, snap_y = self.snap_position(
+            orig_x, orig_y, w, h, pallet_w, pallet_l, other_boxes
+        )
+        self.layers[layer_idx][idx] = (snap_x, snap_y, w, h)
+        self.selected_patch = None
+        self.draw_pallet()
+        self.update_summary()
 
     def insert_carton(self, layer_idx, pos):
         """Insert a carton into the given layer at `pos`."""
