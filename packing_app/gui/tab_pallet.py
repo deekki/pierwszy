@@ -494,6 +494,23 @@ class TabPallet(ttk.Frame):
             groups.append(current_group)
         return groups
 
+    def detect_collisions(self, positions, pallet_w, pallet_l):
+        """Return indices of cartons that overlap or lie outside the pallet."""
+
+        index_map = {id(pos): idx for idx, pos in enumerate(positions)}
+        collisions = set()
+
+        for group in self.group_cartons(positions):
+            if len(group) > 1:
+                for pos in group:
+                    collisions.add(index_map[id(pos)])
+
+        for idx, (x, y, w, h) in enumerate(positions):
+            if x < 0 or y < 0 or x + w > pallet_w or y + h > pallet_l:
+                collisions.add(idx)
+
+        return collisions
+
     def center_layout(self, positions, pallet_w, pallet_l):
         if not positions or not self.center_var.get():
             return positions
@@ -702,8 +719,10 @@ class TabPallet(ttk.Frame):
                     parse_dim(self.box_l_var)
                     + 2 * parse_dim(self.cardboard_thickness_var),
                 )
+                collision_idx = self.detect_collisions(coords, pallet_w, pallet_l)
                 for i, (x, y, w, h) in enumerate(coords):
-                    color = "blue" if idx == 0 else "green"
+                    base_color = "blue" if idx == 0 else "green"
+                    color = "red" if i in collision_idx else base_color
                     patch = plt.Rectangle(
                         (x, y),
                         w,
@@ -797,6 +816,19 @@ class TabPallet(ttk.Frame):
             box_l_ext,
         )[0]
         self.layers[layer_idx][idx] = (orig_x, orig_y, w, h)
+        coords = self.apply_transformation(
+            list(self.layers[layer_idx]),
+            self.transformations[layer_idx],
+            pallet_w,
+            pallet_l,
+            box_w_ext,
+            box_l_ext,
+        )
+        collision_idx = self.detect_collisions(coords, pallet_w, pallet_l)
+        for p, i in self.patches[layer_idx]:
+            base_color = "blue" if layer_idx == 0 else "green"
+            color = "red" if i in collision_idx else base_color
+            p.set_facecolor(color)
         self.canvas.draw_idle()
 
     def on_release(self, event):
