@@ -969,18 +969,54 @@ class TabPallet(ttk.Frame):
             self.draw_pallet()
             self.update_summary()
 
+    def rotate_selected_carton(self):
+        """Rotate the selected carton by 90° around its center."""
+        if not self.selected_patch:
+            return
+
+        layer_idx, idx, _ = self.selected_patch
+        x, y, w, h = self.layers[layer_idx][idx]
+
+        center_x = x + w / 2
+        center_y = y + h / 2
+        w, h = h, w
+        x = center_x - w / 2
+        y = center_y - h / 2
+
+        self.layers[layer_idx][idx] = (x, y, w, h)
+        self.draw_pallet()
+        self.update_summary()
+        if layer_idx < len(self.patches) and idx < len(self.patches[layer_idx]):
+            self.selected_patch = (
+                layer_idx,
+                idx,
+                self.patches[layer_idx][idx][0],
+            )
+
     def on_right_click(self, event):
         if not self.modify_mode_var.get() or event.inaxes not in [self.ax_odd, self.ax_even]:
             return
         self.context_layer = 0 if event.inaxes is self.ax_odd else 1
         if event.xdata is not None and event.ydata is not None:
             self.context_pos = (event.xdata, event.ydata)
+
+        # Automatically select the carton under the cursor
+        self.selected_patch = None
+        for patch, idx in self.patches[self.context_layer]:
+            contains, _ = patch.contains(event)
+            if contains:
+                self.selected_patch = (self.context_layer, idx, patch)
+                break
+
         if self.context_menu is None:
             self.context_menu = tk.Menu(self, tearoff=0)
             self.context_menu.add_command(label="Wstaw karton", command=self.insert_carton_button)
             self.context_menu.add_command(label="Usu\u0144 karton", command=self.delete_selected_carton)
+            self.context_menu.add_command(label="Obróć 90°", command=self.rotate_selected_carton)
+
         state = "normal" if self.selected_patch else "disabled"
         self.context_menu.entryconfigure(1, state=state)
+        self.context_menu.entryconfigure(2, state=state)
         gui_ev = event.guiEvent
         if gui_ev:
             self.context_menu.tk_popup(int(gui_ev.x_root), int(gui_ev.y_root))
