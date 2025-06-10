@@ -112,6 +112,18 @@ class PatternSelector:
         _, patt = algorithms.pack_rectangles_2d(pallet_w, pallet_l, box_w, box_l)
         patterns["column"] = patt
 
+        # row-by-row layout
+        _, row_patt = algorithms.pack_rectangles_row_by_row(
+            pallet_w, pallet_l, box_w, box_l
+        )
+        patterns["row_by_row"] = row_patt
+
+        # pinwheel layout
+        _, pinwheel_patt = algorithms.pack_pinwheel(
+            pallet_w, pallet_l, box_w, box_l
+        )
+        patterns["pinwheel"] = pinwheel_patt
+
         # interlock layout - use first layer of result
         try:
             _, _, inter = algorithms.compute_interlocked_layout(
