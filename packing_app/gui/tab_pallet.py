@@ -52,7 +52,8 @@ class TabPallet(ttk.Frame):
         self.best_odd = []
         self.modify_mode_var = tk.BooleanVar(value=False)
         self.patches = []
-        self.selected_patch = None
+        self.selected_indices = set()
+        self.drag_target = None
         self.drag_offset = (0, 0)
         self.press_cid = None
         self.motion_cid = None
@@ -835,7 +836,8 @@ class TabPallet(ttk.Frame):
                 if cid is not None:
                     self.canvas.mpl_disconnect(cid)
             self.press_cid = self.motion_cid = self.release_cid = None
-            self.selected_patch = None
+            self.selected_indices.clear()
+            self.drag_target = None
             self.draw_pallet()
 
     def on_press(self, event):
@@ -851,18 +853,30 @@ class TabPallet(ttk.Frame):
         if event.xdata is not None and event.ydata is not None:
             self.context_layer = layer_idx
             self.context_pos = (event.xdata, event.ydata)
+        self.drag_target = None
         for patch, idx in self.patches[layer_idx]:
             contains, _ = patch.contains(event)
             if contains:
+                if event.key == "shift":
+                    key = (layer_idx, idx)
+                    if key in self.selected_indices:
+                        self.selected_indices.remove(key)
+                    else:
+                        self.selected_indices.add(key)
+                else:
+                    self.selected_indices = {(layer_idx, idx)}
                 x, y = patch.get_xy()
-                self.selected_patch = (layer_idx, idx, patch)
+                self.drag_target = (layer_idx, idx, patch)
                 self.drag_offset = (x - event.xdata, y - event.ydata)
                 break
+        else:
+            if event.key != "shift":
+                self.selected_indices.clear()
 
     def on_motion(self, event):
-        if not self.selected_patch or event.xdata is None or event.ydata is None:
+        if not self.drag_target or event.xdata is None or event.ydata is None:
             return
-        layer_idx, idx, patch = self.selected_patch
+        layer_idx, idx, patch = self.drag_target
         new_x = event.xdata + self.drag_offset[0]
         new_y = event.ydata + self.drag_offset[1]
         patch.set_xy((new_x, new_y))
@@ -897,10 +911,10 @@ class TabPallet(ttk.Frame):
         self.canvas.draw_idle()
 
     def on_release(self, event):
-        if not self.selected_patch:
+        if not self.drag_target:
             return
 
-        layer_idx, idx, patch = self.selected_patch
+        layer_idx, idx, patch = self.drag_target
         new_x, new_y = patch.get_xy()
         x, y, w, h = self.layers[layer_idx][idx]
         pallet_w = parse_dim(self.pallet_w_var)
@@ -924,7 +938,7 @@ class TabPallet(ttk.Frame):
         other_layer = 1 - layer_idx
         if other_layer < len(self.layers) and idx < len(self.layers[other_layer]):
             self.layers[other_layer][idx] = (snap_x, snap_y, w, h)
-        self.selected_patch = None
+        self.drag_target = None
         self.draw_pallet()
         self.update_summary()
 
@@ -946,40 +960,101 @@ class TabPallet(ttk.Frame):
     def insert_carton_button(self):
         self.insert_carton(self.context_layer, self.context_pos)
 
-    def delete_selected_carton(self):
-        if self.selected_patch:
-            layer_idx, idx, _ = self.selected_patch
+    def delete_selected_cartons(self):
+        """Delete all selected cartons."""
+        for layer_idx, idx in sorted(self.selected_indices, reverse=True):
             del self.layers[layer_idx][idx]
             other_layer = 1 - layer_idx
             if other_layer < len(self.layers) and idx < len(self.layers[other_layer]):
                 del self.layers[other_layer][idx]
-            self.selected_patch = None
+        if self.selected_indices:
+            self.selected_indices.clear()
             self.draw_pallet()
             self.update_summary()
 
-    def rotate_selected_carton(self):
-        """Rotate the selected carton by 90° around its center."""
-        if not self.selected_patch:
+    # Backwards compatibility
+    def delete_selected_carton(self):
+        self.delete_selected_cartons()
+
+    def rotate_selected_cartons(self):
+        """Rotate all selected cartons by 90° around their centers."""
+        if not self.selected_indices:
             return
+        for layer_idx, idx in list(self.selected_indices):
+            x, y, w, h = self.layers[layer_idx][idx]
 
-        layer_idx, idx, _ = self.selected_patch
-        x, y, w, h = self.layers[layer_idx][idx]
+            center_x = x + w / 2
+            center_y = y + h / 2
+            w, h = h, w
+            x = center_x - w / 2
+            y = center_y - h / 2
 
-        center_x = x + w / 2
-        center_y = y + h / 2
-        w, h = h, w
-        x = center_x - w / 2
-        y = center_y - h / 2
-
-        self.layers[layer_idx][idx] = (x, y, w, h)
+            self.layers[layer_idx][idx] = (x, y, w, h)
         self.draw_pallet()
         self.update_summary()
-        if layer_idx < len(self.patches) and idx < len(self.patches[layer_idx]):
-            self.selected_patch = (
-                layer_idx,
-                idx,
-                self.patches[layer_idx][idx][0],
+
+    # Backwards compatibility
+    def rotate_selected_carton(self):
+        self.rotate_selected_cartons()
+
+    def distribute_selected_edge(self):
+        """Evenly space selected cartons along the pallet edge."""
+        if not self.selected_indices:
+            return
+        layers = {l for l, _ in self.selected_indices}
+        if len(layers) != 1:
+            return
+        layer_idx = layers.pop()
+        pallet_w = parse_dim(self.pallet_w_var)
+        indices = sorted(i for l, i in self.selected_indices if l == layer_idx)
+        widths = [self.layers[layer_idx][i][2] for i in indices]
+        gap = (pallet_w - sum(widths)) / (len(indices) + 1)
+        x = gap
+        for idx, w in zip(indices, widths):
+            _, y, _, h = self.layers[layer_idx][idx]
+            self.layers[layer_idx][idx] = (x, y, w, h)
+            other_layer = 1 - layer_idx
+            if other_layer < len(self.layers) and idx < len(self.layers[other_layer]):
+                self.layers[other_layer][idx] = (x, y, w, h)
+            x += w + gap
+        self.draw_pallet()
+        self.update_summary()
+
+    def distribute_selected_between(self):
+        """Evenly space selected cartons between neighbouring cartons."""
+        if not self.selected_indices:
+            return
+        layers = {l for l, _ in self.selected_indices}
+        if len(layers) != 1:
+            return
+        layer_idx = layers.pop()
+        pallet_w = parse_dim(self.pallet_w_var)
+        indices = sorted(i for l, i in self.selected_indices if l == layer_idx)
+        boxes = [self.layers[layer_idx][i] for i in indices]
+        widths = [w for _, _, w, _ in boxes]
+        other_indices = [i for i in range(len(self.layers[layer_idx])) if (layer_idx, i) not in self.selected_indices]
+        left_edge = 0
+        right_edge = pallet_w
+        if other_indices:
+            left_edge = max(
+                [self.layers[layer_idx][i][0] + self.layers[layer_idx][i][2] for i in other_indices if self.layers[layer_idx][i][0] < min(b[0] for b in boxes)]
+                + [left_edge]
             )
+            right_edge = min(
+                [self.layers[layer_idx][i][0] for i in other_indices if self.layers[layer_idx][i][0] > max(b[0] + b[2] for b in boxes)]
+                + [right_edge]
+            )
+        gap = (right_edge - left_edge - sum(widths)) / (len(indices) + 1)
+        x = left_edge + gap
+        for idx, w in zip(indices, widths):
+            _, y, _, h = self.layers[layer_idx][idx]
+            self.layers[layer_idx][idx] = (x, y, w, h)
+            other_layer = 1 - layer_idx
+            if other_layer < len(self.layers) and idx < len(self.layers[other_layer]):
+                self.layers[other_layer][idx] = (x, y, w, h)
+            x += w + gap
+        self.draw_pallet()
+        self.update_summary()
 
     def on_right_click(self, event):
         if not self.modify_mode_var.get() or event.inaxes not in [self.ax_odd, self.ax_even]:
@@ -989,22 +1064,24 @@ class TabPallet(ttk.Frame):
             self.context_pos = (event.xdata, event.ydata)
 
         # Automatically select the carton under the cursor
-        self.selected_patch = None
+        self.selected_indices.clear()
         for patch, idx in self.patches[self.context_layer]:
             contains, _ = patch.contains(event)
             if contains:
-                self.selected_patch = (self.context_layer, idx, patch)
+                self.selected_indices = {(self.context_layer, idx)}
                 break
 
         if self.context_menu is None:
             self.context_menu = tk.Menu(self, tearoff=0)
             self.context_menu.add_command(label="Wstaw karton", command=self.insert_carton_button)
-            self.context_menu.add_command(label="Usu\u0144 karton", command=self.delete_selected_carton)
-            self.context_menu.add_command(label="Obróć 90°", command=self.rotate_selected_carton)
+            self.context_menu.add_command(label="Usu\u0144 zaznaczone", command=self.delete_selected_cartons)
+            self.context_menu.add_command(label="Obróć zaznaczone 90\u00b0", command=self.rotate_selected_cartons)
+            self.context_menu.add_command(label="R\u00f3wnomiernie wzd\u0142u\u017c boku palety", command=self.distribute_selected_edge)
+            self.context_menu.add_command(label="R\u00f3wnomiernie wzd\u0142u\u017c innych karton\u00f3w", command=self.distribute_selected_between)
 
-        state = "normal" if self.selected_patch else "disabled"
-        self.context_menu.entryconfigure(1, state=state)
-        self.context_menu.entryconfigure(2, state=state)
+        state = "normal" if self.selected_indices else "disabled"
+        for i in range(1, 5):
+            self.context_menu.entryconfigure(i, state=state)
         gui_ev = event.guiEvent
         if gui_ev:
             self.context_menu.tk_popup(int(gui_ev.x_root), int(gui_ev.y_root))
