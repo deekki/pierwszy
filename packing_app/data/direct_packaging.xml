@@ -1,0 +1,4 @@
+<materials>
+  <material name="tape" quantity="2 rolls" comment="transparent" weight="0.5" type="adhesive" supplier="Supplier A"/>
+  <material name="bubble_wrap" quantity="10 m" comment="large bubbles" weight="1.2" type="padding" supplier="Supplier B"/>
+</materials>

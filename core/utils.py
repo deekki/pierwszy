@@ -174,3 +174,72 @@ def save_cartons(cartons: list) -> None:
     load_cartons.cache_clear()
     load_cartons_with_weights.cache_clear()
 
+
+def _load_generic_materials(filename: str) -> list:
+    """Helper to load material lists from XML files."""
+    path = os.path.join(DATA_DIR, filename)
+    if not os.path.exists(path):
+        return []
+    root = _load_xml(path)
+    materials = []
+    for mat in root.findall('material'):
+        materials.append(
+            {
+                'name': mat.get('name', ''),
+                'quantity': mat.get('quantity', ''),
+                'comment': mat.get('comment', ''),
+                'weight': mat.get('weight', ''),
+                'type': mat.get('type', ''),
+                'supplier': mat.get('supplier', ''),
+            }
+        )
+    return materials
+
+
+def _save_generic_materials(filename: str, materials: list) -> None:
+    """Helper to save material lists to XML files."""
+    root = ET.Element('materials')
+    for mat in materials:
+        ET.SubElement(
+            root,
+            'material',
+            name=mat.get('name', ''),
+            quantity=mat.get('quantity', ''),
+            comment=mat.get('comment', ''),
+            weight=mat.get('weight', ''),
+            type=mat.get('type', ''),
+            supplier=mat.get('supplier', ''),
+        )
+    tree = ET.ElementTree(root)
+    tree.write(os.path.join(DATA_DIR, filename), encoding='utf-8', xml_declaration=True)
+
+
+def load_direct_packaging() -> list:
+    """Load direct packaging materials from direct_packaging.xml."""
+    return _load_generic_materials('direct_packaging.xml')
+
+
+def save_direct_packaging(materials: list) -> None:
+    """Save direct packaging materials to direct_packaging.xml."""
+    _save_generic_materials('direct_packaging.xml', materials)
+
+
+def load_indirect_packaging() -> list:
+    """Load indirect packaging materials from indirect_packaging.xml."""
+    return _load_generic_materials('indirect_packaging.xml')
+
+
+def save_indirect_packaging(materials: list) -> None:
+    """Save indirect packaging materials to indirect_packaging.xml."""
+    _save_generic_materials('indirect_packaging.xml', materials)
+
+
+def load_auxiliary_materials() -> list:
+    """Load auxiliary materials from auxiliary_materials.xml."""
+    return _load_generic_materials('auxiliary_materials.xml')
+
+
+def save_auxiliary_materials(materials: list) -> None:
+    """Save auxiliary materials to auxiliary_materials.xml."""
+    _save_generic_materials('auxiliary_materials.xml', materials)
+
