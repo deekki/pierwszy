@@ -174,3 +174,24 @@ def save_cartons(cartons: list) -> None:
     load_cartons.cache_clear()
     load_cartons_with_weights.cache_clear()
 
+
+def load_slip_sheets() -> list:
+    """Load slip sheet definitions from slip_sheets.xml."""
+    path = os.path.join(DATA_DIR, "slip_sheets.xml")
+    if not os.path.exists(path):
+        return []
+    root = _load_xml(path)
+    sheets = []
+    for sheet in root.findall("sheet"):
+        sheets.append({"weight": sheet.get("weight", "")})
+    return sheets
+
+
+def save_slip_sheets(sheets: list) -> None:
+    """Save slip sheet definitions back to slip_sheets.xml."""
+    root = ET.Element("slip_sheets")
+    for sheet in sheets:
+        ET.SubElement(root, "sheet", weight=str(sheet.get("weight", "")))
+    tree = ET.ElementTree(root)
+    tree.write(os.path.join(DATA_DIR, "slip_sheets.xml"), encoding="utf-8", xml_declaration=True)
+
