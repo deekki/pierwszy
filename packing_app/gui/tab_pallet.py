@@ -56,6 +56,9 @@ class TabPallet(ttk.Frame):
         self.press_cid = None
         self.motion_cid = None
         self.release_cid = None
+        self.context_menu = None
+        self.context_layer = 0
+        self.context_pos = (0, 0)
         self.build_ui()
 
     def build_ui(self):
@@ -250,6 +253,16 @@ class TabPallet(ttk.Frame):
             text="Tryb edycji",
             variable=self.modify_mode_var,
             command=self.toggle_edit_mode,
+        ).pack(side=tk.LEFT, padx=5)
+        ttk.Button(
+            control_frame,
+            text="Wstaw karton",
+            command=self.insert_carton_button,
+        ).pack(side=tk.LEFT, padx=5)
+        ttk.Button(
+            control_frame,
+            text="Usu\u0144 karton",
+            command=self.delete_selected_carton,
         ).pack(side=tk.LEFT, padx=5)
         self.status_var = tk.StringVar(value="")
         self.status_label = ttk.Label(control_frame, textvariable=self.status_var)
@@ -728,7 +741,13 @@ class TabPallet(ttk.Frame):
             self.ax_even,
         ]:
             return
+        if event.button == 3:
+            self.on_right_click(event)
+            return
         layer_idx = 0 if event.inaxes is self.ax_odd else 1
+        if event.xdata is not None and event.ydata is not None:
+            self.context_layer = layer_idx
+            self.context_pos = (event.xdata, event.ydata)
         for patch, idx in self.patches[layer_idx]:
             contains, _ = patch.contains(event)
             if contains:
@@ -753,6 +772,45 @@ class TabPallet(ttk.Frame):
             self.selected_patch = None
             self.draw_pallet()
             self.update_summary()
+
+    def insert_carton(self, layer_idx, pos):
+        """Insert a carton into the given layer at `pos`."""
+        thickness = parse_dim(self.cardboard_thickness_var)
+        if self.layers[layer_idx]:
+            _, _, w, h = self.layers[layer_idx][0]
+        else:
+            w = parse_dim(self.box_w_var) + 2 * thickness
+            h = parse_dim(self.box_l_var) + 2 * thickness
+        self.layers[layer_idx].append((pos[0], pos[1], w, h))
+        self.draw_pallet()
+        self.update_summary()
+
+    def insert_carton_button(self):
+        self.insert_carton(self.context_layer, self.context_pos)
+
+    def delete_selected_carton(self):
+        if self.selected_patch:
+            layer_idx, idx, _ = self.selected_patch
+            del self.layers[layer_idx][idx]
+            self.selected_patch = None
+            self.draw_pallet()
+            self.update_summary()
+
+    def on_right_click(self, event):
+        if not self.modify_mode_var.get() or event.inaxes not in [self.ax_odd, self.ax_even]:
+            return
+        self.context_layer = 0 if event.inaxes is self.ax_odd else 1
+        if event.xdata is not None and event.ydata is not None:
+            self.context_pos = (event.xdata, event.ydata)
+        if self.context_menu is None:
+            self.context_menu = tk.Menu(self, tearoff=0)
+            self.context_menu.add_command(label="Wstaw karton", command=self.insert_carton_button)
+            self.context_menu.add_command(label="Usu\u0144 karton", command=self.delete_selected_carton)
+        state = "normal" if self.selected_patch else "disabled"
+        self.context_menu.entryconfigure(1, state=state)
+        gui_ev = event.guiEvent
+        if gui_ev:
+            self.context_menu.tk_popup(int(gui_ev.x_root), int(gui_ev.y_root))
 
     def update_summary(self):
         if not self.layers:
