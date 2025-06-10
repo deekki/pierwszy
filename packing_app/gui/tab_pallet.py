@@ -456,8 +456,9 @@ class TabPallet(ttk.Frame):
         self.box_h_var.set(str(dims[2]))
         self.compute_pallet()
 
+    @staticmethod
     def apply_transformation(
-        self, positions, transform, pallet_w, pallet_l, box_w, box_l
+        positions, transform, pallet_w, pallet_l, box_w, box_l
     ):
         new_positions = []
         for x, y, w, h in positions:
@@ -481,15 +482,15 @@ class TabPallet(ttk.Frame):
                 new_positions.append((new_x, new_y, w, h))
         return new_positions
 
+    @staticmethod
     def inverse_transformation(
-        self, positions, transform, pallet_w, pallet_l, box_w, box_l
+        positions, transform, pallet_w, pallet_l, box_w, box_l
     ):
         """Reverse the transformation applied to the positions."""
         new_positions = []
         for x, y, w, h in positions:
             new_positions.extend(
                 TabPallet.apply_transformation(
-                    self,
                     [(x, y, w, h)],
                     transform,
                     pallet_w,
