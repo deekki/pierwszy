@@ -921,6 +921,9 @@ class TabPallet(ttk.Frame):
             orig_x, orig_y, w, h, pallet_w, pallet_l, other_boxes
         )
         self.layers[layer_idx][idx] = (snap_x, snap_y, w, h)
+        other_layer = 1 - layer_idx
+        if other_layer < len(self.layers) and idx < len(self.layers[other_layer]):
+            self.layers[other_layer][idx] = (snap_x, snap_y, w, h)
         self.selected_patch = None
         self.draw_pallet()
         self.update_summary()
@@ -934,6 +937,9 @@ class TabPallet(ttk.Frame):
             w = parse_dim(self.box_w_var) + 2 * thickness
             h = parse_dim(self.box_l_var) + 2 * thickness
         self.layers[layer_idx].append((pos[0], pos[1], w, h))
+        other_layer = 1 - layer_idx
+        if other_layer < len(self.layers):
+            self.layers[other_layer].append((pos[0], pos[1], w, h))
         self.draw_pallet()
         self.update_summary()
 
@@ -944,6 +950,9 @@ class TabPallet(ttk.Frame):
         if self.selected_patch:
             layer_idx, idx, _ = self.selected_patch
             del self.layers[layer_idx][idx]
+            other_layer = 1 - layer_idx
+            if other_layer < len(self.layers) and idx < len(self.layers[other_layer]):
+                del self.layers[other_layer][idx]
             self.selected_patch = None
             self.draw_pallet()
             self.update_summary()
