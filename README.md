@@ -25,6 +25,7 @@ The window opens with five tabs:
 2. **Pakowanie 3D** – find good carton sizes for a given product using a random search and the list of predefined cartons.
 3. **Paletyzacja** – arrange cartons on a pallet by specifying pallet and box parameters. Choose layout variants, set the number of layers and centering options, then view totals such as stack height and required materials. The tab also features a **Tryb edycji** checkbox that lets you manually drag cartons on the pallet preview. Available layouts are *column*, *interlock*, *mixed* and *dense*. The interlock pattern is automatically chosen as the default whenever it is available.
     When centering cartons, the **Cała warstwa** mode centers the entire pattern as one block. In contrast, **Poszczególne obszary** centers every separate group of touching cartons individually. Cartons that only meet at their edges are considered separate groups.
+    When editing, hold **Shift** to select multiple cartons. Right-click to delete, rotate or evenly distribute the selected cartons.
 4. **Materiały** – manage the catalogue of packaging materials. Add, edit or delete items together with their quantities, type, supplier and weight.
 5. **Kartony** – edit predefined carton definitions, modify dimensions and weight or add your own carton codes for use in the other tabs.
 
