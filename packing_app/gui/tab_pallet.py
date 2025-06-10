@@ -17,6 +17,7 @@ from core.utils import (
     load_cartons_with_weights,
     load_pallets_with_weights,
     load_materials,
+    load_slip_sheets,
 )
 
 
@@ -39,6 +40,7 @@ class TabPallet(ttk.Frame):
             p["name"]: p["weight"] for p in load_pallets_with_weights()
         }
         self.material_weights = load_materials()
+        self.predefined_slip_sheets = [s["weight"] for s in load_slip_sheets()]
         self.pack(fill=tk.BOTH, expand=True)
         self.layouts = []
         self.layers = []
@@ -239,33 +241,34 @@ class TabPallet(ttk.Frame):
             command=self.compute_pallet,
         ).grid(row=0, column=6, padx=5, pady=5, sticky="w")
 
-        ttk.Label(layers_frame, text="Grubość przekładki (mm):").grid(
+        ttk.Label(layers_frame, text="Liczba przekładek:").grid(
             row=2, column=0, padx=5, pady=5
         )
-        self.slip_thickness_var = tk.StringVar(value="0")
-        entry_slip_thickness = ttk.Entry(
+        self.slip_count_var = tk.StringVar(value="0")
+        entry_slip_count = ttk.Entry(
             layers_frame,
-            textvariable=self.slip_thickness_var,
+            textvariable=self.slip_count_var,
             width=5,
             validate="key",
             validatecommand=(self.register(self.validate_number), "%P"),
         )
-        entry_slip_thickness.grid(row=2, column=1, padx=5, pady=5)
-        entry_slip_thickness.bind("<Return>", self.compute_pallet)
+        entry_slip_count.grid(row=2, column=1, padx=5, pady=5)
+        entry_slip_count.bind("<Return>", self.compute_pallet)
 
         ttk.Label(layers_frame, text="Waga przekładki (kg):").grid(
             row=2, column=2, padx=5, pady=5
         )
-        self.slip_weight_var = tk.StringVar(value="0")
-        entry_slip_weight = ttk.Entry(
-            layers_frame,
-            textvariable=self.slip_weight_var,
-            width=5,
-            validate="key",
-            validatecommand=(self.register(self.validate_number), "%P"),
+        default_weight = (
+            str(self.predefined_slip_sheets[0]) if self.predefined_slip_sheets else "0"
         )
-        entry_slip_weight.grid(row=2, column=3, padx=5, pady=5)
-        entry_slip_weight.bind("<Return>", self.compute_pallet)
+        self.slip_weight_var = tk.StringVar(value=default_weight)
+        ttk.OptionMenu(
+            layers_frame,
+            self.slip_weight_var,
+            default_weight,
+            *[str(w) for w in self.predefined_slip_sheets],
+            command=lambda *_: self.compute_pallet(),
+        ).grid(row=2, column=3, padx=5, pady=5)
 
         self.transform_frame = ttk.Frame(layers_frame)
         self.transform_frame.grid(row=3, column=0, columnspan=7, padx=5, pady=5)
@@ -689,7 +692,7 @@ class TabPallet(ttk.Frame):
             box_l = parse_dim(self.box_l_var)
             box_h = parse_dim(self.box_h_var)
             thickness = parse_dim(self.cardboard_thickness_var)
-            slip_thickness = parse_dim(self.slip_thickness_var)
+            slip_count = int(parse_dim(self.slip_count_var))
             box_w_ext = box_w + 2 * thickness
             box_l_ext = box_l + 2 * thickness
             num_layers = int(parse_dim(self.num_layers_var))
@@ -700,9 +703,9 @@ class TabPallet(ttk.Frame):
                     pallet_h if self.include_pallet_height_var.get() else 0
                 )
                 box_h_ext = box_h + 2 * thickness
-                layer_height = box_h_ext + slip_thickness
+                layer_height = box_h_ext
                 if layer_height > 0:
-                    num_layers = max(int((avail + slip_thickness) // layer_height), 0)
+                    num_layers = max(int(avail // layer_height), 0)
                     self.num_layers_var.set(str(num_layers))
 
             if (
@@ -765,7 +768,7 @@ class TabPallet(ttk.Frame):
             }
             self.update_transform_frame()
             self.num_layers = num_layers
-            self.slip_sheet_layers = list(range(1, num_layers))
+            self.slip_sheet_layers = list(range(1, slip_count + 1))
             self.update_layers()
             self.update_summary()
         finally:
@@ -999,7 +1002,7 @@ class TabPallet(ttk.Frame):
         box_l = parse_dim(self.box_l_var)
         box_h = parse_dim(self.box_h_var)
         thickness = parse_dim(self.cardboard_thickness_var)
-        slip_thickness = parse_dim(self.slip_thickness_var)
+        slip_count = int(parse_dim(self.slip_count_var))
         slip_weight = parse_dim(self.slip_weight_var)
 
         num_layers = getattr(self, "num_layers", int(parse_dim(self.num_layers_var)))
@@ -1013,8 +1016,8 @@ class TabPallet(ttk.Frame):
             for i in range(1, num_layers + 1)
         )
         total_products = total_cartons * self.products_per_carton
-        num_slip = len(self.slip_sheet_layers)
-        stack_height = num_layers * box_h_ext + num_slip * slip_thickness
+        num_slip = slip_count
+        stack_height = num_layers * box_h_ext
         if self.include_pallet_height_var.get():
             stack_height += pallet_h
 
