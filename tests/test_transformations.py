@@ -8,15 +8,11 @@ def test_mirror_inverse():
         "Odbicie wzdłuż dłuższego boku",
         pallet_w,
         pallet_l,
-        30.0,
-        40.0,
     )
     reverted = TabPallet.inverse_transformation(
         mirrored,
         "Odbicie wzdłuż dłuższego boku",
         pallet_w,
         pallet_l,
-        30.0,
-        40.0,
     )
     assert reverted == positions
