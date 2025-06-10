@@ -347,7 +347,6 @@ class TabPallet(ttk.Frame):
             "Brak",
             "Odbicie wzdłuż dłuższego boku",
             "Odbicie wzdłuż krótszego boku",
-            "Rotacja 90°",
         ]
 
         prev_odd_layout = getattr(self, "odd_layout_var", None)
@@ -480,16 +479,6 @@ class TabPallet(ttk.Frame):
                     new_x = x
                     new_y = pallet_l - y - h
                 new_positions.append((new_x, new_y, w, h))
-            elif transform == "Rotacja 90°":
-                cx, cy = pallet_w / 2, pallet_l / 2
-                center_x = x + w / 2
-                center_y = y + h / 2
-                rot_cx = cx + (center_y - cy)
-                rot_cy = cy - (center_x - cx)
-                new_w, new_h = h, w
-                new_x = rot_cx - new_w / 2
-                new_y = rot_cy - new_h / 2
-                new_positions.append((new_x, new_y, new_w, new_h))
         return new_positions
 
     def inverse_transformation(
@@ -498,27 +487,17 @@ class TabPallet(ttk.Frame):
         """Reverse the transformation applied to the positions."""
         new_positions = []
         for x, y, w, h in positions:
-            if transform == "Rotacja 90°":
-                cx, cy = pallet_w / 2, pallet_l / 2
-                center_x = x + w / 2
-                center_y = y + h / 2
-                rot_cx = cx - (center_y - cy)
-                rot_cy = cy + (center_x - cx)
-                new_w, new_h = h, w
-                new_x = rot_cx - new_w / 2
-                new_y = rot_cy - new_h / 2
-                new_positions.append((new_x, new_y, new_w, new_h))
-            else:
-                new_positions.extend(
-                    self.apply_transformation(
-                        [(x, y, w, h)],
-                        transform,
-                        pallet_w,
-                        pallet_l,
-                        box_w,
-                        box_l,
-                    )
+            new_positions.extend(
+                TabPallet.apply_transformation(
+                    self,
+                    [(x, y, w, h)],
+                    transform,
+                    pallet_w,
+                    pallet_l,
+                    box_w,
+                    box_l,
                 )
+            )
         return new_positions
 
     def group_cartons(self, positions):
