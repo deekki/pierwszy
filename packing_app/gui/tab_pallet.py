@@ -859,9 +859,7 @@ class TabPallet(ttk.Frame):
         x, y, w, h = self.layers[layer_idx][idx]
         pallet_w = parse_dim(self.pallet_w_var)
         pallet_l = parse_dim(self.pallet_l_var)
-        thickness = parse_dim(self.cardboard_thickness_var)
-        box_w_ext = parse_dim(self.box_w_var) + 2 * thickness
-        box_l_ext = parse_dim(self.box_l_var) + 2 * thickness
+
         orig_x, orig_y, _, _ = self.inverse_transformation(
             [(new_x, new_y, w, h)],
             self.transformations[layer_idx],
@@ -891,9 +889,7 @@ class TabPallet(ttk.Frame):
         x, y, w, h = self.layers[layer_idx][idx]
         pallet_w = parse_dim(self.pallet_w_var)
         pallet_l = parse_dim(self.pallet_l_var)
-        thickness = parse_dim(self.cardboard_thickness_var)
-        box_w_ext = parse_dim(self.box_w_var) + 2 * thickness
-        box_l_ext = parse_dim(self.box_l_var) + 2 * thickness
+
         orig_x, orig_y, _, _ = self.inverse_transformation(
             [(new_x, new_y, w, h)],
             self.transformations[layer_idx],
