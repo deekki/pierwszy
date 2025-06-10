@@ -20,6 +20,7 @@ def make_dummy():
     d.box_w_var = var(10)
     d.box_l_var = var(10)
     d.transformations = ["Brak", "Brak"]
+    d.layer_patterns = ["A", "A"]
     d.layers = [[(0, 0, 10, 10)], [(0, 0, 10, 10)]]
     d.snap_position = lambda x, y, w, h, pw, pl, other: (x, y)
     d.inverse_transformation = lambda pos, trans, pw, pl, bw, bl: pos
@@ -42,6 +43,21 @@ def test_insert_and_delete_sync():
     assert len(dummy.layers[1]) == 2
     assert dummy.layers[0][-1][:2] == (10, 10)
     assert dummy.layers[1][-1][:2] == (10, 10)
+    dummy.selected_patch = (0, 0, DummyPatch())
+    TabPallet.delete_selected_carton(dummy)
+    assert len(dummy.layers[0]) == 1
+    assert len(dummy.layers[1]) == 1
+
+def test_no_cross_sync_when_patterns_differ():
+    dummy = make_dummy()
+    dummy.layer_patterns = ["A", "B"]
+    dummy.selected_patch = (0, 0, DummyPatch(2, 2))
+    TabPallet.on_release(dummy, None)
+    assert dummy.layers[0][0][:2] == (2, 2)
+    assert dummy.layers[1][0][:2] == (0, 0)
+    TabPallet.insert_carton(dummy, 0, (5, 5))
+    assert len(dummy.layers[0]) == 2
+    assert len(dummy.layers[1]) == 1
     dummy.selected_patch = (0, 0, DummyPatch())
     TabPallet.delete_selected_carton(dummy)
     assert len(dummy.layers[0]) == 1

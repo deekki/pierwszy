@@ -42,6 +42,7 @@ class TabPallet(ttk.Frame):
         self.pack(fill=tk.BOTH, expand=True)
         self.layouts = []
         self.layers = []
+        self.layer_patterns = []
         self.slip_sheet_layers = []
         self.transformations = []
         self.products_per_carton = 1
@@ -415,6 +416,7 @@ class TabPallet(ttk.Frame):
     def update_layers(self, *args):
         num_layers = getattr(self, "num_layers", int(parse_dim(self.num_layers_var)))
         self.layers = []
+        self.layer_patterns = []
         self.transformations = []
         odd_name = self.odd_layout_var.get()
         even_name = self.even_layout_var.get()
@@ -434,10 +436,13 @@ class TabPallet(ttk.Frame):
             if i % 2 == 1:
                 self.layers.append(odd_layout)
                 transform = self.odd_transform_var.get()
+                patt = odd_name
             else:
                 self.layers.append(even_layout)
                 transform = self.even_transform_var.get()
+                patt = even_name
             self.transformations.append(transform)
+            self.layer_patterns.append(patt)
         self.draw_pallet()
 
     def on_pallet_selected(self, *args):
@@ -922,7 +927,12 @@ class TabPallet(ttk.Frame):
         )
         self.layers[layer_idx][idx] = (snap_x, snap_y, w, h)
         other_layer = 1 - layer_idx
-        if other_layer < len(self.layers) and idx < len(self.layers[other_layer]):
+        if (
+            other_layer < len(self.layers)
+            and idx < len(self.layers[other_layer])
+            and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
+            and self.transformations[other_layer] == self.transformations[layer_idx]
+        ):
             self.layers[other_layer][idx] = (snap_x, snap_y, w, h)
         self.selected_patch = None
         self.draw_pallet()
@@ -938,7 +948,11 @@ class TabPallet(ttk.Frame):
             h = parse_dim(self.box_l_var) + 2 * thickness
         self.layers[layer_idx].append((pos[0], pos[1], w, h))
         other_layer = 1 - layer_idx
-        if other_layer < len(self.layers):
+        if (
+            other_layer < len(self.layers)
+            and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
+            and self.transformations[other_layer] == self.transformations[layer_idx]
+        ):
             self.layers[other_layer].append((pos[0], pos[1], w, h))
         self.draw_pallet()
         self.update_summary()
@@ -951,7 +965,12 @@ class TabPallet(ttk.Frame):
             layer_idx, idx, _ = self.selected_patch
             del self.layers[layer_idx][idx]
             other_layer = 1 - layer_idx
-            if other_layer < len(self.layers) and idx < len(self.layers[other_layer]):
+            if (
+                other_layer < len(self.layers)
+                and idx < len(self.layers[other_layer])
+                and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
+                and self.transformations[other_layer] == self.transformations[layer_idx]
+            ):
                 del self.layers[other_layer][idx]
             self.selected_patch = None
             self.draw_pallet()
