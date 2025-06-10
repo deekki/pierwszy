@@ -48,3 +48,31 @@ def test_even_odd_sequencer_shift():
 
     shifted = [(x + carton.width / 2, y, w, l) for x, y, w, l in even]
     assert odd == shifted
+
+
+def test_stability_prefers_centered_layout():
+    carton = Carton(width=50, length=50)
+    pallet = Pallet(width=100, length=100)
+    selector = PatternSelector(carton, pallet)
+
+    centered = [(0, 0, 50, 50), (50, 50, 50, 50)]
+    offcenter = [(0, 0, 50, 50), (0, 50, 50, 50)]
+
+    c_score = selector.score(centered)
+    o_score = selector.score(offcenter)
+
+    assert c_score.stability > o_score.stability
+
+
+def test_stability_penalizes_overhang():
+    carton = Carton(width=50, length=50)
+    pallet = Pallet(width=100, length=100)
+    selector = PatternSelector(carton, pallet)
+
+    inside = [(0, 0, 50, 50)]
+    overhang = [(60, 0, 50, 50)]
+
+    inside_score = selector.score(inside)
+    over_score = selector.score(overhang)
+
+    assert inside_score.stability > over_score.stability

@@ -143,7 +143,32 @@ class PatternSelector:
         box_area = self.carton.width * self.carton.length
         layer_eff = len(pattern) * box_area / pallet_area
         cube_eff = layer_eff  # simplified: same as area efficiency
-        stability = min(1.0, layer_eff)  # placeholder heuristic
+
+        # Stability metric based on center of mass and support area
+        # -----------------------------------------------------------------
+        # The layout's center of mass (COM) is compared with the pallet
+        # center; large offsets reduce stability.  Layouts that extend
+        # beyond the pallet bounds (overhang) lose stability in proportion
+        # to the fraction of their area that is unsupported.
+        if pattern:
+            com_x = sum(x + w / 2 for x, _, w, _ in pattern) / len(pattern)
+            com_y = sum(y + l / 2 for _, y, _, l in pattern) / len(pattern)
+            center_x = self.pallet.width / 2
+            center_y = self.pallet.length / 2
+            dist = ((com_x - center_x) ** 2 + (com_y - center_y) ** 2) ** 0.5
+            max_dist = min(self.pallet.width, self.pallet.length) / 2
+            com_factor = max(0.0, 1 - dist / max_dist)
+
+            total_inside = 0.0
+            for x, y, w, l in pattern:
+                overlap_w = max(0.0, min(x + w, self.pallet.width) - max(x, 0.0))
+                overlap_l = max(0.0, min(y + l, self.pallet.length) - max(y, 0.0))
+                total_inside += overlap_w * overlap_l
+            support_fraction = total_inside / (len(pattern) * box_area)
+
+            stability = com_factor * support_fraction
+        else:
+            stability = 0.0
         grip_changes = 0
         return PatternScore("", layer_eff, cube_eff, stability, grip_changes)
 
