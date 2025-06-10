@@ -56,6 +56,12 @@ class TabPallet(ttk.Frame):
         self.press_cid = None
         self.motion_cid = None
         self.release_cid = None
+        self.key_cid = None
+        self.context_menu = tk.Menu(self, tearoff=0)
+        self.context_menu.add_command(
+            label="Obróć 90°",
+            command=self.toggle_selected_orientation,
+        )
         self.build_ui()
 
     def build_ui(self):
@@ -418,9 +424,9 @@ class TabPallet(ttk.Frame):
         self, positions, transform, pallet_w, pallet_l, box_w, box_l
     ):
         new_positions = []
-        for x, y, w, h in positions:
+        for x, y, w, h, r in positions:
             if transform == "Brak":
-                new_positions.append((x, y, w, h))
+                new_positions.append((x, y, w, h, r))
             elif transform == "Odbicie wzdłuż dłuższego boku":
                 if pallet_w >= pallet_l:
                     new_x = pallet_w - x - w
@@ -428,7 +434,7 @@ class TabPallet(ttk.Frame):
                 else:
                     new_x = x
                     new_y = pallet_l - y - h
-                new_positions.append((new_x, new_y, w, h))
+                new_positions.append((new_x, new_y, w, h, r))
             elif transform == "Odbicie wzdłuż krótszego boku":
                 if pallet_w < pallet_l:
                     new_x = pallet_w - x - w
@@ -436,15 +442,27 @@ class TabPallet(ttk.Frame):
                 else:
                     new_x = x
                     new_y = pallet_l - y - h
-                new_positions.append((new_x, new_y, w, h))
+                new_positions.append((new_x, new_y, w, h, r))
         return new_positions
+
+    def annotate_orientation(self, positions, box_w, box_l):
+        annotated = []
+        for x, y, w, h in positions:
+            if abs(w - box_w) <= 1e-6 and abs(h - box_l) <= 1e-6:
+                rot = 0
+            elif abs(w - box_l) <= 1e-6 and abs(h - box_w) <= 1e-6:
+                rot = 90
+            else:
+                rot = 0
+            annotated.append((x, y, w, h, rot))
+        return annotated
 
     def group_cartons(self, positions):
         """Group cartons that touch or overlap using AABB collision detection."""
 
         def collide(a, b):
-            ax, ay, aw, ah = a
-            bx, by, bw, bh = b
+            ax, ay, aw, ah = a[:4]
+            bx, by, bw, bh = b[:4]
             return not (
                 ax + aw <= bx or bx + bw <= ax or ay + ah <= by or by + bh <= ay
             )
@@ -473,39 +491,45 @@ class TabPallet(ttk.Frame):
         if not positions or not self.center_var.get():
             return positions
         if self.center_mode_var.get() == "Cała warstwa":
-            x_min = min(x for x, y, w, h in positions)
-            x_max = max(x + w for x, y, w, h in positions)
-            y_min = min(y for x, y, w, h in positions)
-            y_max = max(y + h for x, y, w, h in positions)
+            x_min = min(p[0] for p in positions)
+            x_max = max(p[0] + p[2] for p in positions)
+            y_min = min(p[1] for p in positions)
+            y_max = max(p[1] + p[3] for p in positions)
             offset_x = (pallet_w - (x_max - x_min)) / 2 - x_min
             offset_y = (pallet_l - (y_max - y_min)) / 2 - y_min
-            return [(x + offset_x, y + offset_y, w, h) for x, y, w, h in positions]
+            return [
+                tuple([p[0] + offset_x, p[1] + offset_y] + list(p[2:]))
+                for p in positions
+            ]
         else:
             groups = self.group_cartons(positions)
             centered_positions = []
             for group in groups:
-                x_min = min(x for x, y, w, h in group)
-                x_max = max(x + w for x, y, w, h in group)
-                y_min = min(y for x, y, w, h in group)
-                y_max = max(y + h for x, y, w, h in group)
+                x_min = min(p[0] for p in group)
+                x_max = max(p[0] + p[2] for p in group)
+                y_min = min(p[1] for p in group)
+                y_max = max(p[1] + p[3] for p in group)
                 offset_x = (pallet_w - (x_max - x_min)) / 2 - x_min
                 offset_y = (pallet_l - (y_max - y_min)) / 2 - y_min
                 centered_positions.extend(
-                    [(x + offset_x, y + offset_y, w, h) for x, y, w, h in group]
+                    [
+                        tuple([p[0] + offset_x, p[1] + offset_y] + list(p[2:]))
+                        for p in group
+                    ]
                 )
 
             # If centering individual groups makes them collide, fall back to
             # centering the entire layer instead of merging the groups.
             if len(self.group_cartons(centered_positions)) != len(groups):
-                x_min = min(x for x, y, w, h in positions)
-                x_max = max(x + w for x, y, w, h in positions)
-                y_min = min(y for x, y, w, h in positions)
-                y_max = max(y + h for x, y, w, h in positions)
+                x_min = min(p[0] for p in positions)
+                x_max = max(p[0] + p[2] for p in positions)
+                y_min = min(p[1] for p in positions)
+                y_max = max(p[1] + p[3] for p in positions)
                 offset_x = (pallet_w - (x_max - x_min)) / 2 - x_min
                 offset_y = (pallet_l - (y_max - y_min)) / 2 - y_min
                 return [
-                    (x + offset_x, y + offset_y, w, h)
-                    for x, y, w, h in positions
+                    tuple([p[0] + offset_x, p[1] + offset_y] + list(p[2:]))
+                    for p in positions
                 ]
             return centered_positions
 
@@ -606,10 +630,25 @@ class TabPallet(ttk.Frame):
                 pallet_l,
             )
 
-            for name, patt in patterns.items():
-                centered = self.center_layout(patt, pallet_w, pallet_l)
+            # Annotate orientation information
+            self.best_even = self.annotate_orientation(
+                self.best_even, box_w_ext, box_l_ext
+            )
+            self.best_odd = self.annotate_orientation(
+                self.best_odd, box_w_ext, box_l_ext
+            )
+            oriented_patterns = {
+                name: self.annotate_orientation(
+                    self.center_layout(patt, pallet_w, pallet_l),
+                    box_w_ext,
+                    box_l_ext,
+                )
+                for name, patt in patterns.items()
+            }
+
+            for name, patt in oriented_patterns.items():
                 display = name.replace("_", " ").capitalize()
-                self.layouts.append((len(centered), centered, display))
+                self.layouts.append((len(patt), patt, display))
 
             self.best_layout_name = best_name
             # Force the interlock pattern to be the default selection when
@@ -625,11 +664,27 @@ class TabPallet(ttk.Frame):
             seq = EvenOddSequencer(best_pattern, carton, pallet)
             even_base, odd_shifted = seq.best_shift()
             if self.shift_even_var.get():
-                self.best_even = self.center_layout(odd_shifted, pallet_w, pallet_l)
-                self.best_odd = self.center_layout(even_base, pallet_w, pallet_l)
+                self.best_even = self.annotate_orientation(
+                    self.center_layout(odd_shifted, pallet_w, pallet_l),
+                    box_w_ext,
+                    box_l_ext,
+                )
+                self.best_odd = self.annotate_orientation(
+                    self.center_layout(even_base, pallet_w, pallet_l),
+                    box_w_ext,
+                    box_l_ext,
+                )
             else:
-                self.best_even = self.center_layout(even_base, pallet_w, pallet_l)
-                self.best_odd = self.center_layout(odd_shifted, pallet_w, pallet_l)
+                self.best_even = self.annotate_orientation(
+                    self.center_layout(even_base, pallet_w, pallet_l),
+                    box_w_ext,
+                    box_l_ext,
+                )
+                self.best_odd = self.annotate_orientation(
+                    self.center_layout(odd_shifted, pallet_w, pallet_l),
+                    box_w_ext,
+                    box_l_ext,
+                )
             self.best_layout_name = best_name.replace("_", " ").capitalize()
 
 
@@ -680,17 +735,29 @@ class TabPallet(ttk.Frame):
                         parse_dim(self.box_l_var)
                         + 2 * parse_dim(self.cardboard_thickness_var),
                     )
-                for i, (x, y, w, h) in enumerate(coords):
+                for i, (x, y, w, h, r) in enumerate(coords):
                     color = "blue" if idx == 0 else "green"
-                    patch = plt.Rectangle(
-                        (x, y),
-                        w,
-                        h,
-                        fill=True,
-                        facecolor=color,
-                        alpha=0.5,
-                        edgecolor="black",
-                    )
+                    if r == 90:
+                        patch = plt.Rectangle(
+                            (x + h, y),
+                            h,
+                            w,
+                            angle=90,
+                            fill=True,
+                            facecolor=color,
+                            alpha=0.5,
+                            edgecolor="black",
+                        )
+                    else:
+                        patch = plt.Rectangle(
+                            (x, y),
+                            w,
+                            h,
+                            fill=True,
+                            facecolor=color,
+                            alpha=0.5,
+                            edgecolor="black",
+                        )
                     ax.add_patch(patch)
                     self.patches[idx].append((patch, i))
                 ax.set_title(f"{labels[idx]}: {len(self.layers[idx])}")
@@ -714,11 +781,14 @@ class TabPallet(ttk.Frame):
             self.release_cid = self.canvas.mpl_connect(
                 "button_release_event", self.on_release
             )
+            self.key_cid = self.canvas.mpl_connect(
+                "key_press_event", self.on_key_press
+            )
         else:
-            for cid in [self.press_cid, self.motion_cid, self.release_cid]:
+            for cid in [self.press_cid, self.motion_cid, self.release_cid, self.key_cid]:
                 if cid is not None:
                     self.canvas.mpl_disconnect(cid)
-            self.press_cid = self.motion_cid = self.release_cid = None
+            self.press_cid = self.motion_cid = self.release_cid = self.key_cid = None
             self.selected_patch = None
             self.draw_pallet()
 
@@ -732,9 +802,13 @@ class TabPallet(ttk.Frame):
         for patch, idx in self.patches[layer_idx]:
             contains, _ = patch.contains(event)
             if contains:
-                x, y = patch.get_xy()
+                x_box, y_box, w, h, r = self.layers[layer_idx][idx]
                 self.selected_patch = (layer_idx, idx, patch)
-                self.drag_offset = (x - event.xdata, y - event.ydata)
+                self.drag_offset = (x_box - event.xdata, y_box - event.ydata)
+                if event.button == 3 and hasattr(event, "guiEvent"):
+                    self.context_menu.tk_popup(
+                        event.guiEvent.x_root, event.guiEvent.y_root
+                    )
                 break
 
     def on_motion(self, event):
@@ -743,9 +817,12 @@ class TabPallet(ttk.Frame):
         layer_idx, idx, patch = self.selected_patch
         new_x = event.xdata + self.drag_offset[0]
         new_y = event.ydata + self.drag_offset[1]
-        patch.set_xy((new_x, new_y))
-        x, y, w, h = self.layers[layer_idx][idx]
-        self.layers[layer_idx][idx] = (new_x, new_y, w, h)
+        x, y, w, h, r = self.layers[layer_idx][idx]
+        if r == 90:
+            patch.set_xy((new_x + h, new_y))
+        else:
+            patch.set_xy((new_x, new_y))
+        self.layers[layer_idx][idx] = (new_x, new_y, w, h, r)
         self.canvas.draw_idle()
 
     def on_release(self, event):
@@ -753,6 +830,21 @@ class TabPallet(ttk.Frame):
             self.selected_patch = None
             self.draw_pallet()
             self.update_summary()
+
+    def toggle_selected_orientation(self, event=None):
+        if not self.selected_patch:
+            return
+        layer_idx, idx, patch = self.selected_patch
+        x, y, w, h, r = self.layers[layer_idx][idx]
+        r = 0 if r == 90 else 90
+        w, h = h, w
+        self.layers[layer_idx][idx] = (x, y, w, h, r)
+        self.selected_patch = None
+        self.draw_pallet()
+
+    def on_key_press(self, event):
+        if event.key == "r":
+            self.toggle_selected_orientation()
 
     def update_summary(self):
         if not self.layers:
