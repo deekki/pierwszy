@@ -469,6 +469,39 @@ class TabPallet(ttk.Frame):
             groups.append(current_group)
         return groups
 
+    def find_overlaps(self, positions):
+        """Return indices of cartons that overlap."""
+
+        overlaps = set()
+
+        def collide(a, b):
+            ax, ay, aw, ah = a
+            bx, by, bw, bh = b
+            return not (
+                ax + aw <= bx or bx + bw <= ax or ay + ah <= by or by + bh <= ay
+            )
+
+        for i in range(len(positions)):
+            for j in range(i + 1, len(positions)):
+                if collide(positions[i], positions[j]):
+                    overlaps.add(i)
+                    overlaps.add(j)
+        return overlaps
+
+    def highlight_overlaps(self):
+        """Set patch face colors based on collision status."""
+
+        for layer_idx, patches in enumerate(self.patches):
+            if layer_idx >= len(self.layers):
+                continue
+            coords = self.layers[layer_idx]
+            overlapping = self.find_overlaps(coords)
+            default = "blue" if layer_idx == 0 else "green"
+            for patch, idx in patches:
+                color = "red" if idx in overlapping else default
+                patch.set_facecolor(color)
+        self.canvas.draw_idle()
+
     def center_layout(self, positions, pallet_w, pallet_l):
         if not positions or not self.center_var.get():
             return positions
@@ -680,8 +713,13 @@ class TabPallet(ttk.Frame):
                         parse_dim(self.box_l_var)
                         + 2 * parse_dim(self.cardboard_thickness_var),
                     )
+                overlaps = self.find_overlaps(coords)
                 for i, (x, y, w, h) in enumerate(coords):
-                    color = "blue" if idx == 0 else "green"
+                    color = (
+                        "red"
+                        if i in overlaps
+                        else ("blue" if idx == 0 else "green")
+                    )
                     patch = plt.Rectangle(
                         (x, y),
                         w,
@@ -746,7 +784,7 @@ class TabPallet(ttk.Frame):
         patch.set_xy((new_x, new_y))
         x, y, w, h = self.layers[layer_idx][idx]
         self.layers[layer_idx][idx] = (new_x, new_y, w, h)
-        self.canvas.draw_idle()
+        self.highlight_overlaps()
 
     def on_release(self, event):
         if self.selected_patch:
