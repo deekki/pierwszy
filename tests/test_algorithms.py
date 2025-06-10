@@ -1,6 +1,12 @@
 import pytest
 
-from packing_app.core.algorithms import maximize_mixed_layout
+from packing_app.core.algorithms import maximize_mixed_layout, pack_pinwheel
+
+
+def _overlap(a, b):
+    ax, ay, aw, ah = a
+    bx, by, bw, bh = b
+    return not (ax + aw <= bx or bx + bw <= ax or ay + ah <= by or by + bh <= ay)
 
 
 def test_maximize_mixed_layout_small_pallet_returns_empty():
@@ -10,3 +16,31 @@ def test_maximize_mixed_layout_small_pallet_returns_empty():
     )
     assert count == 0
     assert positions == []
+
+
+def test_pinwheel_layout_fits_and_no_collisions():
+    pallet_w, pallet_l = 1000, 800
+    box_w, box_l = 250, 150
+    _, positions = pack_pinwheel(pallet_w, pallet_l, box_w, box_l)
+
+    for x, y, w, l in positions:
+        assert 0 <= x <= pallet_w - w
+        assert 0 <= y <= pallet_l - l
+
+    for i, pos in enumerate(positions):
+        for other in positions[i + 1 :]:
+            assert not _overlap(pos, other)
+
+
+def test_pinwheel_fallback_for_small_area():
+    pallet_w, pallet_l = 300, 200
+    box_w, box_l = 180, 100
+    _, positions = pack_pinwheel(pallet_w, pallet_l, box_w, box_l)
+
+    for x, y, w, l in positions:
+        assert 0 <= x <= pallet_w - w
+        assert 0 <= y <= pallet_l - l
+
+    for i, pos in enumerate(positions):
+        for other in positions[i + 1 :]:
+            assert not _overlap(pos, other)
