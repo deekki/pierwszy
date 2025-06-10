@@ -243,3 +243,29 @@ def save_auxiliary_materials(materials: list) -> None:
     """Save auxiliary materials to auxiliary_materials.xml."""
     _save_generic_materials('auxiliary_materials.xml', materials)
 
+
+@lru_cache(maxsize=None)
+def load_slip_sheets() -> list:
+    """Load slip sheet weights from slip_sheets.xml."""
+    path = os.path.join(DATA_DIR, 'slip_sheets.xml')
+    if not os.path.exists(path):
+        return []
+    root = _load_xml(path)
+    weights = []
+    for slip in root.findall('slip'):
+        try:
+            weights.append(float(slip.get('weight', '0')))
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"Niepoprawne dane przekładki '{slip.attrib}': {e}")
+    return weights
+
+
+def save_slip_sheets(weights: list) -> None:
+    """Save slip sheet weights to slip_sheets.xml."""
+    root = ET.Element('slip_sheets')
+    for w in weights:
+        ET.SubElement(root, 'slip', weight=str(w))
+    tree = ET.ElementTree(root)
+    tree.write(os.path.join(DATA_DIR, 'slip_sheets.xml'), encoding='utf-8', xml_declaration=True)
+    load_slip_sheets.cache_clear()
+
