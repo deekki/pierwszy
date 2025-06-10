@@ -101,13 +101,21 @@ def pack_rectangles_row_by_row(width, height, wprod, lprod, margin=0):
 
 
 def pack_pinwheel(width, height, wprod, lprod, margin=0):
-    """Pack cartons in repeating 2x2 pinwheel blocks."""
+    """Pack cartons in repeating 2x2 pinwheel blocks.
+
+    Any leftover space around the regular pinwheel grid is filled using the
+    mixed greedy algorithm so that cartons never overlap and remain inside the
+    pallet bounds.
+    """
+
     eff_width = width - margin
     eff_height = height - margin
     block_w = wprod + lprod
     block_h = wprod + lprod
+
+    # If a single pinwheel block does not fit, fall back to the mixed layout
     if eff_width < block_w or eff_height < block_h:
-        return 0, []
+        return pack_rectangles_mixed_greedy(eff_width, eff_height, wprod, lprod)
 
     n_x = int(eff_width // block_w)
     n_y = int(eff_height // block_h)
@@ -118,8 +126,25 @@ def pack_pinwheel(width, height, wprod, lprod, margin=0):
             y0 = iy * block_h
             positions.append((x0, y0, wprod, lprod))
             positions.append((x0 + wprod, y0, lprod, wprod))
-            positions.append((x0 + wprod, y0 + lprod, wprod, lprod))
+            positions.append((x0 + lprod, y0 + wprod, wprod, lprod))
             positions.append((x0, y0 + lprod, lprod, wprod))
+
+    leftover_x = eff_width - n_x * block_w
+    leftover_y = eff_height - n_y * block_h
+
+    # Fill the vertical strip on the right
+    if leftover_x > 0:
+        _, right_strip = pack_rectangles_mixed_greedy(
+            leftover_x, eff_height, wprod, lprod
+        )
+        positions.extend((n_x * block_w + x, y, w, h) for x, y, w, h in right_strip)
+
+    # Fill the horizontal strip at the top (excluding the right strip area)
+    if leftover_y > 0 and n_x * block_w > 0:
+        _, top_strip = pack_rectangles_mixed_greedy(
+            n_x * block_w, leftover_y, wprod, lprod
+        )
+        positions.extend((x, n_y * block_h + y, w, h) for x, y, w, h in top_strip)
 
     return len(positions), positions
 
