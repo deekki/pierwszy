@@ -456,9 +456,7 @@ class TabPallet(ttk.Frame):
         self.box_h_var.set(str(dims[2]))
         self.compute_pallet()
 
-    def apply_transformation(
-        self, positions, transform, pallet_w, pallet_l, box_w, box_l
-    ):
+    def apply_transformation(self, positions, transform, pallet_w, pallet_l):
         new_positions = []
         for x, y, w, h in positions:
             if transform == "Brak":
@@ -481,9 +479,7 @@ class TabPallet(ttk.Frame):
                 new_positions.append((new_x, new_y, w, h))
         return new_positions
 
-    def inverse_transformation(
-        self, positions, transform, pallet_w, pallet_l, box_w, box_l
-    ):
+    def inverse_transformation(self, positions, transform, pallet_w, pallet_l):
         """Reverse the transformation applied to the positions."""
         new_positions = []
         for x, y, w, h in positions:
@@ -494,8 +490,6 @@ class TabPallet(ttk.Frame):
                     transform,
                     pallet_w,
                     pallet_l,
-                    box_w,
-                    box_l,
                 )
             )
         return new_positions
@@ -779,10 +773,6 @@ class TabPallet(ttk.Frame):
                     self.transformations[idx],
                     pallet_w,
                     pallet_l,
-                    parse_dim(self.box_w_var)
-                    + 2 * parse_dim(self.cardboard_thickness_var),
-                    parse_dim(self.box_l_var)
-                    + 2 * parse_dim(self.cardboard_thickness_var),
                 )
                 collision_idx = self.detect_collisions(coords, pallet_w, pallet_l)
                 for i, (x, y, w, h) in enumerate(coords):
@@ -877,8 +867,6 @@ class TabPallet(ttk.Frame):
             self.transformations[layer_idx],
             pallet_w,
             pallet_l,
-            box_w_ext,
-            box_l_ext,
         )[0]
         self.layers[layer_idx][idx] = (orig_x, orig_y, w, h)
         coords = self.apply_transformation(
@@ -886,8 +874,6 @@ class TabPallet(ttk.Frame):
             self.transformations[layer_idx],
             pallet_w,
             pallet_l,
-            box_w_ext,
-            box_l_ext,
         )
         collision_idx = self.detect_collisions(coords, pallet_w, pallet_l)
         for p, i in self.patches[layer_idx]:
@@ -913,8 +899,6 @@ class TabPallet(ttk.Frame):
             self.transformations[layer_idx],
             pallet_w,
             pallet_l,
-            box_w_ext,
-            box_l_ext,
         )[0]
         other_boxes = [b for i, b in enumerate(self.layers[layer_idx]) if i != idx]
         snap_x, snap_y = self.snap_position(

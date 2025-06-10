@@ -22,7 +22,7 @@ def make_dummy():
     d.transformations = ["Brak", "Brak"]
     d.layers = [[(0, 0, 10, 10)], [(0, 0, 10, 10)]]
     d.snap_position = lambda x, y, w, h, pw, pl, other: (x, y)
-    d.inverse_transformation = lambda pos, trans, pw, pl, bw, bl: pos
+    d.inverse_transformation = lambda pos, trans, pw, pl: pos
     d.draw_pallet = lambda: None
     d.update_summary = lambda: None
     d.selected_patch = None
