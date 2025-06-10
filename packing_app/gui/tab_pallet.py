@@ -439,6 +439,18 @@ class TabPallet(ttk.Frame):
                 new_positions.append((new_x, new_y, w, h))
         return new_positions
 
+    def inverse_transformation(
+        self, positions, transform, pallet_w, pallet_l, box_w, box_l
+    ):
+        """Reverse the transformation applied to the positions."""
+        # For the current set of transformations (mirror flips) the inverse is
+        # identical to the forward operation.  Having a dedicated helper keeps
+        # the logic explicit and makes it easier to extend if new transforms
+        # are introduced in the future.
+        return self.apply_transformation(
+            positions, transform, pallet_w, pallet_l, box_w, box_l
+        )
+
     def group_cartons(self, positions):
         """Group cartons that touch or overlap using AABB collision detection."""
 
@@ -665,21 +677,18 @@ class TabPallet(ttk.Frame):
                 )
             )
             if idx < len(self.layers):
-                # Work on a copy so stored layers remain untouched when not in
-                # modify mode.  This prevents cumulative transformations when
-                # `draw_pallet` is called repeatedly.
-                coords = list(self.layers[idx])
-                if not self.modify_mode_var.get():
-                    coords = self.apply_transformation(
-                        coords,
-                        self.transformations[idx],
-                        pallet_w,
-                        pallet_l,
-                        parse_dim(self.box_w_var)
-                        + 2 * parse_dim(self.cardboard_thickness_var),
-                        parse_dim(self.box_l_var)
-                        + 2 * parse_dim(self.cardboard_thickness_var),
-                    )
+                # Always apply the stored transformation when drawing so the
+                # visual representation matches the selected mirror option.
+                coords = self.apply_transformation(
+                    list(self.layers[idx]),
+                    self.transformations[idx],
+                    pallet_w,
+                    pallet_l,
+                    parse_dim(self.box_w_var)
+                    + 2 * parse_dim(self.cardboard_thickness_var),
+                    parse_dim(self.box_l_var)
+                    + 2 * parse_dim(self.cardboard_thickness_var),
+                )
                 for i, (x, y, w, h) in enumerate(coords):
                     color = "blue" if idx == 0 else "green"
                     patch = plt.Rectangle(
@@ -745,7 +754,20 @@ class TabPallet(ttk.Frame):
         new_y = event.ydata + self.drag_offset[1]
         patch.set_xy((new_x, new_y))
         x, y, w, h = self.layers[layer_idx][idx]
-        self.layers[layer_idx][idx] = (new_x, new_y, w, h)
+        pallet_w = parse_dim(self.pallet_w_var)
+        pallet_l = parse_dim(self.pallet_l_var)
+        thickness = parse_dim(self.cardboard_thickness_var)
+        box_w_ext = parse_dim(self.box_w_var) + 2 * thickness
+        box_l_ext = parse_dim(self.box_l_var) + 2 * thickness
+        orig_x, orig_y, _, _ = self.inverse_transformation(
+            [(new_x, new_y, w, h)],
+            self.transformations[layer_idx],
+            pallet_w,
+            pallet_l,
+            box_w_ext,
+            box_l_ext,
+        )[0]
+        self.layers[layer_idx][idx] = (orig_x, orig_y, w, h)
         self.canvas.draw_idle()
 
     def on_release(self, event):
