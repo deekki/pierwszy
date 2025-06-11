@@ -165,7 +165,12 @@ def compute_interlocked_layout(
         If ``True`` (default), even layers (2nd, 4th, ...) are shifted.
         If ``False``, odd layers are shifted instead.
     """
-    count, base_positions = pack_rectangles_mixed_greedy(pallet_w, pallet_l, box_w, box_l)
+    count, base_positions = pack_rectangles_mixed_greedy(
+        pallet_w, pallet_l, box_w, box_l
+    )
+
+    if count == 0:
+        return 0, [], []
 
     base_layers = [list(base_positions) for _ in range(num_layers)]
 
