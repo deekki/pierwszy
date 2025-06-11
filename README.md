@@ -38,6 +38,13 @@ pause
 ```
 Running this script from Explorer will show any error messages and wait for a key press before closing.
 
+## Testing
+Install the required packages before executing the test suite:
+```bash
+pip install -r requirements.txt
+pytest
+```
+
 ## License
 This project is licensed under the [MIT License](LICENSE).
 
