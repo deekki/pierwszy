@@ -29,6 +29,7 @@ def make_dummy():
     d.update_summary = lambda: None
     d.selected_indices = set()
     d.drag_info = None
+    d.highlight_selection = lambda: None
     return d
 
 def test_on_release_syncs_layers():
