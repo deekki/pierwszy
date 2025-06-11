@@ -55,8 +55,10 @@ class TabPallet(ttk.Frame):
         self.best_odd = []
         self.modify_mode_var = tk.BooleanVar(value=False)
         self.patches = []
-        self.selected_patch = None
+        self.selected_indices = set()
         self.drag_offset = (0, 0)
+        self.drag_info = None
+        self.drag_select_origin = None
         self.press_cid = None
         self.motion_cid = None
         self.release_cid = None
@@ -823,7 +825,9 @@ class TabPallet(ttk.Frame):
                 if cid is not None:
                     self.canvas.mpl_disconnect(cid)
             self.press_cid = self.motion_cid = self.release_cid = None
-            self.selected_patch = None
+            self.selected_indices.clear()
+            self.drag_info = None
+            self.drag_select_origin = None
             self.draw_pallet()
 
     def on_press(self, event):
@@ -842,15 +846,27 @@ class TabPallet(ttk.Frame):
         for patch, idx in self.patches[layer_idx]:
             contains, _ = patch.contains(event)
             if contains:
-                x, y = patch.get_xy()
-                self.selected_patch = (layer_idx, idx, patch)
-                self.drag_offset = (x - event.xdata, y - event.ydata)
+                if event.key == "shift":
+                    if (layer_idx, idx) in self.selected_indices:
+                        self.selected_indices.remove((layer_idx, idx))
+                    else:
+                        self.selected_indices.add((layer_idx, idx))
+                    self.drag_info = None
+                else:
+                    self.selected_indices = {(layer_idx, idx)}
+                    self.drag_info = (layer_idx, idx, patch)
+                    x, y = patch.get_xy()
+                    self.drag_offset = (x - event.xdata, y - event.ydata)
                 break
+        else:
+            if event.key == "shift":
+                self.selected_indices.clear()
+                self.drag_select_origin = (event.xdata, event.ydata)
 
     def on_motion(self, event):
-        if not self.selected_patch or event.xdata is None or event.ydata is None:
+        if not self.drag_info or event.xdata is None or event.ydata is None:
             return
-        layer_idx, idx, patch = self.selected_patch
+        layer_idx, idx, patch = self.drag_info
         new_x = event.xdata + self.drag_offset[0]
         new_y = event.ydata + self.drag_offset[1]
         patch.set_xy((new_x, new_y))
@@ -878,10 +894,10 @@ class TabPallet(ttk.Frame):
         self.canvas.draw_idle()
 
     def on_release(self, event):
-        if not self.selected_patch:
+        if not self.drag_info:
             return
 
-        layer_idx, idx, patch = self.selected_patch
+        layer_idx, idx, patch = self.drag_info
         new_x, new_y = patch.get_xy()
         x, y, w, h = self.layers[layer_idx][idx]
         pallet_w = parse_dim(self.pallet_w_var)
@@ -905,7 +921,7 @@ class TabPallet(ttk.Frame):
             and self.transformations[other_layer] == self.transformations[layer_idx]
         ):
             self.layers[other_layer][idx] = (snap_x, snap_y, w, h)
-        self.selected_patch = None
+        self.drag_info = None
         self.draw_pallet()
         self.update_summary()
 
@@ -932,8 +948,13 @@ class TabPallet(ttk.Frame):
         self.insert_carton(self.context_layer, self.context_pos)
 
     def delete_selected_carton(self):
-        if self.selected_patch:
-            layer_idx, idx, _ = self.selected_patch
+        """Delete all currently selected cartons."""
+        if not self.selected_indices:
+            return
+
+        for layer_idx, idx in sorted(self.selected_indices, key=lambda t: (t[0], -t[1])):
+            if layer_idx >= len(self.layers) or idx >= len(self.layers[layer_idx]):
+                continue
             del self.layers[layer_idx][idx]
             other_layer = 1 - layer_idx
             if (
@@ -943,33 +964,125 @@ class TabPallet(ttk.Frame):
                 and self.transformations[other_layer] == self.transformations[layer_idx]
             ):
                 del self.layers[other_layer][idx]
-            self.selected_patch = None
-            self.draw_pallet()
-            self.update_summary()
 
-    def rotate_selected_carton(self):
-        """Rotate the selected carton by 90° around its center."""
-        if not self.selected_patch:
-            return
-
-        layer_idx, idx, _ = self.selected_patch
-        x, y, w, h = self.layers[layer_idx][idx]
-
-        center_x = x + w / 2
-        center_y = y + h / 2
-        w, h = h, w
-        x = center_x - w / 2
-        y = center_y - h / 2
-
-        self.layers[layer_idx][idx] = (x, y, w, h)
+        self.selected_indices.clear()
+        self.drag_info = None
         self.draw_pallet()
         self.update_summary()
-        if layer_idx < len(self.patches) and idx < len(self.patches[layer_idx]):
-            self.selected_patch = (
-                layer_idx,
-                idx,
-                self.patches[layer_idx][idx][0],
-            )
+
+    def rotate_selected_carton(self):
+        """Rotate all selected cartons by 90° around their centers."""
+        if not self.selected_indices:
+            return
+
+        for layer_idx, idx in list(self.selected_indices):
+            if layer_idx >= len(self.layers) or idx >= len(self.layers[layer_idx]):
+                continue
+            x, y, w, h = self.layers[layer_idx][idx]
+
+            center_x = x + w / 2
+            center_y = y + h / 2
+            w, h = h, w
+            x = center_x - w / 2
+            y = center_y - h / 2
+
+            self.layers[layer_idx][idx] = (x, y, w, h)
+            other_layer = 1 - layer_idx
+            if (
+                other_layer < len(self.layers)
+                and idx < len(self.layers[other_layer])
+                and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
+                and self.transformations[other_layer] == self.transformations[layer_idx]
+            ):
+                self.layers[other_layer][idx] = (x, y, w, h)
+
+        self.draw_pallet()
+        self.update_summary()
+
+    def _distribute(self, layer_idx, indices, start, end, orientation):
+        boxes = self.layers[layer_idx]
+        sizes = [boxes[i][2 if orientation == "x" else 3] for i in indices]
+        total = sum(sizes)
+        gap = (end - start - total) / (len(indices) + 1)
+        pos = start + gap
+        for i, size in zip(sorted(indices), sizes):
+            x, y, w, h = boxes[i]
+            if orientation == "x":
+                x = pos
+                pos += size + gap
+            else:
+                y = pos
+                pos += size + gap
+            boxes[i] = (x, y, w, h)
+        other_layer = 1 - layer_idx
+        if (
+            other_layer < len(self.layers)
+            and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
+            and self.transformations[other_layer] == self.transformations[layer_idx]
+        ):
+            for i in indices:
+                if i < len(self.layers[other_layer]):
+                    self.layers[other_layer][i] = self.layers[layer_idx][i]
+
+    def distribute_selected_edges(self):
+        if not self.selected_indices:
+            return
+
+        layer_idx = next(iter(self.selected_indices))[0]
+        indices = [i for l, i in self.selected_indices if l == layer_idx]
+        if not indices:
+            return
+
+        pallet_w = parse_dim(self.pallet_w_var)
+        pallet_l = parse_dim(self.pallet_l_var)
+        sel = [self.layers[layer_idx][i] for i in indices]
+        span_x = max(x + w for x, y, w, h in sel) - min(x for x, y, w, h in sel)
+        span_y = max(y + h for x, y, w, h in sel) - min(y for x, y, w, h in sel)
+        orientation = "x" if span_x >= span_y else "y"
+        start = 0
+        end = pallet_w if orientation == "x" else pallet_l
+        TabPallet._distribute(self, layer_idx, indices, start, end, orientation)
+        self.draw_pallet()
+        self.update_summary()
+
+    def distribute_selected_between(self):
+        if not self.selected_indices:
+            return
+
+        layer_idx = next(iter(self.selected_indices))[0]
+        indices = [i for l, i in self.selected_indices if l == layer_idx]
+        if not indices:
+            return
+
+        pallet_w = parse_dim(self.pallet_w_var)
+        pallet_l = parse_dim(self.pallet_l_var)
+        boxes = self.layers[layer_idx]
+        sel_boxes = [boxes[i] for i in indices]
+        min_x = min(x for x, y, w, h in sel_boxes)
+        max_x = max(x + w for x, y, w, h in sel_boxes)
+        min_y = min(y for x, y, w, h in sel_boxes)
+        max_y = max(y + h for x, y, w, h in sel_boxes)
+
+        left_candidates = [0] + [bx + bw for j, (bx, by, bw, bh) in enumerate(boxes) if j not in indices and bx + bw <= min_x]
+        right_candidates = [pallet_w] + [bx for j, (bx, by, bw, bh) in enumerate(boxes) if j not in indices and bx >= max_x]
+        bottom_candidates = [0] + [by + bh for j, (bx, by, bw, bh) in enumerate(boxes) if j not in indices and by + bh <= min_y]
+        top_candidates = [pallet_l] + [by for j, (bx, by, bw, bh) in enumerate(boxes) if j not in indices and by >= max_y]
+        left = max(left_candidates)
+        right = min(right_candidates)
+        bottom = max(bottom_candidates)
+        top = min(top_candidates)
+
+        span_x = max_x - min_x
+        span_y = max_y - min_y
+        orientation = "x" if span_x >= span_y else "y"
+        start = left
+        end = right if orientation == "x" else top
+        if orientation == "y":
+            start = bottom
+            end = top
+        TabPallet._distribute(self, layer_idx, indices, start, end, orientation)
+        self.draw_pallet()
+        self.update_summary()
 
     def on_right_click(self, event):
         if not self.modify_mode_var.get() or event.inaxes not in [self.ax_odd, self.ax_even]:
@@ -979,22 +1092,27 @@ class TabPallet(ttk.Frame):
             self.context_pos = (event.xdata, event.ydata)
 
         # Automatically select the carton under the cursor
-        self.selected_patch = None
+        found = False
         for patch, idx in self.patches[self.context_layer]:
             contains, _ = patch.contains(event)
             if contains:
-                self.selected_patch = (self.context_layer, idx, patch)
+                self.selected_indices = {(self.context_layer, idx)}
+                found = True
                 break
+        if not found:
+            self.selected_indices.clear()
 
         if self.context_menu is None:
             self.context_menu = tk.Menu(self, tearoff=0)
             self.context_menu.add_command(label="Wstaw karton", command=self.insert_carton_button)
-            self.context_menu.add_command(label="Usu\u0144 karton", command=self.delete_selected_carton)
-            self.context_menu.add_command(label="Obróć 90°", command=self.rotate_selected_carton)
+            self.context_menu.add_command(label="Usu\u0144 zaznaczone", command=self.delete_selected_carton)
+            self.context_menu.add_command(label="Obróć zaznaczone 90°", command=self.rotate_selected_carton)
+            self.context_menu.add_command(label="R\u00f3wnomiernie wzd\u0142u\u017c boku palety", command=self.distribute_selected_edges)
+            self.context_menu.add_command(label="R\u00f3wnomiernie wzd\u0142u\u017c innych karton\u00f3w", command=self.distribute_selected_between)
 
-        state = "normal" if self.selected_patch else "disabled"
-        self.context_menu.entryconfigure(1, state=state)
-        self.context_menu.entryconfigure(2, state=state)
+        state = "normal" if self.selected_indices else "disabled"
+        for i in range(1, 5):
+            self.context_menu.entryconfigure(i, state=state if i > 0 else "normal")
         gui_ev = event.guiEvent
         if gui_ev:
             self.context_menu.tk_popup(int(gui_ev.x_root), int(gui_ev.y_root))
