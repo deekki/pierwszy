@@ -1,17 +1,19 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk
+
+from .base_editor import BaseListEditor
 
 from core.utils import load_auxiliary_materials, save_auxiliary_materials
 
 
-class TabAuxiliaryMaterials(ttk.Frame):
+class TabAuxiliaryMaterials(BaseListEditor):
     """Editor for auxiliary materials."""
 
-    def __init__(self, parent):
-        super().__init__(parent)
-        self.materials = load_auxiliary_materials()
-        self.selected_index = None
-        self.build_ui()
+    def load_data(self):
+        return load_auxiliary_materials()
+
+    def save_data(self):
+        save_auxiliary_materials(self.data_list)
 
     def build_ui(self):
         list_frame = ttk.Frame(self)
@@ -64,35 +66,27 @@ class TabAuxiliaryMaterials(ttk.Frame):
         ttk.Button(btn_frame, text="Usuń", command=self.delete_item).pack(side=tk.LEFT, padx=2)
         ttk.Button(btn_frame, text="Zapisz", command=self.save).pack(side=tk.LEFT, padx=2)
 
-        self.refresh_list()
+    def listbox_label(self, item: dict) -> str:
+        return item.get("name", "")
 
-    def refresh_list(self):
-        self.listbox.delete(0, tk.END)
-        for mat in self.materials:
-            self.listbox.insert(tk.END, mat.get("name", ""))
+    def clear_fields(self) -> None:
+        self.name_var.set("")
+        self.qty_var.set("")
+        self.comment_var.set("")
+        self.weight_var.set("")
+        self.type_var.set("")
+        self.supplier_var.set("")
 
-    def on_select(self, event):
-        if not self.listbox.curselection():
-            self.selected_index = None
-            self.name_var.set("")
-            self.qty_var.set("")
-            self.comment_var.set("")
-            self.weight_var.set("")
-            self.type_var.set("")
-            self.supplier_var.set("")
-            return
-        idx = self.listbox.curselection()[0]
-        self.selected_index = idx
-        mat = self.materials[idx]
-        self.name_var.set(mat.get("name", ""))
-        self.qty_var.set(mat.get("quantity", ""))
-        self.comment_var.set(mat.get("comment", ""))
-        self.weight_var.set(mat.get("weight", ""))
-        self.type_var.set(mat.get("type", ""))
-        self.supplier_var.set(mat.get("supplier", ""))
+    def populate_fields(self, item: dict) -> None:
+        self.name_var.set(item.get("name", ""))
+        self.qty_var.set(item.get("quantity", ""))
+        self.comment_var.set(item.get("comment", ""))
+        self.weight_var.set(item.get("weight", ""))
+        self.type_var.set(item.get("type", ""))
+        self.supplier_var.set(item.get("supplier", ""))
 
-    def add_update(self):
-        data = {
+    def collect_data(self) -> dict:
+        return {
             "name": self.name_var.get(),
             "quantity": self.qty_var.get(),
             "comment": self.comment_var.get(),
@@ -100,31 +94,4 @@ class TabAuxiliaryMaterials(ttk.Frame):
             "type": self.type_var.get(),
             "supplier": self.supplier_var.get(),
         }
-        if self.selected_index is None:
-            self.materials.append(data)
-        else:
-            self.materials[self.selected_index] = data
-        self.refresh_list()
-
-    def delete_item(self):
-        if self.selected_index is not None:
-            del self.materials[self.selected_index]
-            self.selected_index = None
-            self.refresh_list()
-
-    def save(self):
-        try:
-            save_auxiliary_materials(self.materials)
-            messagebox.showinfo("Zapis", "Zapisano dane do pliku.")
-        except Exception as e:
-            messagebox.showerror("Błąd", str(e))
-
-    def validate_number(self, value: str) -> bool:
-        if value == "":
-            return True
-        value = value.replace(",", ".")
-        try:
-            return float(value) >= 0
-        except ValueError:
-            return False
 
