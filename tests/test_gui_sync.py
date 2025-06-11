@@ -1,4 +1,5 @@
 import types
+import pytest
 from packing_app.gui.tab_pallet import TabPallet
 
 class DummyPatch:
@@ -26,12 +27,14 @@ def make_dummy():
     d.inverse_transformation = lambda pos, trans, pw, pl, bw, bl: pos
     d.draw_pallet = lambda: None
     d.update_summary = lambda: None
-    d.selected_patch = None
+    d.selected_indices = set()
+    d.drag_info = None
     return d
 
 def test_on_release_syncs_layers():
     dummy = make_dummy()
-    dummy.selected_patch = (0, 0, DummyPatch(5, 5))
+    dummy.drag_info = (0, 0, DummyPatch(5, 5))
+    dummy.selected_indices = {(0, 0)}
     TabPallet.on_release(dummy, None)
     assert dummy.layers[0][0][:2] == (5, 5)
     assert dummy.layers[1][0][:2] == (5, 5)
@@ -43,7 +46,7 @@ def test_insert_and_delete_sync():
     assert len(dummy.layers[1]) == 2
     assert dummy.layers[0][-1][:2] == (10, 10)
     assert dummy.layers[1][-1][:2] == (10, 10)
-    dummy.selected_patch = (0, 0, DummyPatch())
+    dummy.selected_indices = {(0, 0)}
     TabPallet.delete_selected_carton(dummy)
     assert len(dummy.layers[0]) == 1
     assert len(dummy.layers[1]) == 1
@@ -51,14 +54,41 @@ def test_insert_and_delete_sync():
 def test_no_cross_sync_when_patterns_differ():
     dummy = make_dummy()
     dummy.layer_patterns = ["A", "B"]
-    dummy.selected_patch = (0, 0, DummyPatch(2, 2))
+    dummy.drag_info = (0, 0, DummyPatch(2, 2))
+    dummy.selected_indices = {(0, 0)}
     TabPallet.on_release(dummy, None)
     assert dummy.layers[0][0][:2] == (2, 2)
     assert dummy.layers[1][0][:2] == (0, 0)
     TabPallet.insert_carton(dummy, 0, (5, 5))
     assert len(dummy.layers[0]) == 2
     assert len(dummy.layers[1]) == 1
-    dummy.selected_patch = (0, 0, DummyPatch())
+    dummy.selected_indices = {(0, 0)}
     TabPallet.delete_selected_carton(dummy)
     assert len(dummy.layers[0]) == 1
     assert len(dummy.layers[1]) == 1
+
+def test_multi_rotate_delete():
+    dummy = make_dummy()
+    dummy.layers = [[(0, 0, 10, 20), (20, 0, 10, 20)], [(0, 0, 10, 20), (20, 0, 10, 20)]]
+    dummy.selected_indices = {(0, 0), (0, 1)}
+    TabPallet.rotate_selected_carton(dummy)
+    for layer in dummy.layers:
+        for x, y, w, h in layer:
+            assert (w, h) == (20, 10)
+    TabPallet.delete_selected_carton(dummy)
+    assert dummy.layers[0] == [] and dummy.layers[1] == []
+
+def test_distribution_commands():
+    dummy = make_dummy()
+    dummy.layers = [[(0,0,10,10),(40,0,10,10),(80,0,10,10)], [(0,0,10,10),(40,0,10,10),(80,0,10,10)]]
+    dummy.selected_indices = {(0,0),(0,1),(0,2)}
+    TabPallet.distribute_selected_edges(dummy)
+    xs = [pos[0] for pos in dummy.layers[0]]
+    assert xs == pytest.approx([17.5,45.0,72.5])
+
+    dummy = make_dummy()
+    dummy.layers = [[(0,0,10,10),(10,0,10,10),(40,0,10,10),(80,0,10,10)], [(0,0,10,10),(10,0,10,10),(40,0,10,10),(80,0,10,10)]]
+    dummy.selected_indices = {(0,1),(0,2)}
+    TabPallet.distribute_selected_between(dummy)
+    xs = [dummy.layers[0][1][0], dummy.layers[0][2][0]]
+    assert xs == pytest.approx([26.6666666667,53.3333333333])
