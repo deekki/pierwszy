@@ -1,4 +1,8 @@
-from packing_app.core.algorithms import maximize_mixed_layout, pack_pinwheel
+from packing_app.core.algorithms import (
+    maximize_mixed_layout,
+    pack_pinwheel,
+    compute_interlocked_layout,
+)
 
 
 def _overlap(a, b):
@@ -42,3 +46,12 @@ def test_pinwheel_fallback_for_small_area():
     for i, pos in enumerate(positions):
         for other in positions[i + 1 :]:
             assert not _overlap(pos, other)
+
+
+def test_compute_interlocked_layout_returns_empty_for_large_carton():
+    # Carton dimensions exceed pallet dimensions, so nothing should be placed
+    count, base, interlocked = compute_interlocked_layout(100, 100, 150, 150)
+
+    assert count == 0
+    assert base == []
+    assert interlocked == []
