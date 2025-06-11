@@ -4,7 +4,11 @@ import matplotlib
 
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from matplotlib.backends.backend_tkagg import (
+    FigureCanvasTkAgg,
+    NavigationToolbar2Tk,
+)
+import copy
 from palletizer_core import (
     Carton,
     Pallet,
@@ -412,23 +416,23 @@ class TabPallet(ttk.Frame):
         even_name = self.even_layout_var.get()
         odd_idx = self.layout_map.get(odd_name, 0)
         even_idx = self.layout_map.get(even_name, 0)
-        odd_layout = (
+        odd_source = (
             self.best_odd
             if odd_name == self.best_layout_name
             else self.layouts[odd_idx][1]
         )
-        even_layout = (
+        even_source = (
             self.best_even
             if even_name == self.best_layout_name
             else self.layouts[even_idx][1]
         )
         for i in range(1, num_layers + 1):
             if i % 2 == 1:
-                self.layers.append(odd_layout)
+                self.layers.append(list(odd_source))
                 transform = self.odd_transform_var.get()
                 patt = odd_name
             else:
-                self.layers.append(even_layout)
+                self.layers.append(list(even_source))
                 transform = self.even_transform_var.get()
                 patt = even_name
             self.transformations.append(transform)
