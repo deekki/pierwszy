@@ -1120,12 +1120,15 @@ class TabPallet(ttk.Frame):
         if event.xdata is not None and event.ydata is not None:
             self.context_pos = (event.xdata, event.ydata)
 
-        # Automatically select the carton under the cursor
+        # Automatically select the carton under the cursor unless it is already
+        # part of the current selection. This allows context menu actions to be
+        # applied to multiple cartons when right-clicking on any of them.
         found = False
         for patch, idx in self.patches[self.context_layer]:
             contains, _ = patch.contains(event)
             if contains:
-                self.selected_indices = {(self.context_layer, idx)}
+                if (self.context_layer, idx) not in self.selected_indices:
+                    self.selected_indices = {(self.context_layer, idx)}
                 found = True
                 break
         if not found:
