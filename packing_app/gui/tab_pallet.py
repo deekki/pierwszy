@@ -812,9 +812,27 @@ class TabPallet(ttk.Frame):
             self.status_var.set("")
         if hasattr(self, "compute_btn"):
             self.compute_btn.state(["!disabled"])
+        self.highlight_selection()
+
+    def highlight_selection(self):
+        """Visually highlight currently selected cartons."""
+        for layer_idx, patch_list in enumerate(self.patches):
+            for patch, idx in patch_list:
+                if (layer_idx, idx) in self.selected_indices:
+                    patch.set_edgecolor("orange")
+                    patch.set_linewidth(2)
+                else:
+                    patch.set_edgecolor("black")
+                    patch.set_linewidth(1)
+        self.canvas.draw_idle()
 
     def toggle_edit_mode(self):
         if self.modify_mode_var.get():
+            if hasattr(self, "status_var"):
+                self.status_var.set(
+                    "Tryb edycji: lewy przycisk \u2013 przesuwaj, "
+                    "SHIFT+klik \u2013 wyb\u00f3r wielu, prawy \u2013 menu"
+                )
             self.press_cid = self.canvas.mpl_connect(
                 "button_press_event", self.on_press
             )
@@ -833,6 +851,8 @@ class TabPallet(ttk.Frame):
             self.drag_info = None
             self.drag_select_origin = None
             self.draw_pallet()
+            if hasattr(self, "status_var"):
+                self.status_var.set("")
 
     def on_press(self, event):
         if not self.modify_mode_var.get() or event.inaxes not in [
@@ -866,6 +886,7 @@ class TabPallet(ttk.Frame):
             if event.key == "shift":
                 self.selected_indices.clear()
                 self.drag_select_origin = (event.xdata, event.ydata)
+        self.highlight_selection()
 
     def on_motion(self, event):
         if not self.drag_info or event.xdata is None or event.ydata is None:
@@ -928,6 +949,7 @@ class TabPallet(ttk.Frame):
         self.drag_info = None
         self.draw_pallet()
         self.update_summary()
+        self.highlight_selection()
 
     def insert_carton(self, layer_idx, pos):
         """Insert a carton into the given layer at `pos`."""
@@ -973,6 +995,7 @@ class TabPallet(ttk.Frame):
         self.drag_info = None
         self.draw_pallet()
         self.update_summary()
+        self.highlight_selection()
 
     def rotate_selected_carton(self):
         """Rotate all selected cartons by 90° around their centers."""
@@ -1048,6 +1071,8 @@ class TabPallet(ttk.Frame):
         TabPallet._distribute(self, layer_idx, indices, start, end, orientation)
         self.draw_pallet()
         self.update_summary()
+        self.highlight_selection()
+        self.highlight_selection()
 
     def distribute_selected_between(self):
         if not self.selected_indices:
@@ -1120,6 +1145,7 @@ class TabPallet(ttk.Frame):
         gui_ev = event.guiEvent
         if gui_ev:
             self.context_menu.tk_popup(int(gui_ev.x_root), int(gui_ev.y_root))
+        self.highlight_selection()
 
     def update_summary(self):
         if not self.layers:
