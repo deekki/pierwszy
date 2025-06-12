@@ -185,14 +185,22 @@ class TabPallet(ttk.Frame):
             row=2, column=0, padx=5, pady=5
         )
         self.spacing_var = tk.StringVar(value="0")
+        spacing_frame = ttk.Frame(carton_frame)
         entry_spacing = ttk.Entry(
-            carton_frame,
+            spacing_frame,
             textvariable=self.spacing_var,
-            width=10,
+            width=6,
             validate="key",
             validatecommand=(self.register(self.validate_number), "%P"),
         )
-        entry_spacing.grid(row=2, column=1, padx=5, pady=5)
+        entry_spacing.pack(side=tk.LEFT)
+        ttk.Button(
+            spacing_frame, text="+", width=2, command=lambda: self.adjust_spacing(1)
+        ).pack(side=tk.LEFT)
+        ttk.Button(
+            spacing_frame, text="-", width=2, command=lambda: self.adjust_spacing(-1)
+        ).pack(side=tk.LEFT)
+        spacing_frame.grid(row=2, column=1, padx=5, pady=5)
         entry_spacing.bind("<Return>", self.compute_pallet)
 
         layers_frame = ttk.LabelFrame(self, text="Ustawienia warstw")
@@ -1057,7 +1065,10 @@ class TabPallet(ttk.Frame):
         boxes = self.layers[layer_idx]
         sizes = [boxes[i][2 if orientation == "x" else 3] for i in indices]
         total = sum(sizes)
-        gap = (end - start - total) / (len(indices) + 1)
+        available = end - start
+        if total > available:
+            return
+        gap = max((available - total) / (len(indices) + 1), 0)
         pos = start + gap
         for i, size in zip(sorted(indices), sizes):
             x, y, w, h = boxes[i]
@@ -1096,6 +1107,45 @@ class TabPallet(ttk.Frame):
         start = 0
         end = pallet_w if orientation == "x" else pallet_l
         TabPallet._distribute(self, layer_idx, indices, start, end, orientation)
+        self.draw_pallet()
+        self.update_summary()
+
+    def auto_space_selected(self):
+        if not self.selected_indices:
+            return
+
+        layer_idx = next(iter(self.selected_indices))[0]
+        indices = [i for l, i in self.selected_indices if l == layer_idx]
+        if not indices:
+            return
+
+        pallet_w = parse_dim(self.pallet_w_var)
+        pallet_l = parse_dim(self.pallet_l_var)
+        boxes = self.layers[layer_idx]
+        sel_boxes = [boxes[i] for i in indices]
+        min_x = min(x for x, y, w, h in sel_boxes)
+        max_x = max(x + w for x, y, w, h in sel_boxes)
+        min_y = min(y for x, y, w, h in sel_boxes)
+        max_y = max(y + h for x, y, w, h in sel_boxes)
+
+        left_candidates = [0] + [bx + bw for j, (bx, by, bw, bh) in enumerate(boxes) if j not in indices and bx + bw <= min_x]
+        right_candidates = [pallet_w] + [bx for j, (bx, by, bw, bh) in enumerate(boxes) if j not in indices and bx >= max_x]
+        bottom_candidates = [0] + [by + bh for j, (bx, by, bw, bh) in enumerate(boxes) if j not in indices and by + bh <= min_y]
+        top_candidates = [pallet_l] + [by for j, (bx, by, bw, bh) in enumerate(boxes) if j not in indices and by >= max_y]
+        left = max(left_candidates)
+        right = min(right_candidates)
+        bottom = max(bottom_candidates)
+        top = min(top_candidates)
+
+        span_x = max_x - min_x
+        span_y = max_y - min_y
+        orientation = "x" if span_x >= span_y else "y"
+        start = left
+        end = right if orientation == "x" else top
+        if orientation == "y":
+            start = bottom
+            end = top
+        self._distribute(layer_idx, indices, start, end, orientation)
         self.draw_pallet()
         self.update_summary()
         self.highlight_selection()
@@ -1168,9 +1218,10 @@ class TabPallet(ttk.Frame):
             self.context_menu.add_command(label="Obróć zaznaczone 90°", command=self.rotate_selected_carton)
             self.context_menu.add_command(label="R\u00f3wnomiernie wzd\u0142u\u017c boku palety", command=self.distribute_selected_edges)
             self.context_menu.add_command(label="R\u00f3wnomiernie wzd\u0142u\u017c innych karton\u00f3w", command=self.distribute_selected_between)
+            self.context_menu.add_command(label="Automatyczny odst\u0119p", command=self.auto_space_selected)
 
         state = "normal" if self.selected_indices else "disabled"
-        for i in range(1, 5):
+        for i in range(1, 6):
             self.context_menu.entryconfigure(i, state=state if i > 0 else "normal")
         gui_ev = event.guiEvent
         if gui_ev:
@@ -1230,3 +1281,13 @@ class TabPallet(ttk.Frame):
         slip_mass = self.slip_sheet_weight * num_slip
         total_mass = carton_wt * total_cartons + tape_wt + film_wt + pallet_wt + slip_mass
         self.weight_label.config(text=f"Masa: {total_mass:.2f} kg")
+
+    def adjust_spacing(self, delta: float) -> None:
+        """Increase or decrease carton spacing by ``delta`` millimeters."""
+        try:
+            current = float(self.spacing_var.get().replace(",", "."))
+        except ValueError:
+            current = 0.0
+        new_val = max(0.0, current + delta)
+        self.spacing_var.set(f"{new_val:.1f}")
+        self.compute_pallet()
