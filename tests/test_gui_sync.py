@@ -11,7 +11,11 @@ class DummyPatch:
         self._xy = xy
 
 def var(val):
-    return types.SimpleNamespace(get=lambda: str(val))
+    ns = types.SimpleNamespace()
+    ns.val = val
+    ns.get = lambda: str(ns.val)
+    ns.set = lambda v: setattr(ns, "val", v)
+    return ns
 
 def make_dummy():
     d = types.SimpleNamespace()
@@ -20,6 +24,7 @@ def make_dummy():
     d.cardboard_thickness_var = var(0)
     d.box_w_var = var(10)
     d.box_l_var = var(10)
+    d.spacing_var = var(0)
     d.transformations = ["Brak", "Brak"]
     d.layer_patterns = ["A", "A"]
     d.layers = [[(0, 0, 10, 10)], [(0, 0, 10, 10)]]
@@ -27,6 +32,7 @@ def make_dummy():
     d.inverse_transformation = lambda pos, trans, pw, pl: pos
     d.draw_pallet = lambda: None
     d.update_summary = lambda: None
+    d.compute_pallet = lambda *a, **k: None
     d.selected_indices = set()
     d.drag_info = None
     d.highlight_selection = lambda: None
@@ -93,3 +99,17 @@ def test_distribution_commands():
     TabPallet.distribute_selected_between(dummy)
     xs = [dummy.layers[0][1][0], dummy.layers[0][2][0]]
     assert xs == pytest.approx([26.6666666667,53.3333333333])
+
+def test_auto_distribution_respects_boundaries():
+    dummy = make_dummy()
+    dummy.layers = [[(0,0,60,10),(40,0,60,10)], [(0,0,60,10),(40,0,60,10)]]
+    dummy.selected_indices = {(0,0),(0,1)}
+    before = [pos[0] for pos in dummy.layers[0]]
+    TabPallet.distribute_selected_edges(dummy)
+    after = [pos[0] for pos in dummy.layers[0]]
+    assert after == before  # not enough space to move
+
+def test_adjust_spacing_clamps_to_zero():
+    dummy = make_dummy()
+    TabPallet.adjust_spacing(dummy, -5)
+    assert dummy.spacing_var.get() == '0.0'
