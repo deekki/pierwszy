@@ -181,6 +181,20 @@ class TabPallet(ttk.Frame):
         self.box_h_var.trace_add("write", self.update_external_dimensions)
         self.update_external_dimensions()
 
+        ttk.Label(carton_frame, text="Odstęp między kartonami (mm):").grid(
+            row=2, column=0, padx=5, pady=5
+        )
+        self.spacing_var = tk.StringVar(value="0")
+        entry_spacing = ttk.Entry(
+            carton_frame,
+            textvariable=self.spacing_var,
+            width=10,
+            validate="key",
+            validatecommand=(self.register(self.validate_number), "%P"),
+        )
+        entry_spacing.grid(row=2, column=1, padx=5, pady=5)
+        entry_spacing.bind("<Return>", self.compute_pallet)
+
         layers_frame = ttk.LabelFrame(self, text="Ustawienia warstw")
         layers_frame.pack(fill=tk.X, padx=10, pady=5)
 
@@ -666,6 +680,7 @@ class TabPallet(ttk.Frame):
             box_l = parse_dim(self.box_l_var)
             box_h = parse_dim(self.box_h_var)
             thickness = parse_dim(self.cardboard_thickness_var)
+            spacing = parse_dim(self.spacing_var)
             slip_count = int(parse_dim(self.slip_count_var))
             box_w_ext = box_w + 2 * thickness
             box_l_ext = box_l + 2 * thickness
@@ -700,15 +715,26 @@ class TabPallet(ttk.Frame):
 
             carton = Carton(box_w_ext, box_l_ext, box_h)
             pallet = Pallet(pallet_w, pallet_l, pallet_h)
-            selector = PatternSelector(carton, pallet)
+            calc_carton = Carton(box_w_ext + spacing, box_l_ext + spacing, box_h)
+            selector = PatternSelector(calc_carton, pallet)
 
             patterns, best_name, self.best_even, self.best_odd = self._get_default_layout(
                 selector,
-                carton,
+                calc_carton,
                 pallet,
                 pallet_w,
                 pallet_l,
             )
+
+            def adjust(patt):
+                return [
+                    (x + spacing / 2, y + spacing / 2, box_w_ext, box_l_ext)
+                    for x, y, _, _ in patt
+                ]
+
+            patterns = {k: adjust(v) for k, v in patterns.items()}
+            self.best_even = adjust(self.best_even)
+            self.best_odd = adjust(self.best_odd)
 
             for name, patt in patterns.items():
                 centered = self.center_layout(patt, pallet_w, pallet_l)
@@ -720,20 +746,21 @@ class TabPallet(ttk.Frame):
             # available.  Fallback to the best scored pattern otherwise.
             if "interlock" in patterns:
                 best_name = "interlock"
-                best_pattern = patterns["interlock"]
+                best_pattern = selector.generate_all()["interlock"]
             else:
-                best_name, best_pattern, _ = selector.best(
+                raw_name, best_pattern, _ = selector.best(
                     maximize_mixed=self.maximize_mixed.get()
                 )
+                best_name = raw_name
 
-            seq = EvenOddSequencer(best_pattern, carton, pallet)
+            seq = EvenOddSequencer(best_pattern, calc_carton, pallet)
             even_base, odd_shifted = seq.best_shift()
             if self.shift_even_var.get():
-                self.best_even = self.center_layout(odd_shifted, pallet_w, pallet_l)
-                self.best_odd = self.center_layout(even_base, pallet_w, pallet_l)
+                self.best_even = adjust(self.center_layout(odd_shifted, pallet_w, pallet_l))
+                self.best_odd = adjust(self.center_layout(even_base, pallet_w, pallet_l))
             else:
-                self.best_even = self.center_layout(even_base, pallet_w, pallet_l)
-                self.best_odd = self.center_layout(odd_shifted, pallet_w, pallet_l)
+                self.best_even = adjust(self.center_layout(even_base, pallet_w, pallet_l))
+                self.best_odd = adjust(self.center_layout(odd_shifted, pallet_w, pallet_l))
             self.best_layout_name = best_name.replace("_", " ").capitalize()
 
 
