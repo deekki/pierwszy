@@ -1,7 +1,12 @@
 import json
 import os
 
-PATTERN_DIR = os.path.join(os.path.dirname(__file__), '..', 'data', 'pallet_patterns')
+PATTERN_DIR = os.path.join(
+    os.path.dirname(__file__),
+    "..",
+    "data",
+    "pallet_patterns",
+)
 
 
 def _ensure_dir() -> None:

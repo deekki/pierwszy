@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, simpledialog
 import matplotlib
+import json
 
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
@@ -9,7 +10,12 @@ from matplotlib.backends.backend_tkagg import (
     NavigationToolbar2Tk,
 )
 import copy
-from packing_app.core import save_pattern, load_pattern, list_patterns
+from packing_app.core import save_pattern
+from packing_app.core.pattern_io import (
+    pattern_path,
+    _ensure_dir,
+    PATTERN_DIR,
+)
 from palletizer_core import (
     Carton,
     Pallet,
@@ -396,9 +402,16 @@ class TabPallet(ttk.Frame):
         odd_tr_default = (
             prev_odd_transform.get() if prev_odd_transform else transform_options[0]
         )
-        even_tr_default = (
-            prev_even_transform.get() if prev_even_transform else transform_options[0]
-        )
+        if prev_even_transform:
+            even_tr_default = prev_even_transform.get()
+        else:
+            pallet_w = parse_dim(self.pallet_w_var)
+            pallet_l = parse_dim(self.pallet_l_var)
+            even_tr_default = (
+                "Odbicie wzdłuż dłuższego boku"
+                if pallet_w >= pallet_l
+                else "Odbicie wzdłuż krótszego boku"
+            )
 
         ttk.Label(self.transform_frame, text="Warstwy nieparzyste:").grid(
             row=0, column=0, padx=5, pady=2
@@ -1351,22 +1364,26 @@ class TabPallet(ttk.Frame):
         data = self.gather_pattern_data(name)
         try:
             save_pattern(name, data)
-            messagebox.showinfo("Sukces", f"Zapisano wzór '{name}'")
+            path = pattern_path(name)
+            messagebox.showinfo(
+                "Sukces", f"Zapisano wzór '{name}' w {path}"
+            )
         except Exception as exc:
             messagebox.showerror("Błąd zapisu", str(exc))
 
     def load_pattern_dialog(self):
-        names = list_patterns()
-        if not names:
-            messagebox.showinfo("Brak", "Brak zapisanych wzorów")
-            return
-        prompt = "Dostępne wzory: " + ", ".join(names)
-        name = simpledialog.askstring("Wczytaj wzór", prompt)
-        if not name:
+        _ensure_dir()
+        path = filedialog.askopenfilename(
+            title="Wczytaj wzór",
+            initialdir=PATTERN_DIR,
+            filetypes=[("JSON", "*.json")],
+        )
+        if not path:
             return
         try:
-            data = load_pattern(name)
-        except FileNotFoundError:
-            messagebox.showerror("Błąd", "Nie znaleziono wskazanego wzoru")
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as exc:
+            messagebox.showerror("Błąd", str(exc))
             return
         self.apply_pattern_data(data)
