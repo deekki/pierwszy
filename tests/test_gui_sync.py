@@ -113,3 +113,16 @@ def test_adjust_spacing_clamps_to_zero():
     dummy = make_dummy()
     TabPallet.adjust_spacing(dummy, -5)
     assert dummy.spacing_var.get() == '0.0'
+
+def test_multi_drag_moves_all_selected():
+    dummy = make_dummy()
+    dummy.layers = [[(0,0,10,10),(20,0,10,10)], [(0,0,10,10),(20,0,10,10)]]
+    p1 = DummyPatch(5,5)
+    p2 = DummyPatch(25,5)
+    dummy.drag_info = [(0,0,p1,0,0),(0,1,p2,20,0)]
+    dummy.selected_indices = {(0,0),(0,1)}
+    TabPallet.on_release(dummy, None)
+    assert dummy.layers[0][0][:2] == (5,5)
+    assert dummy.layers[0][1][:2] == (25,5)
+    assert dummy.layers[1][0][:2] == (5,5)
+    assert dummy.layers[1][1][:2] == (25,5)

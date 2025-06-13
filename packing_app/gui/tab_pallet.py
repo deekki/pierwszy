@@ -936,10 +936,18 @@ class TabPallet(ttk.Frame):
                         self.selected_indices.add((layer_idx, idx))
                     self.drag_info = None
                 else:
-                    self.selected_indices = {(layer_idx, idx)}
-                    self.drag_info = (layer_idx, idx, patch)
-                    x, y = patch.get_xy()
-                    self.drag_offset = (x - event.xdata, y - event.ydata)
+                    if (layer_idx, idx) not in self.selected_indices:
+                        self.selected_indices = {(layer_idx, idx)}
+                    drag_items = []
+                    for l_idx, i_idx in self.selected_indices:
+                        for p, j in self.patches[l_idx]:
+                            if j == i_idx:
+                                x, y = p.get_xy()
+                                drag_items.append(
+                                    (l_idx, i_idx, p, x - event.xdata, y - event.ydata)
+                                )
+                                break
+                    self.drag_info = drag_items
                 break
         else:
             if event.key == "shift":
@@ -950,61 +958,74 @@ class TabPallet(ttk.Frame):
     def on_motion(self, event):
         if not self.drag_info or event.xdata is None or event.ydata is None:
             return
-        layer_idx, idx, patch = self.drag_info
-        new_x = event.xdata + self.drag_offset[0]
-        new_y = event.ydata + self.drag_offset[1]
-        patch.set_xy((new_x, new_y))
-        x, y, w, h = self.layers[layer_idx][idx]
+
         pallet_w = parse_dim(self.pallet_w_var)
         pallet_l = parse_dim(self.pallet_l_var)
-        orig_x, orig_y, _, _ = self.inverse_transformation(
-            [(new_x, new_y, w, h)],
-            self.transformations[layer_idx],
-            pallet_w,
-            pallet_l,
-        )[0]
-        self.layers[layer_idx][idx] = (orig_x, orig_y, w, h)
-        coords = self.apply_transformation(
-            list(self.layers[layer_idx]),
-            self.transformations[layer_idx],
-            pallet_w,
-            pallet_l,
-        )
-        collision_idx = self.detect_collisions(coords, pallet_w, pallet_l)
-        for p, i in self.patches[layer_idx]:
-            base_color = "blue" if layer_idx == 0 else "green"
-            color = "red" if i in collision_idx else base_color
-            p.set_facecolor(color)
+
+        for layer_idx, idx, patch, dx, dy in self.drag_info:
+            new_x = event.xdata + dx
+            new_y = event.ydata + dy
+            patch.set_xy((new_x, new_y))
+            x, y, w, h = self.layers[layer_idx][idx]
+            orig_x, orig_y, _, _ = self.inverse_transformation(
+                [(new_x, new_y, w, h)],
+                self.transformations[layer_idx],
+                pallet_w,
+                pallet_l,
+            )[0]
+            self.layers[layer_idx][idx] = (orig_x, orig_y, w, h)
+
+        for layer_idx in {item[0] for item in self.drag_info}:
+            coords = self.apply_transformation(
+                list(self.layers[layer_idx]),
+                self.transformations[layer_idx],
+                pallet_w,
+                pallet_l,
+            )
+            collision_idx = self.detect_collisions(coords, pallet_w, pallet_l)
+            for p, i in self.patches[layer_idx]:
+                base_color = "blue" if layer_idx == 0 else "green"
+                color = "red" if i in collision_idx else base_color
+                p.set_facecolor(color)
+
         self.canvas.draw_idle()
 
     def on_release(self, event):
         if not self.drag_info:
             return
 
-        layer_idx, idx, patch = self.drag_info
-        new_x, new_y = patch.get_xy()
-        x, y, w, h = self.layers[layer_idx][idx]
         pallet_w = parse_dim(self.pallet_w_var)
         pallet_l = parse_dim(self.pallet_l_var)
-        orig_x, orig_y, _, _ = self.inverse_transformation(
-            [(new_x, new_y, w, h)],
-            self.transformations[layer_idx],
-            pallet_w,
-            pallet_l,
-        )[0]
-        other_boxes = [b for i, b in enumerate(self.layers[layer_idx]) if i != idx]
-        snap_x, snap_y = self.snap_position(
-            orig_x, orig_y, w, h, pallet_w, pallet_l, other_boxes
-        )
-        self.layers[layer_idx][idx] = (snap_x, snap_y, w, h)
-        other_layer = 1 - layer_idx
-        if (
-            other_layer < len(self.layers)
-            and idx < len(self.layers[other_layer])
-            and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
-            and self.transformations[other_layer] == self.transformations[layer_idx]
-        ):
-            self.layers[other_layer][idx] = (snap_x, snap_y, w, h)
+
+        items = self.drag_info if isinstance(self.drag_info, list) else [self.drag_info]
+
+        for layer_idx, idx, patch, *_ in items:
+            new_x, new_y = patch.get_xy()
+            x, y, w, h = self.layers[layer_idx][idx]
+            orig_x, orig_y, _, _ = self.inverse_transformation(
+                [(new_x, new_y, w, h)],
+                self.transformations[layer_idx],
+                pallet_w,
+                pallet_l,
+            )[0]
+            other_boxes = [
+                b
+                for j, b in enumerate(self.layers[layer_idx])
+                if j != idx or (layer_idx, j) not in self.selected_indices
+            ]
+            snap_x, snap_y = self.snap_position(
+                orig_x, orig_y, w, h, pallet_w, pallet_l, other_boxes
+            )
+            self.layers[layer_idx][idx] = (snap_x, snap_y, w, h)
+            other_layer = 1 - layer_idx
+            if (
+                other_layer < len(self.layers)
+                and idx < len(self.layers[other_layer])
+                and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
+                and self.transformations[other_layer] == self.transformations[layer_idx]
+            ):
+                self.layers[other_layer][idx] = (snap_x, snap_y, w, h)
+
         self.drag_info = None
         self.draw_pallet()
         self.update_summary()
