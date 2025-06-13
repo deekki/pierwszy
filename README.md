@@ -28,6 +28,12 @@ The window opens with five tabs:
 4. **Materiały** – manage the catalogue of packaging materials. Add, edit or delete items together with their quantities, type, supplier and weight.
 5. **Kartony** – edit predefined carton definitions, modify dimensions and weight or add your own carton codes for use in the other tabs.
 
+## Pattern files
+Custom pallet layouts saved from the GUI are stored as JSON files in
+`packing_app/data/pallet_patterns`. When saving a pattern you will see the full
+path in the confirmation message. Loading a pattern opens a file dialog pointed
+to the same directory, so you can easily browse available definitions.
+
 ## Windows batch file
 If you run the application by double-clicking the Python file, the console may close before you see any errors. You can create a `run_app.bat` file to keep the window open:
 ```bat
