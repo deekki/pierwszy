@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog, simpledialog
 import matplotlib
 
 matplotlib.use("TkAgg")
@@ -9,6 +9,7 @@ from matplotlib.backends.backend_tkagg import (
     NavigationToolbar2Tk,
 )
 import copy
+from packing_app.core import save_pattern, load_pattern, list_patterns
 from palletizer_core import (
     Carton,
     Pallet,
@@ -309,6 +310,16 @@ class TabPallet(ttk.Frame):
             control_frame,
             text="Usu\u0144 karton",
             command=self.delete_selected_carton,
+        ).pack(side=tk.LEFT, padx=5)
+        ttk.Button(
+            control_frame,
+            text="Zapisz wzór",
+            command=self.save_pattern_dialog,
+        ).pack(side=tk.LEFT, padx=5)
+        ttk.Button(
+            control_frame,
+            text="Wczytaj wzór",
+            command=self.load_pattern_dialog,
         ).pack(side=tk.LEFT, padx=5)
         self.status_var = tk.StringVar(value="")
         self.status_label = ttk.Label(control_frame, textvariable=self.status_var)
@@ -1291,3 +1302,71 @@ class TabPallet(ttk.Frame):
         new_val = max(0.0, current + delta)
         self.spacing_var.set(f"{new_val:.1f}")
         self.compute_pallet()
+
+    # ------------------------------------------------------------------
+    # JSON pattern export / import helpers
+    # ------------------------------------------------------------------
+
+    def gather_pattern_data(self, name: str = "") -> dict:
+        """Collect current pallet layout as a JSON-serialisable dict."""
+        pallet_w = parse_dim(self.pallet_w_var)
+        pallet_l = parse_dim(self.pallet_l_var)
+        pallet_h = parse_dim(self.pallet_h_var)
+        box_w = parse_dim(self.box_w_var)
+        box_l = parse_dim(self.box_l_var)
+        box_h = parse_dim(self.box_h_var)
+        num_layers = getattr(self, "num_layers", int(parse_dim(self.num_layers_var)))
+        data = {
+            "name": name,
+            "dimensions": {"width": pallet_w, "length": pallet_l, "height": pallet_h},
+            "productDimensions": {"width": box_w, "length": box_l, "height": box_h},
+            "layers": self.layers[:num_layers],
+        }
+        return data
+
+    def apply_pattern_data(self, data: dict) -> None:
+        """Load pallet layout from a dictionary."""
+        dims = data.get("dimensions", {})
+        self.pallet_w_var.set(str(dims.get("width", "")))
+        self.pallet_l_var.set(str(dims.get("length", "")))
+        self.pallet_h_var.set(str(dims.get("height", "")))
+        prod = data.get("productDimensions", {})
+        self.box_w_var.set(str(prod.get("width", "")))
+        self.box_l_var.set(str(prod.get("length", "")))
+        self.box_h_var.set(str(prod.get("height", "")))
+        layers = data.get("layers", [])
+        if layers:
+            self.layers = [list(layer) for layer in layers]
+            self.num_layers = len(self.layers)
+            self.num_layers_var.set(str(self.num_layers))
+            self.layer_patterns = ["" for _ in self.layers]
+            self.transformations = ["Brak" for _ in self.layers]
+            self.draw_pallet()
+            self.update_summary()
+
+    def save_pattern_dialog(self):
+        name = simpledialog.askstring("Zapisz wzór", "Nazwa wzoru:")
+        if not name:
+            return
+        data = self.gather_pattern_data(name)
+        try:
+            save_pattern(name, data)
+            messagebox.showinfo("Sukces", f"Zapisano wzór '{name}'")
+        except Exception as exc:
+            messagebox.showerror("Błąd zapisu", str(exc))
+
+    def load_pattern_dialog(self):
+        names = list_patterns()
+        if not names:
+            messagebox.showinfo("Brak", "Brak zapisanych wzorów")
+            return
+        prompt = "Dostępne wzory: " + ", ".join(names)
+        name = simpledialog.askstring("Wczytaj wzór", prompt)
+        if not name:
+            return
+        try:
+            data = load_pattern(name)
+        except FileNotFoundError:
+            messagebox.showerror("Błąd", "Nie znaleziono wskazanego wzoru")
+            return
+        self.apply_pattern_data(data)
