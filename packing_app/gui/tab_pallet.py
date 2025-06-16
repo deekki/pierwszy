@@ -765,10 +765,21 @@ class TabPallet(ttk.Frame):
             )
 
             def adjust(patt):
-                return [
-                    (x + spacing / 2, y + spacing / 2, box_w_ext, box_l_ext)
-                    for x, y, _, _ in patt
-                ]
+                """Shrink algorithm output to account for spacing.
+
+                The packing algorithms operate on box dimensions that already
+                include the desired spacing.  Here we shift each carton by half
+                the spacing to center it inside its reserved area and then
+                restore the original orientation by subtracting the spacing from
+                its width and length.
+                """
+
+                adjusted = []
+                for x, y, w, h in patt:
+                    new_w = w - spacing
+                    new_h = h - spacing
+                    adjusted.append((x + spacing / 2, y + spacing / 2, new_w, new_h))
+                return adjusted
 
             patterns = {k: adjust(v) for k, v in patterns.items()}
             self.best_even = adjust(self.best_even)
