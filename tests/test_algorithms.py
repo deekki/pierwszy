@@ -3,6 +3,7 @@ from packing_app.core.algorithms import (
     pack_l_pattern,
     pack_pinwheel,
     compute_interlocked_layout,
+    pack_rectangles_mixed_max,
 )
 
 
@@ -85,3 +86,41 @@ def test_compute_interlocked_layout_returns_empty_for_small_pallet():
     assert count == 0
     assert base == [[] for _ in range(4)]
     assert interlocked == [[] for _ in range(4)]
+
+
+def test_pack_rectangles_mixed_max_returns_empty_when_too_small():
+    count, positions = pack_rectangles_mixed_max(
+        width=40, height=40, wprod=60, lprod=40
+    )
+    assert count == 0
+    assert positions == []
+
+
+def test_pack_rectangles_mixed_max_grid_layout():
+    pallet_w, pallet_l = 100, 100
+    box_w, box_l = 50, 50
+    count, positions = pack_rectangles_mixed_max(pallet_w, pallet_l, box_w, box_l)
+
+    assert count == 4
+    for x, y, w, h in positions:
+        assert 0 <= x <= pallet_w - w
+        assert 0 <= y <= pallet_l - h
+
+    for i, pos in enumerate(positions):
+        for other in positions[i + 1 :]:
+            assert not _overlap(pos, other)
+
+
+def test_pack_rectangles_mixed_max_mixed_orientations():
+    pallet_w, pallet_l = 110, 100
+    box_w, box_l = 60, 40
+    count, positions = pack_rectangles_mixed_max(pallet_w, pallet_l, box_w, box_l)
+
+    assert count == 3
+    for x, y, w, h in positions:
+        assert 0 <= x <= pallet_w - w
+        assert 0 <= y <= pallet_l - h
+
+    for i, pos in enumerate(positions):
+        for other in positions[i + 1 :]:
+            assert not _overlap(pos, other)
