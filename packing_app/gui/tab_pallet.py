@@ -422,7 +422,7 @@ class TabPallet(ttk.Frame):
             self.odd_layout_var,
             odd_default,
             *layout_options,
-            command=self.update_layers,
+            command=lambda *_: self.update_layers("odd"),
         ).grid(row=0, column=1, padx=5, pady=2)
         self.odd_transform_var = tk.StringVar(value=odd_tr_default)
         ttk.OptionMenu(
@@ -430,7 +430,7 @@ class TabPallet(ttk.Frame):
             self.odd_transform_var,
             odd_tr_default,
             *transform_options,
-            command=self.update_layers,
+            command=lambda *_: self.update_layers("odd"),
         ).grid(row=0, column=2, padx=5, pady=2)
 
         ttk.Label(self.transform_frame, text="Warstwy parzyste:").grid(
@@ -442,7 +442,7 @@ class TabPallet(ttk.Frame):
             self.even_layout_var,
             even_default,
             *layout_options,
-            command=self.update_layers,
+            command=lambda *_: self.update_layers("even"),
         ).grid(row=1, column=1, padx=5, pady=2)
         self.even_transform_var = tk.StringVar(value=even_tr_default)
         ttk.OptionMenu(
@@ -450,14 +450,15 @@ class TabPallet(ttk.Frame):
             self.even_transform_var,
             even_tr_default,
             *transform_options,
-            command=self.update_layers,
+            command=lambda *_: self.update_layers("even"),
         ).grid(row=1, column=2, padx=5, pady=2)
 
-    def update_layers(self, *args):
+    def update_layers(self, side="both", *args):
         num_layers = getattr(self, "num_layers", int(parse_dim(self.num_layers_var)))
-        self.layers = []
-        self.layer_patterns = []
-        self.transformations = []
+        if side == "both" or not self.layers:
+            self.layers = [list() for _ in range(num_layers)]
+            self.layer_patterns = ["" for _ in range(num_layers)]
+            self.transformations = ["" for _ in range(num_layers)]
         odd_name = self.odd_layout_var.get()
         even_name = self.even_layout_var.get()
         odd_idx = self.layout_map.get(odd_name, 0)
@@ -473,16 +474,23 @@ class TabPallet(ttk.Frame):
             else self.layouts[even_idx][1]
         )
         for i in range(1, num_layers + 1):
+            idx = i - 1
             if i % 2 == 1:
-                self.layers.append(list(odd_source))
-                transform = self.odd_transform_var.get()
-                patt = odd_name
+                if side in ("both", "odd"):
+                    if idx >= len(self.layers):
+                        self.layers.append(list(odd_source))
+                    elif self.layer_patterns[idx] != odd_name:
+                        self.layers[idx] = list(odd_source)
+                    self.layer_patterns[idx] = odd_name
+                    self.transformations[idx] = self.odd_transform_var.get()
             else:
-                self.layers.append(list(even_source))
-                transform = self.even_transform_var.get()
-                patt = even_name
-            self.transformations.append(transform)
-            self.layer_patterns.append(patt)
+                if side in ("both", "even"):
+                    if idx >= len(self.layers):
+                        self.layers.append(list(even_source))
+                    elif self.layer_patterns[idx] != even_name:
+                        self.layers[idx] = list(even_source)
+                    self.layer_patterns[idx] = even_name
+                    self.transformations[idx] = self.even_transform_var.get()
         self.draw_pallet()
 
     def on_pallet_selected(self, *args):
@@ -502,9 +510,7 @@ class TabPallet(ttk.Frame):
         self.compute_pallet()
 
     @staticmethod
-    def apply_transformation(
-        positions, transform, pallet_w, pallet_l
-    ):
+    def apply_transformation(positions, transform, pallet_w, pallet_l):
         new_positions = []
         for x, y, w, h in positions:
             if transform == "Brak":
@@ -528,9 +534,7 @@ class TabPallet(ttk.Frame):
         return new_positions
 
     @staticmethod
-    def inverse_transformation(
-        positions, transform, pallet_w, pallet_l
-    ):
+    def inverse_transformation(positions, transform, pallet_w, pallet_l):
         """Reverse the transformation applied to the positions."""
         new_positions = []
         for x, y, w, h in positions:
@@ -625,10 +629,7 @@ class TabPallet(ttk.Frame):
                 y_max = max(y + h for x, y, w, h in positions)
                 offset_x = (pallet_w - (x_max - x_min)) / 2 - x_min
                 offset_y = (pallet_l - (y_max - y_min)) / 2 - y_min
-                return [
-                    (x + offset_x, y + offset_y, w, h)
-                    for x, y, w, h in positions
-                ]
+                return [(x + offset_x, y + offset_y, w, h) for x, y, w, h in positions]
             return centered_positions
 
     def snap_position(self, x, y, w, h, pallet_w, pallet_l, boxes, tol=10):
@@ -750,7 +751,12 @@ class TabPallet(ttk.Frame):
             calc_carton = Carton(box_w_ext + spacing, box_l_ext + spacing, box_h)
             selector = PatternSelector(calc_carton, pallet)
 
-            patterns, best_name, self.best_even, self.best_odd = self._get_default_layout(
+            (
+                patterns,
+                best_name,
+                self.best_even,
+                self.best_odd,
+            ) = self._get_default_layout(
                 selector,
                 calc_carton,
                 pallet,
@@ -788,13 +794,20 @@ class TabPallet(ttk.Frame):
             seq = EvenOddSequencer(best_pattern, calc_carton, pallet)
             even_base, odd_shifted = seq.best_shift()
             if self.shift_even_var.get():
-                self.best_even = adjust(self.center_layout(odd_shifted, pallet_w, pallet_l))
-                self.best_odd = adjust(self.center_layout(even_base, pallet_w, pallet_l))
+                self.best_even = adjust(
+                    self.center_layout(odd_shifted, pallet_w, pallet_l)
+                )
+                self.best_odd = adjust(
+                    self.center_layout(even_base, pallet_w, pallet_l)
+                )
             else:
-                self.best_even = adjust(self.center_layout(even_base, pallet_w, pallet_l))
-                self.best_odd = adjust(self.center_layout(odd_shifted, pallet_w, pallet_l))
+                self.best_even = adjust(
+                    self.center_layout(even_base, pallet_w, pallet_l)
+                )
+                self.best_odd = adjust(
+                    self.center_layout(odd_shifted, pallet_w, pallet_l)
+                )
             self.best_layout_name = best_name.replace("_", " ").capitalize()
-
 
             self.layout_map = {
                 name: idx for idx, (_, __, name) in enumerate(self.layouts)
@@ -1058,7 +1071,9 @@ class TabPallet(ttk.Frame):
         if not self.selected_indices:
             return
 
-        for layer_idx, idx in sorted(self.selected_indices, key=lambda t: (t[0], -t[1])):
+        for layer_idx, idx in sorted(
+            self.selected_indices, key=lambda t: (t[0], -t[1])
+        ):
             if layer_idx >= len(self.layers) or idx >= len(self.layers[layer_idx]):
                 continue
             del self.layers[layer_idx][idx]
@@ -1173,10 +1188,26 @@ class TabPallet(ttk.Frame):
         min_y = min(y for x, y, w, h in sel_boxes)
         max_y = max(y + h for x, y, w, h in sel_boxes)
 
-        left_candidates = [0] + [bx + bw for j, (bx, by, bw, bh) in enumerate(boxes) if j not in indices and bx + bw <= min_x]
-        right_candidates = [pallet_w] + [bx for j, (bx, by, bw, bh) in enumerate(boxes) if j not in indices and bx >= max_x]
-        bottom_candidates = [0] + [by + bh for j, (bx, by, bw, bh) in enumerate(boxes) if j not in indices and by + bh <= min_y]
-        top_candidates = [pallet_l] + [by for j, (bx, by, bw, bh) in enumerate(boxes) if j not in indices and by >= max_y]
+        left_candidates = [0] + [
+            bx + bw
+            for j, (bx, by, bw, bh) in enumerate(boxes)
+            if j not in indices and bx + bw <= min_x
+        ]
+        right_candidates = [pallet_w] + [
+            bx
+            for j, (bx, by, bw, bh) in enumerate(boxes)
+            if j not in indices and bx >= max_x
+        ]
+        bottom_candidates = [0] + [
+            by + bh
+            for j, (bx, by, bw, bh) in enumerate(boxes)
+            if j not in indices and by + bh <= min_y
+        ]
+        top_candidates = [pallet_l] + [
+            by
+            for j, (bx, by, bw, bh) in enumerate(boxes)
+            if j not in indices and by >= max_y
+        ]
         left = max(left_candidates)
         right = min(right_candidates)
         bottom = max(bottom_candidates)
@@ -1214,10 +1245,26 @@ class TabPallet(ttk.Frame):
         min_y = min(y for x, y, w, h in sel_boxes)
         max_y = max(y + h for x, y, w, h in sel_boxes)
 
-        left_candidates = [0] + [bx + bw for j, (bx, by, bw, bh) in enumerate(boxes) if j not in indices and bx + bw <= min_x]
-        right_candidates = [pallet_w] + [bx for j, (bx, by, bw, bh) in enumerate(boxes) if j not in indices and bx >= max_x]
-        bottom_candidates = [0] + [by + bh for j, (bx, by, bw, bh) in enumerate(boxes) if j not in indices and by + bh <= min_y]
-        top_candidates = [pallet_l] + [by for j, (bx, by, bw, bh) in enumerate(boxes) if j not in indices and by >= max_y]
+        left_candidates = [0] + [
+            bx + bw
+            for j, (bx, by, bw, bh) in enumerate(boxes)
+            if j not in indices and bx + bw <= min_x
+        ]
+        right_candidates = [pallet_w] + [
+            bx
+            for j, (bx, by, bw, bh) in enumerate(boxes)
+            if j not in indices and bx >= max_x
+        ]
+        bottom_candidates = [0] + [
+            by + bh
+            for j, (bx, by, bw, bh) in enumerate(boxes)
+            if j not in indices and by + bh <= min_y
+        ]
+        top_candidates = [pallet_l] + [
+            by
+            for j, (bx, by, bw, bh) in enumerate(boxes)
+            if j not in indices and by >= max_y
+        ]
         left = max(left_candidates)
         right = min(right_candidates)
         bottom = max(bottom_candidates)
@@ -1236,7 +1283,10 @@ class TabPallet(ttk.Frame):
         self.update_summary()
 
     def on_right_click(self, event):
-        if not self.modify_mode_var.get() or event.inaxes not in [self.ax_odd, self.ax_even]:
+        if not self.modify_mode_var.get() or event.inaxes not in [
+            self.ax_odd,
+            self.ax_even,
+        ]:
             return
         self.context_layer = 0 if event.inaxes is self.ax_odd else 1
         if event.xdata is not None and event.ydata is not None:
@@ -1258,12 +1308,26 @@ class TabPallet(ttk.Frame):
 
         if self.context_menu is None:
             self.context_menu = tk.Menu(self, tearoff=0)
-            self.context_menu.add_command(label="Wstaw karton", command=self.insert_carton_button)
-            self.context_menu.add_command(label="Usu\u0144 zaznaczone", command=self.delete_selected_carton)
-            self.context_menu.add_command(label="Obróć zaznaczone 90°", command=self.rotate_selected_carton)
-            self.context_menu.add_command(label="R\u00f3wnomiernie wzd\u0142u\u017c boku palety", command=self.distribute_selected_edges)
-            self.context_menu.add_command(label="R\u00f3wnomiernie wzd\u0142u\u017c innych karton\u00f3w", command=self.distribute_selected_between)
-            self.context_menu.add_command(label="Automatyczny odst\u0119p", command=self.auto_space_selected)
+            self.context_menu.add_command(
+                label="Wstaw karton", command=self.insert_carton_button
+            )
+            self.context_menu.add_command(
+                label="Usu\u0144 zaznaczone", command=self.delete_selected_carton
+            )
+            self.context_menu.add_command(
+                label="Obróć zaznaczone 90°", command=self.rotate_selected_carton
+            )
+            self.context_menu.add_command(
+                label="R\u00f3wnomiernie wzd\u0142u\u017c boku palety",
+                command=self.distribute_selected_edges,
+            )
+            self.context_menu.add_command(
+                label="R\u00f3wnomiernie wzd\u0142u\u017c innych karton\u00f3w",
+                command=self.distribute_selected_between,
+            )
+            self.context_menu.add_command(
+                label="Automatyczny odst\u0119p", command=self.auto_space_selected
+            )
 
         state = "normal" if self.selected_indices else "disabled"
         for i in range(1, 6):
@@ -1324,7 +1388,9 @@ class TabPallet(ttk.Frame):
         tape_wt = total_tape * self.material_weights.get("tape", 0)
         film_wt = self.film_per_pallet * self.material_weights.get("stretch_film", 0)
         slip_mass = self.slip_sheet_weight * num_slip
-        total_mass = carton_wt * total_cartons + tape_wt + film_wt + pallet_wt + slip_mass
+        total_mass = (
+            carton_wt * total_cartons + tape_wt + film_wt + pallet_wt + slip_mass
+        )
         self.weight_label.config(text=f"Masa: {total_mass:.2f} kg")
 
     def adjust_spacing(self, delta: float) -> None:
@@ -1386,9 +1452,7 @@ class TabPallet(ttk.Frame):
         try:
             save_pattern(name, data)
             path = pattern_path(name)
-            messagebox.showinfo(
-                "Sukces", f"Zapisano wzór '{name}' w {path}"
-            )
+            messagebox.showinfo("Sukces", f"Zapisano wzór '{name}' w {path}")
         except Exception as exc:
             messagebox.showerror("Błąd zapisu", str(exc))
 
