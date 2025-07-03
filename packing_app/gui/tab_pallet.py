@@ -327,6 +327,13 @@ class TabPallet(ttk.Frame):
             text="Wczytaj wzór",
             command=self.load_pattern_dialog,
         ).pack(side=tk.LEFT, padx=5)
+        self.overlay_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            control_frame,
+            text="Nakładanie warstw",
+            variable=self.overlay_var,
+            command=self.draw_pallet,
+        ).pack(side=tk.LEFT, padx=5)
         self.status_var = tk.StringVar(value="")
         self.status_label = ttk.Label(control_frame, textvariable=self.status_var)
         self.status_label.pack(side=tk.LEFT, padx=5)
@@ -383,6 +390,7 @@ class TabPallet(ttk.Frame):
             "Brak",
             "Odbicie wzdłuż dłuższego boku",
             "Odbicie wzdłuż krótszego boku",
+            "Obrót 180°",
         ]
 
         prev_odd_layout = getattr(self, "odd_layout_var", None)
@@ -532,6 +540,10 @@ class TabPallet(ttk.Frame):
                 else:
                     new_x = x
                     new_y = pallet_l - y - h
+                new_positions.append((new_x, new_y, w, h))
+            elif transform == "Obrót 180°":
+                new_x = pallet_w - x - w
+                new_y = pallet_l - y - h
                 new_positions.append((new_x, new_y, w, h))
         return new_positions
 
@@ -863,6 +875,27 @@ class TabPallet(ttk.Frame):
                     pallet_w,
                     pallet_l,
                 )
+                if self.overlay_var.get() and len(self.layers) > 1:
+                    other_idx = 1 - idx
+                    if other_idx < len(self.layers):
+                        overlay = self.apply_transformation(
+                            list(self.layers[other_idx]),
+                            self.transformations[other_idx],
+                            pallet_w,
+                            pallet_l,
+                        )
+                        for x, y, w, h in overlay:
+                            ax.add_patch(
+                                plt.Rectangle(
+                                    (x, y),
+                                    w,
+                                    h,
+                                    fill=True,
+                                    facecolor="gray",
+                                    alpha=0.3,
+                                    edgecolor="gray",
+                                )
+                            )
                 collision_idx = self.detect_collisions(coords, pallet_w, pallet_l)
                 for i, (x, y, w, h) in enumerate(coords):
                     base_color = "blue" if idx == 0 else "green"
@@ -1000,8 +1033,31 @@ class TabPallet(ttk.Frame):
                 pallet_l,
             )[0]
             self.layers[layer_idx][idx] = (orig_x, orig_y, w, h)
+            if self.overlay_var.get():
+                other_layer = 1 - layer_idx
+                if (
+                    other_layer < len(self.layers)
+                    and idx < len(self.layers[other_layer])
+                    and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
+                ):
+                    self.layers[other_layer][idx] = (orig_x, orig_y, w, h)
+                    for p, j in self.patches[other_layer]:
+                        if j == idx:
+                            tx, ty, tw, th = self.apply_transformation(
+                                [(orig_x, orig_y, w, h)],
+                                self.transformations[other_layer],
+                                pallet_w,
+                                pallet_l,
+                            )[0]
+                            p.set_xy((tx, ty))
+                            p.set_width(tw)
+                            p.set_height(th)
+                            break
 
-        for layer_idx in {item[0] for item in self.drag_info}:
+        layers_to_check = {item[0] for item in self.drag_info}
+        if self.overlay_var.get():
+            layers_to_check |= {1 - idx for idx in layers_to_check if 1 - idx < len(self.layers)}
+        for layer_idx in layers_to_check:
             coords = self.apply_transformation(
                 list(self.layers[layer_idx]),
                 self.transformations[layer_idx],
@@ -1048,7 +1104,10 @@ class TabPallet(ttk.Frame):
                 other_layer < len(self.layers)
                 and idx < len(self.layers[other_layer])
                 and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
-                and self.transformations[other_layer] == self.transformations[layer_idx]
+                and (
+                    self.transformations[other_layer] == self.transformations[layer_idx]
+                    or self.overlay_var.get()
+                )
             ):
                 self.layers[other_layer][idx] = (snap_x, snap_y, w, h)
 
@@ -1070,7 +1129,10 @@ class TabPallet(ttk.Frame):
         if (
             other_layer < len(self.layers)
             and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
-            and self.transformations[other_layer] == self.transformations[layer_idx]
+            and (
+                self.transformations[other_layer] == self.transformations[layer_idx]
+                or self.overlay_var.get()
+            )
         ):
             self.layers[other_layer].append((pos[0], pos[1], w, h))
         self.draw_pallet()
@@ -1095,7 +1157,10 @@ class TabPallet(ttk.Frame):
                 other_layer < len(self.layers)
                 and idx < len(self.layers[other_layer])
                 and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
-                and self.transformations[other_layer] == self.transformations[layer_idx]
+                and (
+                    self.transformations[other_layer] == self.transformations[layer_idx]
+                    or self.overlay_var.get()
+                )
             ):
                 del self.layers[other_layer][idx]
 
@@ -1127,7 +1192,10 @@ class TabPallet(ttk.Frame):
                 other_layer < len(self.layers)
                 and idx < len(self.layers[other_layer])
                 and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
-                and self.transformations[other_layer] == self.transformations[layer_idx]
+                and (
+                    self.transformations[other_layer] == self.transformations[layer_idx]
+                    or self.overlay_var.get()
+                )
             ):
                 self.layers[other_layer][idx] = (x, y, w, h)
 
@@ -1156,7 +1224,10 @@ class TabPallet(ttk.Frame):
         if (
             other_layer < len(self.layers)
             and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
-            and self.transformations[other_layer] == self.transformations[layer_idx]
+            and (
+                self.transformations[other_layer] == self.transformations[layer_idx]
+                or self.overlay_var.get()
+            )
         ):
             for i in indices:
                 if i < len(self.layers[other_layer]):
