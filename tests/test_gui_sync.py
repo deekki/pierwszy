@@ -33,7 +33,9 @@ def make_dummy():
     d.draw_pallet = lambda: None
     d.update_summary = lambda: None
     d.compute_pallet = lambda *a, **k: None
-    d.overlay_var = types.SimpleNamespace(get=lambda: False)
+    d.odd_layout_var = var('A')
+    d.even_layout_var = var('A')
+    d.layers_linked = lambda: d.odd_layout_var.get() == d.even_layout_var.get()
     d.selected_indices = set()
     d.drag_info = None
     d.highlight_selection = lambda: None
@@ -128,18 +130,18 @@ def test_multi_drag_moves_all_selected():
     assert dummy.layers[1][0][:2] == (5,5)
     assert dummy.layers[1][1][:2] == (25,5)
 
-def test_sync_with_overlay_different_transforms():
+def test_sync_with_same_algo_different_transforms():
     dummy = make_dummy()
-    dummy.overlay_var.get = lambda: True
     dummy.transformations = ["Brak", "Odbicie wzdłuż dłuższego boku"]
     dummy.drag_info = (0, 0, DummyPatch(3, 3))
     dummy.selected_indices = {(0, 0)}
     TabPallet.on_release(dummy, None)
     assert dummy.layers[1][0][:2] == (3, 3)
 
-def test_no_sync_without_overlay_diff_transforms():
+def test_no_sync_when_algorithms_differ():
     dummy = make_dummy()
     dummy.transformations = ["Brak", "Odbicie wzdłuż dłuższego boku"]
+    dummy.even_layout_var.set('B')
     dummy.drag_info = (0, 0, DummyPatch(4, 4))
     dummy.selected_indices = {(0, 0)}
     TabPallet.on_release(dummy, None)
