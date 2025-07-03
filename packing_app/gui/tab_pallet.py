@@ -339,6 +339,8 @@ class TabPallet(ttk.Frame):
         self.materials_label.pack(side=tk.LEFT, padx=5)
         self.weight_label = ttk.Label(self.summary_frame, text="")
         self.weight_label.pack(side=tk.LEFT, padx=5)
+        self.area_label = ttk.Label(self.summary_frame, text="")
+        self.area_label.pack(side=tk.LEFT, padx=5)
 
         self.fig = plt.Figure(figsize=(8, 6))
         self.ax_odd = self.fig.add_subplot(121)
@@ -1403,6 +1405,13 @@ class TabPallet(ttk.Frame):
             carton_wt * total_cartons + tape_wt + film_wt + pallet_wt + slip_mass
         )
         self.weight_label.config(text=f"Masa: {total_mass:.2f} kg")
+
+        pallet_area = pallet_w * pallet_l / 1_000_000
+        carton_area = (box_w + 2 * thickness) * (box_l + 2 * thickness) / 1_000_000
+        area_ratio = pallet_area / carton_area if carton_area > 0 else 0
+        self.area_label.config(
+            text=f"Pow. palety: {pallet_area:.2f} m² | Pow. kartonu: {carton_area:.2f} m² | Miejsca: {area_ratio:.2f}"
+        )
 
     def adjust_spacing(self, delta: float) -> None:
         """Increase or decrease carton spacing by ``delta`` millimeters."""

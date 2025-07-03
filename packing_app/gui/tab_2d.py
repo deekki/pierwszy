@@ -226,6 +226,8 @@ class TabPacking2D(ttk.Frame):
         self.axes = self.fig.subplots(1, 3)
         self.canvas = FigureCanvasTkAgg(self.fig, master=main_frame)
         self.canvas.get_tk_widget().pack(side=tk.BOTTOM, fill=tk.BOTH, expand=True)
+        self.area_label = ttk.Label(main_frame, text="")
+        self.area_label.pack(side=tk.BOTTOM, pady=5)
 
         self.carton_w.trace_add("write", self.reset_carton_choice)
         self.carton_l.trace_add("write", self.reset_carton_choice)
@@ -578,6 +580,12 @@ class TabPacking2D(ttk.Frame):
             else:
                 self.axes[2].set_title("Mieszane: brak możliwości", fontsize=10)
 
+            carton_area = w_c * l_c / 1_000_000
+            prod_area = w_p * l_p / 1_000_000 if w_p > 0 and l_p > 0 else 0
+            area_ratio = carton_area / prod_area if prod_area > 0 else 0
+            self.area_label.config(
+                text=f"Pow. kartonu: {carton_area:.2f} m² | Pow. kartonika: {prod_area:.2f} m² | Miejsca: {area_ratio:.2f}"
+            )
         else:
             diam = self.parse_dim_safe(self.prod_diam)
             h_p = self.parse_dim_safe(self.prod_h_circle)
@@ -645,6 +653,13 @@ class TabPacking2D(ttk.Frame):
                 )
             else:
                 self.axes[2].set_title("Hex(rev): brak możliwości", fontsize=10)
+
+            carton_area = w_c * l_c / 1_000_000
+            prod_area = math.pi * (diam / 2) ** 2 / 1_000_000 if diam > 0 else 0
+            area_ratio = carton_area / prod_area if prod_area > 0 else 0
+            self.area_label.config(
+                text=f"Pow. kartonu: {carton_area:.2f} m² | Pow. kartonika: {prod_area:.2f} m² | Miejsca: {area_ratio:.2f}"
+            )
 
         self.fig.tight_layout()
         self.canvas.draw()
