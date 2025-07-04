@@ -153,6 +153,12 @@ class PatternSelector:
             )
             patterns["mixed_max"] = dense
 
+        # dynamic layout using a full search
+        _, dynamic = algorithms.pack_rectangles_dynamic(
+            pallet_w, pallet_l, box_w, box_l
+        )
+        patterns["dynamic"] = dynamic
+
         return patterns
 
     def score(self, pattern: Pattern) -> PatternScore:
