@@ -134,14 +134,14 @@ def pack_pinwheel(width, height, wprod, lprod, margin=0):
 
     # Fill the vertical strip on the right
     if leftover_x > 0:
-        _, right_strip = pack_rectangles_mixed_greedy(
+        _, right_strip = pack_rectangles_mixed_max(
             leftover_x, eff_height, wprod, lprod
         )
         positions.extend((n_x * block_w + x, y, w, h) for x, y, w, h in right_strip)
 
     # Fill the horizontal strip at the top (excluding the right strip area)
     if leftover_y > 0 and n_x * block_w > 0:
-        _, top_strip = pack_rectangles_mixed_greedy(
+        _, top_strip = pack_rectangles_mixed_max(
             n_x * block_w, leftover_y, wprod, lprod
         )
         positions.extend((x, n_y * block_h + y, w, h) for x, y, w, h in top_strip)
@@ -153,7 +153,7 @@ def pack_l_pattern(width, height, wprod, lprod, margin=0):
     """Pack cartons in repeating 2x2 L-shaped blocks.
 
     A single block contains three cartons arranged in an ``L`` shape.
-    Remaining space around the grid is filled using the mixed greedy
+    Remaining space around the grid is filled using a maximising
     algorithm so that cartons never overlap and stay within the pallet
     bounds.
     """
@@ -182,13 +182,13 @@ def pack_l_pattern(width, height, wprod, lprod, margin=0):
     leftover_y = eff_height - n_y * block_h
 
     if leftover_x > 0:
-        _, right_strip = pack_rectangles_mixed_greedy(
+        _, right_strip = pack_rectangles_mixed_max(
             leftover_x, eff_height, wprod, lprod
         )
         positions.extend((n_x * block_w + x, y, w, h) for x, y, w, h in right_strip)
 
     if leftover_y > 0 and n_x * block_w > 0:
-        _, top_strip = pack_rectangles_mixed_greedy(
+        _, top_strip = pack_rectangles_mixed_max(
             n_x * block_w, leftover_y, wprod, lprod
         )
         positions.extend((x, n_y * block_h + y, w, h) for x, y, w, h in top_strip)

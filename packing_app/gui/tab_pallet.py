@@ -842,6 +842,7 @@ class TabPallet(ttk.Frame):
             self.num_layers = num_layers
             self.slip_count = slip_count
             self.update_layers()
+            getattr(self, "sort_layers", lambda: None)()
             self.update_summary()
         finally:
             if hasattr(self, "status_var"):
@@ -964,6 +965,23 @@ class TabPallet(ttk.Frame):
                     patch.set_linewidth(1)
         self.canvas.draw_idle()
 
+    def sort_layers(self):
+        """Sort cartons within each layer for consistent numbering."""
+        new_sel = set()
+        for layer_idx, layer in enumerate(self.layers):
+            order = sorted(range(len(layer)), key=lambda i: (layer[i][1], layer[i][0]))
+            if order != list(range(len(layer))):
+                self.layers[layer_idx] = [layer[i] for i in order]
+                mapping = {old_idx: new_idx for new_idx, old_idx in enumerate(order)}
+            else:
+                mapping = {i: i for i in range(len(layer))}
+            for l_idx, idx in self.selected_indices:
+                if l_idx == layer_idx:
+                    new_sel.add((l_idx, mapping.get(idx, idx)))
+                else:
+                    new_sel.add((l_idx, idx))
+        self.selected_indices = new_sel
+        
     def toggle_edit_mode(self):
         if self.modify_mode_var.get():
             if hasattr(self, "status_var"):
@@ -1129,6 +1147,7 @@ class TabPallet(ttk.Frame):
                 self.layers[other_layer][idx] = (snap_x, snap_y, w, h)
 
         self.drag_info = None
+        getattr(self, "sort_layers", lambda: None)()
         self.draw_pallet()
         self.update_summary()
         self.highlight_selection()
@@ -1149,6 +1168,7 @@ class TabPallet(ttk.Frame):
             and self.layers_linked()
         ):
             self.layers[other_layer].append((pos[0], pos[1], w, h))
+        getattr(self, "sort_layers", lambda: None)()
         self.draw_pallet()
         self.update_summary()
 
@@ -1177,6 +1197,7 @@ class TabPallet(ttk.Frame):
 
         self.selected_indices.clear()
         self.drag_info = None
+        getattr(self, "sort_layers", lambda: None)()
         self.draw_pallet()
         self.update_summary()
         self.highlight_selection()
@@ -1206,7 +1227,7 @@ class TabPallet(ttk.Frame):
                 and self.layers_linked()
             ):
                 self.layers[other_layer][idx] = (x, y, w, h)
-
+        getattr(self, "sort_layers", lambda: None)()
         self.draw_pallet()
         self.update_summary()
 
@@ -1256,6 +1277,7 @@ class TabPallet(ttk.Frame):
         start = 0
         end = pallet_w if orientation == "x" else pallet_l
         TabPallet._distribute(self, layer_idx, indices, start, end, orientation)
+        getattr(self, "sort_layers", lambda: None)()
         self.draw_pallet()
         self.update_summary()
 
@@ -1311,9 +1333,9 @@ class TabPallet(ttk.Frame):
             start = bottom
             end = top
         self._distribute(layer_idx, indices, start, end, orientation)
+        getattr(self, "sort_layers", lambda: None)()
         self.draw_pallet()
         self.update_summary()
-        self.highlight_selection()
         self.highlight_selection()
 
     def distribute_selected_between(self):
@@ -1368,6 +1390,7 @@ class TabPallet(ttk.Frame):
             start = bottom
             end = top
         TabPallet._distribute(self, layer_idx, indices, start, end, orientation)
+        getattr(self, "sort_layers", lambda: None)()
         self.draw_pallet()
         self.update_summary()
 
