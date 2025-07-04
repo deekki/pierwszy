@@ -193,7 +193,9 @@ def pack_l_pattern(width, height, wprod, lprod, margin=0):
         )
         positions.extend((x, n_y * block_h + y, w, h) for x, y, w, h in top_strip)
 
-    return len(positions), positions
+    # Fill remaining gaps within the grid using a dynamic search.
+    count, filled = maximize_mixed_layout(width, height, wprod, lprod, margin, positions)
+    return count, filled
 
 def compute_interlocked_layout(
     pallet_w, pallet_l, box_w, box_l, num_layers=4, shift_even=True
@@ -489,4 +491,18 @@ def random_box_optimizer_3d(prod_w, prod_l, prod_h, units):
             best_score = ratio
             best_dims = (w_, l_, h_)
     return best_dims, best_score
+
+
+def pack_rectangles_dynamic(width, height, wprod, lprod, margin=0):
+    """Pack rectangles using a dynamic maximisation approach.
+
+    This is a convenience wrapper around :func:`maximize_mixed_layout` that
+    starts with an empty layout and searches for the densest placement.  The
+    algorithm explores both carton orientations recursively and keeps the best
+    result found.  It resembles the strategies used by online palletisation
+    tools such as Pally or OnPallet.
+    """
+
+    count, positions = maximize_mixed_layout(width, height, wprod, lprod, margin, [])
+    return count, positions
 
