@@ -28,6 +28,7 @@ def make_dummy():
     d.transformations = ["Brak", "Brak"]
     d.layer_patterns = ["A", "A"]
     d.layers = [[(0, 0, 10, 10)], [(0, 0, 10, 10)]]
+    d.carton_ids = [[1], [1]]
     d.snap_position = lambda x, y, w, h, pw, pl, other: (x, y)
     d.inverse_transformation = lambda pos, trans, pw, pl: pos
     d.draw_pallet = lambda: None
@@ -39,6 +40,8 @@ def make_dummy():
     d.selected_indices = set()
     d.drag_info = None
     d.highlight_selection = lambda: None
+    d.renumber_layer = lambda idx: d.carton_ids.__setitem__(idx, list(range(1, len(d.layers[idx]) + 1)))
+    d.renumber_layers = lambda: [d.renumber_layer(i) for i in range(len(d.layers))]
     return d
 
 def test_on_release_syncs_layers():
@@ -61,6 +64,14 @@ def test_insert_and_delete_sync():
     assert len(dummy.layers[0]) == 1
     assert len(dummy.layers[1]) == 1
 
+def test_renumber_after_insert_and_delete():
+    dummy = make_dummy()
+    TabPallet.insert_carton(dummy, 0, (5,5))
+    assert dummy.carton_ids[0] == [1,2]
+    dummy.selected_indices = {(0,0)}
+    TabPallet.delete_selected_carton(dummy)
+    assert dummy.carton_ids[0] == [1]
+
 def test_no_cross_sync_when_patterns_differ():
     dummy = make_dummy()
     dummy.layer_patterns = ["A", "B"]
@@ -80,6 +91,7 @@ def test_no_cross_sync_when_patterns_differ():
 def test_multi_rotate_delete():
     dummy = make_dummy()
     dummy.layers = [[(0, 0, 10, 20), (20, 0, 10, 20)], [(0, 0, 10, 20), (20, 0, 10, 20)]]
+    dummy.carton_ids = [[1,2],[1,2]]
     dummy.selected_indices = {(0, 0), (0, 1)}
     TabPallet.rotate_selected_carton(dummy)
     for layer in dummy.layers:
@@ -91,6 +103,7 @@ def test_multi_rotate_delete():
 def test_distribution_commands():
     dummy = make_dummy()
     dummy.layers = [[(0,0,10,10),(40,0,10,10),(80,0,10,10)], [(0,0,10,10),(40,0,10,10),(80,0,10,10)]]
+    dummy.carton_ids = [list(range(1,4)), list(range(1,4))]
     dummy.selected_indices = {(0,0),(0,1),(0,2)}
     TabPallet.distribute_selected_edges(dummy)
     xs = [pos[0] for pos in dummy.layers[0]]
@@ -98,6 +111,7 @@ def test_distribution_commands():
 
     dummy = make_dummy()
     dummy.layers = [[(0,0,10,10),(10,0,10,10),(40,0,10,10),(80,0,10,10)], [(0,0,10,10),(10,0,10,10),(40,0,10,10),(80,0,10,10)]]
+    dummy.carton_ids = [list(range(1,5)), list(range(1,5))]
     dummy.selected_indices = {(0,1),(0,2)}
     TabPallet.distribute_selected_between(dummy)
     xs = [dummy.layers[0][1][0], dummy.layers[0][2][0]]
@@ -106,6 +120,7 @@ def test_distribution_commands():
 def test_auto_distribution_respects_boundaries():
     dummy = make_dummy()
     dummy.layers = [[(0,0,60,10),(40,0,60,10)], [(0,0,60,10),(40,0,60,10)]]
+    dummy.carton_ids = [[1,2],[1,2]]
     dummy.selected_indices = {(0,0),(0,1)}
     before = [pos[0] for pos in dummy.layers[0]]
     TabPallet.distribute_selected_edges(dummy)
@@ -120,6 +135,7 @@ def test_adjust_spacing_clamps_to_zero():
 def test_multi_drag_moves_all_selected():
     dummy = make_dummy()
     dummy.layers = [[(0,0,10,10),(20,0,10,10)], [(0,0,10,10),(20,0,10,10)]]
+    dummy.carton_ids = [[1,2],[1,2]]
     p1 = DummyPatch(5,5)
     p2 = DummyPatch(25,5)
     dummy.drag_info = [(0,0,p1,0,0),(0,1,p2,20,0)]

@@ -56,6 +56,7 @@ class TabPallet(ttk.Frame):
         self.pack(fill=tk.BOTH, expand=True)
         self.layouts = []
         self.layers = []
+        self.carton_ids = []
         self.layer_patterns = []
         self.transformations = []
         self.products_per_carton = 1
@@ -468,6 +469,7 @@ class TabPallet(ttk.Frame):
         num_layers = getattr(self, "num_layers", int(parse_dim(self.num_layers_var)))
         if side == "both" or not self.layers:
             self.layers = [list() for _ in range(num_layers)]
+            self.carton_ids = [list() for _ in range(num_layers)]
             self.layer_patterns = ["" for _ in range(num_layers)]
             self.transformations = ["" for _ in range(num_layers)]
         odd_name = self.odd_layout_var.get()
@@ -490,18 +492,23 @@ class TabPallet(ttk.Frame):
                 if side in ("both", "odd"):
                     if idx >= len(self.layers):
                         self.layers.append(list(odd_source))
+                        self.carton_ids.append(list(range(1, len(odd_source) + 1)))
                     elif self.layer_patterns[idx] != odd_name:
                         self.layers[idx] = list(odd_source)
+                        self.carton_ids[idx] = list(range(1, len(odd_source) + 1))
                     self.layer_patterns[idx] = odd_name
                     self.transformations[idx] = self.odd_transform_var.get()
             else:
                 if side in ("both", "even"):
                     if idx >= len(self.layers):
                         self.layers.append(list(even_source))
+                        self.carton_ids.append(list(range(1, len(even_source) + 1)))
                     elif self.layer_patterns[idx] != even_name:
                         self.layers[idx] = list(even_source)
+                        self.carton_ids[idx] = list(range(1, len(even_source) + 1))
                     self.layer_patterns[idx] = even_name
                     self.transformations[idx] = self.even_transform_var.get()
+        self.renumber_layers()
         self.draw_pallet()
 
     def on_pallet_selected(self, *args):
@@ -895,7 +902,7 @@ class TabPallet(ttk.Frame):
                     ax.text(
                         x + w / 2,
                         y + h / 2,
-                        str(i + 1),
+                        str(self.carton_ids[idx][i] if idx < len(self.carton_ids) and i < len(self.carton_ids[idx]) else i + 1),
                         ha="center",
                         va="center",
                         fontsize=8,
@@ -972,6 +979,7 @@ class TabPallet(ttk.Frame):
             order = sorted(range(len(layer)), key=lambda i: (layer[i][1], layer[i][0]))
             if order != list(range(len(layer))):
                 self.layers[layer_idx] = [layer[i] for i in order]
+                self.carton_ids[layer_idx] = [self.carton_ids[layer_idx][i] for i in order]
                 mapping = {old_idx: new_idx for new_idx, old_idx in enumerate(order)}
             else:
                 mapping = {i: i for i in range(len(layer))}
@@ -981,6 +989,15 @@ class TabPallet(ttk.Frame):
                 else:
                     new_sel.add((l_idx, idx))
         self.selected_indices = new_sel
+
+    def renumber_layer(self, layer_idx):
+        """Assign sequential carton numbers to the chosen layer."""
+        if layer_idx < len(self.carton_ids):
+            self.carton_ids[layer_idx] = list(range(1, len(self.layers[layer_idx]) + 1))
+
+    def renumber_layers(self):
+        for idx in range(len(self.layers)):
+            self.renumber_layer(idx)
         
     def toggle_edit_mode(self):
         if self.modify_mode_var.get():
@@ -1161,6 +1178,7 @@ class TabPallet(ttk.Frame):
             w = parse_dim(self.box_w_var) + 2 * thickness
             h = parse_dim(self.box_l_var) + 2 * thickness
         self.layers[layer_idx].append((pos[0], pos[1], w, h))
+        self.carton_ids[layer_idx].append(len(self.carton_ids[layer_idx]) + 1)
         other_layer = 1 - layer_idx
         if (
             other_layer < len(self.layers)
@@ -1168,7 +1186,11 @@ class TabPallet(ttk.Frame):
             and self.layers_linked()
         ):
             self.layers[other_layer].append((pos[0], pos[1], w, h))
+            self.carton_ids[other_layer].append(len(self.carton_ids[other_layer]) + 1)
         getattr(self, "sort_layers", lambda: None)()
+        self.renumber_layer(layer_idx)
+        if other_layer < len(self.layers) and self.layers_linked() and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]:
+            self.renumber_layer(other_layer)
         self.draw_pallet()
         self.update_summary()
 
@@ -1180,13 +1202,16 @@ class TabPallet(ttk.Frame):
         if not self.selected_indices:
             return
 
+        affected = set()
         for layer_idx, idx in sorted(
             self.selected_indices, key=lambda t: (t[0], -t[1])
         ):
             if layer_idx >= len(self.layers) or idx >= len(self.layers[layer_idx]):
                 continue
             del self.layers[layer_idx][idx]
+            del self.carton_ids[layer_idx][idx]
             other_layer = 1 - layer_idx
+            affected.add(layer_idx)
             if (
                 other_layer < len(self.layers)
                 and idx < len(self.layers[other_layer])
@@ -1194,6 +1219,11 @@ class TabPallet(ttk.Frame):
                 and self.layers_linked()
             ):
                 del self.layers[other_layer][idx]
+                del self.carton_ids[other_layer][idx]
+                affected.add(other_layer)
+
+        for idx in affected:
+            self.renumber_layer(idx)
 
         self.selected_indices.clear()
         self.drag_info = None
@@ -1556,6 +1586,7 @@ class TabPallet(ttk.Frame):
         layers = data.get("layers", [])
         if layers:
             self.layers = [list(layer) for layer in layers]
+            self.carton_ids = [list(range(1, len(layer) + 1)) for layer in self.layers]
             self.num_layers = len(self.layers)
             self.num_layers_var.set(str(self.num_layers))
             self.layer_patterns = ["" for _ in self.layers]
