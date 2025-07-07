@@ -8,6 +8,7 @@ This application provides a Tkinter-based GUI for experimenting with packing alg
 - matplotlib
 - numpy
 - pyyaml
+- rectpack
 
 Install the Python dependencies with:
 ```bash

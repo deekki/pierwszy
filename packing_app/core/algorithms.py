@@ -195,7 +195,16 @@ def pack_l_pattern(width, height, wprod, lprod, margin=0):
 
     # Fill remaining gaps within the grid using a dynamic search.
     count, filled = maximize_mixed_layout(width, height, wprod, lprod, margin, positions)
-    return count, filled
+
+    unique = []
+    for r in filled:
+        if all(
+            not (r[0] + r[2] > o[0] and o[0] + o[2] > r[0] and r[1] + r[3] > o[1] and o[1] + o[3] > r[1])
+            for o in unique
+        ):
+            unique.append(r)
+
+    return len(unique), unique
 
 def compute_interlocked_layout(
     pallet_w, pallet_l, box_w, box_l, num_layers=4, shift_even=True
@@ -475,7 +484,14 @@ def maximize_mixed_layout(w_c, l_c, w_p, l_p, margin, initial_positions):
         if not placed:
             continue
 
-    return count, occupied_positions
+    unique_positions = []
+    seen = set()
+    for pos in occupied_positions:
+        if pos not in seen:
+            unique_positions.append(pos)
+            seen.add(pos)
+
+    return len(unique_positions), unique_positions
 
 def random_box_optimizer_3d(prod_w, prod_l, prod_h, units):
     best_dims = None
@@ -503,7 +519,13 @@ def pack_rectangles_dynamic(width, height, wprod, lprod, margin=0):
     successfully fit inside the pallet area without overlapping.
     """
 
-    from rectpack import newPacker
+    try:
+        from rectpack import newPacker
+    except ImportError as exc:
+        raise ImportError(
+            "The 'rectpack' package is required for pack_rectangles_dynamic. "
+            "Install it with 'pip install rectpack'."
+        ) from exc
 
     eff_w = width - margin
     eff_h = height - margin
