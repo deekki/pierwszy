@@ -511,7 +511,7 @@ def pack_rectangles_dynamic(width, height, wprod, lprod, margin=0):
 
     packer = newPacker(rotation=True)
 
-    estimate = int((eff_w * eff_h) // (min(wprod, lprod) * min(wprod, lprod))) + 5
+    estimate = int((eff_w * eff_h) // (wprod * lprod)) + 5
     for i in range(estimate):
         packer.add_rect(wprod, lprod, i)
 

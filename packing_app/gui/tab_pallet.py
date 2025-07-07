@@ -472,6 +472,8 @@ class TabPallet(ttk.Frame):
             self.carton_ids = [list() for _ in range(num_layers)]
             self.layer_patterns = ["" for _ in range(num_layers)]
             self.transformations = ["" for _ in range(num_layers)]
+        self.selected_indices.clear()
+        self.drag_info = None
         odd_name = self.odd_layout_var.get()
         even_name = self.even_layout_var.get()
         odd_idx = self.layout_map.get(odd_name, 0)
@@ -721,6 +723,8 @@ class TabPallet(ttk.Frame):
         The interlock pattern is always selected as the default layout. Other
         patterns are still generated for manual selection.
         """
+        self.selected_indices.clear()
+        self.drag_info = None
         if hasattr(self, "status_var"):
             self.status_var.set("Obliczanie...")
             self.status_label.update_idletasks()
