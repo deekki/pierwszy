@@ -472,6 +472,8 @@ class TabPallet(ttk.Frame):
             self.carton_ids = [list() for _ in range(num_layers)]
             self.layer_patterns = ["" for _ in range(num_layers)]
             self.transformations = ["" for _ in range(num_layers)]
+        self.selected_indices.clear()
+        self.drag_info = None
         odd_name = self.odd_layout_var.get()
         even_name = self.even_layout_var.get()
         odd_idx = self.layout_map.get(odd_name, 0)
@@ -508,6 +510,7 @@ class TabPallet(ttk.Frame):
                         self.carton_ids[idx] = list(range(1, len(even_source) + 1))
                     self.layer_patterns[idx] = even_name
                     self.transformations[idx] = self.even_transform_var.get()
+        self.renumber_layers()
         self.draw_pallet()
 
     def on_pallet_selected(self, *args):
@@ -720,6 +723,8 @@ class TabPallet(ttk.Frame):
         The interlock pattern is always selected as the default layout. Other
         patterns are still generated for manual selection.
         """
+        self.selected_indices.clear()
+        self.drag_info = None
         if hasattr(self, "status_var"):
             self.status_var.set("Obliczanie...")
             self.status_label.update_idletasks()
@@ -988,6 +993,15 @@ class TabPallet(ttk.Frame):
                 else:
                     new_sel.add((l_idx, idx))
         self.selected_indices = new_sel
+
+    def renumber_layer(self, layer_idx):
+        """Assign sequential carton numbers to the chosen layer."""
+        if layer_idx < len(self.carton_ids):
+            self.carton_ids[layer_idx] = list(range(1, len(self.layers[layer_idx]) + 1))
+
+    def renumber_layers(self):
+        for idx in range(len(self.layers)):
+            self.renumber_layer(idx)
         
     def toggle_edit_mode(self):
         if self.modify_mode_var.get():
@@ -1168,6 +1182,7 @@ class TabPallet(ttk.Frame):
             w = parse_dim(self.box_w_var) + 2 * thickness
             h = parse_dim(self.box_l_var) + 2 * thickness
         self.layers[layer_idx].append((pos[0], pos[1], w, h))
+        self.carton_ids[layer_idx].append(len(self.carton_ids[layer_idx]) + 1)
         next_id = max(self.carton_ids[layer_idx], default=0) + 1
         self.carton_ids[layer_idx].append(next_id)
         other_layer = 1 - layer_idx
@@ -1177,9 +1192,13 @@ class TabPallet(ttk.Frame):
             and self.layers_linked()
         ):
             self.layers[other_layer].append((pos[0], pos[1], w, h))
+            self.carton_ids[other_layer].append(len(self.carton_ids[other_layer]) + 1)
             next_id_other = max(self.carton_ids[other_layer], default=0) + 1
             self.carton_ids[other_layer].append(next_id_other)
         getattr(self, "sort_layers", lambda: None)()
+        self.renumber_layer(layer_idx)
+        if other_layer < len(self.layers) and self.layers_linked() and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]:
+            self.renumber_layer(other_layer)
         self.draw_pallet()
         self.update_summary()
 
@@ -1191,6 +1210,7 @@ class TabPallet(ttk.Frame):
         if not self.selected_indices:
             return
 
+        affected = set()
         for layer_idx, idx in sorted(
             self.selected_indices, key=lambda t: (t[0], -t[1])
         ):
@@ -1199,6 +1219,7 @@ class TabPallet(ttk.Frame):
             del self.layers[layer_idx][idx]
             del self.carton_ids[layer_idx][idx]
             other_layer = 1 - layer_idx
+            affected.add(layer_idx)
             if (
                 other_layer < len(self.layers)
                 and idx < len(self.layers[other_layer])
@@ -1207,6 +1228,10 @@ class TabPallet(ttk.Frame):
             ):
                 del self.layers[other_layer][idx]
                 del self.carton_ids[other_layer][idx]
+                affected.add(other_layer)
+
+        for idx in affected:
+            self.renumber_layer(idx)
 
         self.selected_indices.clear()
         self.drag_info = None

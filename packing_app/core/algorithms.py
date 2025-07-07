@@ -494,6 +494,35 @@ def random_box_optimizer_3d(prod_w, prod_l, prod_h, units):
 
 
 def pack_rectangles_dynamic(width, height, wprod, lprod, margin=0):
+    """Pack rectangles using a dynamic optimisation strategy.
+
+    The routine relies on ``rectpack`` to explore many packing permutations with
+    automatic rectangle rotation. The number of cartons is not predetermined;
+    instead an upper bound is estimated from the available area and every box is
+    submitted to the packer. The resulting list contains only the cartons that
+    successfully fit inside the pallet area without overlapping.
+    """
+
+    from rectpack import newPacker
+
+    eff_w = width - margin
+    eff_h = height - margin
+
+    if eff_w <= 0 or eff_h <= 0:
+        return 0, []
+
+    packer = newPacker(rotation=True)
+
+    estimate = int((eff_w * eff_h) // (wprod * lprod)) + 5
+    for i in range(estimate):
+        packer.add_rect(wprod, lprod, i)
+
+    packer.add_bin(eff_w, eff_h)
+    packer.pack()
+
+    positions = [(x, y, w, h) for (_, x, y, w, h, _) in packer.rect_list()]
+
+    return len(positions), positions
     """Pack rectangles using a dynamic maximisation approach.
 
     This is a convenience wrapper around :func:`maximize_mixed_layout` that
