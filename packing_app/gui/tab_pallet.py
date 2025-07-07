@@ -1183,6 +1183,8 @@ class TabPallet(ttk.Frame):
             h = parse_dim(self.box_l_var) + 2 * thickness
         self.layers[layer_idx].append((pos[0], pos[1], w, h))
         self.carton_ids[layer_idx].append(len(self.carton_ids[layer_idx]) + 1)
+        next_id = max(self.carton_ids[layer_idx], default=0) + 1
+        self.carton_ids[layer_idx].append(next_id)
         other_layer = 1 - layer_idx
         if (
             other_layer < len(self.layers)
@@ -1191,6 +1193,8 @@ class TabPallet(ttk.Frame):
         ):
             self.layers[other_layer].append((pos[0], pos[1], w, h))
             self.carton_ids[other_layer].append(len(self.carton_ids[other_layer]) + 1)
+            next_id_other = max(self.carton_ids[other_layer], default=0) + 1
+            self.carton_ids[other_layer].append(next_id_other)
         getattr(self, "sort_layers", lambda: None)()
         self.renumber_layer(layer_idx)
         if other_layer < len(self.layers) and self.layers_linked() and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]:
