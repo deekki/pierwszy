@@ -9,7 +9,6 @@ from matplotlib.backends.backend_tkagg import (
     FigureCanvasTkAgg,
     NavigationToolbar2Tk,
 )
-import copy
 from packing_app.core import save_pattern
 from packing_app.core.pattern_io import (
     pattern_path,
@@ -772,7 +771,6 @@ class TabPallet(ttk.Frame):
 
             self.layouts = []
 
-            carton = Carton(box_w_ext, box_l_ext, box_h)
             pallet = Pallet(pallet_w, pallet_l, pallet_h)
             calc_carton = Carton(box_w_ext + spacing, box_l_ext + spacing, box_h)
             selector = PatternSelector(calc_carton, pallet)
@@ -1302,7 +1300,7 @@ class TabPallet(ttk.Frame):
             return
 
         layer_idx = next(iter(self.selected_indices))[0]
-        indices = [i for l, i in self.selected_indices if l == layer_idx]
+        indices = [i for layer, i in self.selected_indices if layer == layer_idx]
         if not indices:
             return
 
@@ -1324,7 +1322,7 @@ class TabPallet(ttk.Frame):
             return
 
         layer_idx = next(iter(self.selected_indices))[0]
-        indices = [i for l, i in self.selected_indices if l == layer_idx]
+        indices = [i for layer, i in self.selected_indices if layer == layer_idx]
         if not indices:
             return
 
@@ -1381,7 +1379,7 @@ class TabPallet(ttk.Frame):
             return
 
         layer_idx = next(iter(self.selected_indices))[0]
-        indices = [i for l, i in self.selected_indices if l == layer_idx]
+        indices = [i for layer, i in self.selected_indices if layer == layer_idx]
         if not indices:
             return
 
