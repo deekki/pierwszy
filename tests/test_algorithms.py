@@ -4,6 +4,7 @@ from packing_app.core.algorithms import (
     compute_interlocked_layout,
     pack_rectangles_mixed_max,
     pack_rectangles_dynamic,
+    pack_rectangles_wolny,
 )
 
 
@@ -103,6 +104,27 @@ def test_pack_rectangles_dynamic_no_collisions():
     pallet_w, pallet_l = 1000, 800
     box_w, box_l = 250, 150
     count, positions = pack_rectangles_dynamic(pallet_w, pallet_l, box_w, box_l)
+    assert count == len(positions)
+    for x, y, w, h in positions:
+        assert 0 <= x <= pallet_w - w
+        assert 0 <= y <= pallet_l - h
+
+    for i, pos in enumerate(positions):
+        for other in positions[i + 1 :]:
+            assert not _overlap(pos, other)
+
+
+def test_pack_rectangles_wolny_no_collisions():
+    pallet_w, pallet_l = 600, 400
+    box_w, box_l = 200, 150
+    count, positions = pack_rectangles_wolny(
+        pallet_w,
+        pallet_l,
+        box_w,
+        box_l,
+        time_limit=0.5,
+    )
+
     assert count == len(positions)
     for x, y, w, h in positions:
         assert 0 <= x <= pallet_w - w
