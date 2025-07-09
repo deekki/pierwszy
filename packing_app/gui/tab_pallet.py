@@ -299,10 +299,16 @@ class TabPallet(ttk.Frame):
         entry_slip_count.bind("<Return>", self.compute_pallet)
 
         self.transform_frame = ttk.Frame(layers_frame)
-        self.transform_frame.grid(row=3, column=0, columnspan=7, padx=5, pady=5)
+        # Move transform options to the right to save vertical space
+        self.transform_frame.grid(
+            row=0, column=7, rowspan=3, padx=5, pady=5, sticky="n"
+        )
 
-        control_frame = ttk.Frame(self)
-        control_frame.pack(fill=tk.X, padx=10, pady=5)
+        bottom_frame = ttk.Frame(self)
+        bottom_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        control_frame = ttk.Frame(bottom_frame)
+        control_frame.pack(side=tk.LEFT, padx=5)
 
         self.compute_btn = ttk.Button(
             control_frame, text="Oblicz", command=self.compute_pallet
@@ -338,8 +344,8 @@ class TabPallet(ttk.Frame):
         self.status_label = ttk.Label(control_frame, textvariable=self.status_var)
         self.status_label.pack(side=tk.LEFT, padx=5)
 
-        self.summary_frame = ttk.LabelFrame(self, text="Obliczenia")
-        self.summary_frame.pack(fill=tk.X, padx=10, pady=5)
+        self.summary_frame = ttk.LabelFrame(bottom_frame, text="Obliczenia")
+        self.summary_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
         self.totals_label = ttk.Label(self.summary_frame, text="")
         self.totals_label.pack(side=tk.LEFT, padx=5)
         self.materials_label = ttk.Label(self.summary_frame, text="")
