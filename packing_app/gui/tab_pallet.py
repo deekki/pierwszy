@@ -828,6 +828,7 @@ class TabPallet(ttk.Frame):
                 want=15,
                 time_first=5,
                 time_each=3,
+                seed=0,
             )
             if wolny_res:
                 self.wolny_solutions, self.wolny_get_next = (
@@ -1625,6 +1626,33 @@ class TabPallet(ttk.Frame):
         self.update_layers()
         self.draw_pallet()
 
+    def generate_wolny_solution(self) -> bool:
+        """Attempt to generate a new Wolny layout via CP-SAT search."""
+        pallet_w = parse_dim(self.pallet_w_var)
+        pallet_l = parse_dim(self.pallet_l_var)
+        thickness = parse_dim(self.cardboard_thickness_var)
+        spacing = parse_dim(self.spacing_var)
+        box_w = parse_dim(self.box_w_var) + 2 * thickness
+        box_l = parse_dim(self.box_l_var) + 2 * thickness
+        res = algorithms.enumerate_packings_wolny(
+            pallet_w,
+            pallet_l,
+            box_w + spacing,
+            box_l + spacing,
+            want=1,
+            time_first=3,
+            time_each=2,
+        )
+        if not res:
+            return False
+        sols, _ = res if isinstance(res, tuple) else (res, None)
+        layout = sols[0]
+        if layout in self.wolny_solutions:
+            return False
+        self.wolny_solutions.append(layout)
+        self.wolny_index = len(self.wolny_solutions) - 1
+        return True
+
     def next_wolny(self) -> None:
         if self.wolny_index + 1 < len(self.wolny_solutions):
             self.wolny_index += 1
@@ -1633,12 +1661,30 @@ class TabPallet(ttk.Frame):
             if nxt:
                 self.wolny_solutions.append(nxt)
                 self.wolny_index += 1
+        else:
+            self.generate_wolny_solution()
         self.update_wolny_layout()
+        if self.wolny_index + 1 >= len(self.wolny_solutions) and not self.wolny_get_next:
+            self.next_btn.state(["disabled"])
+        else:
+            self.next_btn.state(["!disabled"])
+        if self.wolny_index > 0:
+            self.prev_btn.state(["!disabled"])
+        else:
+            self.prev_btn.state(["disabled"])
 
     def prev_wolny(self) -> None:
         if self.wolny_index > 0:
             self.wolny_index -= 1
         self.update_wolny_layout()
+        if self.wolny_index == 0:
+            self.prev_btn.state(["disabled"])
+        else:
+            self.prev_btn.state(["!disabled"])
+        if self.wolny_index + 1 >= len(self.wolny_solutions) and not self.wolny_get_next:
+            self.next_btn.state(["disabled"])
+        else:
+            self.next_btn.state(["!disabled"])
 
     # ------------------------------------------------------------------
     # JSON pattern export / import helpers
