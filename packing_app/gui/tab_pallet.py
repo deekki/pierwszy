@@ -9,7 +9,7 @@ from matplotlib.backends.backend_tkagg import (
     FigureCanvasTkAgg,
     NavigationToolbar2Tk,
 )
-from packing_app.core import save_pattern
+from packing_app.core import save_pattern, algorithms
 from packing_app.core.pattern_io import (
     pattern_path,
     _ensure_dir,
@@ -38,6 +38,16 @@ def parse_dim(var: tk.StringVar) -> float:
     except Exception:
         messagebox.showwarning("Błąd", "Wprowadzono niepoprawną wartość. Użyto 0.")
         return 0.0
+
+
+def apply_spacing(pattern, spacing):
+    """Center boxes within spaced slots."""
+    adjusted = []
+    for x, y, w, h in pattern:
+        new_w = w - spacing
+        new_h = h - spacing
+        adjusted.append((x + spacing / 2, y + spacing / 2, new_w, new_h))
+    return adjusted
 
 
 class TabPallet(ttk.Frame):
@@ -76,6 +86,9 @@ class TabPallet(ttk.Frame):
         self.context_menu = None
         self.context_layer = 0
         self.context_pos = (0, 0)
+        self.wolny_solutions = []
+        self.wolny_index = 0
+        self.wolny_get_next = None
         self.build_ui()
 
     def layers_linked(self) -> bool:
@@ -314,6 +327,16 @@ class TabPallet(ttk.Frame):
             control_frame, text="Oblicz", command=self.compute_pallet
         )
         self.compute_btn.pack(side=tk.LEFT, padx=5)
+        self.prev_btn = ttk.Button(
+            control_frame, text="Poprzedni", command=self.prev_wolny
+        )
+        self.prev_btn.pack(side=tk.LEFT, padx=5)
+        self.prev_btn.state(["disabled"])
+        self.next_btn = ttk.Button(
+            control_frame, text="Następny", command=self.next_wolny
+        )
+        self.next_btn.pack(side=tk.LEFT, padx=5)
+        self.next_btn.state(["disabled"])
         ttk.Checkbutton(
             control_frame,
             text="Tryb edycji",
@@ -776,6 +799,9 @@ class TabPallet(ttk.Frame):
                 return
 
             self.layouts = []
+            self.wolny_solutions = []
+            self.wolny_index = 0
+            self.wolny_get_next = None
 
             pallet = Pallet(pallet_w, pallet_l, pallet_h)
             calc_carton = Carton(box_w_ext + spacing, box_l_ext + spacing, box_h)
@@ -794,22 +820,25 @@ class TabPallet(ttk.Frame):
                 pallet_l,
             )
 
+            wolny_res = algorithms.enumerate_packings_wolny(
+                pallet_w,
+                pallet_l,
+                box_w_ext + spacing,
+                box_l_ext + spacing,
+                want=15,
+                time_first=5,
+                time_each=3,
+            )
+            if wolny_res:
+                self.wolny_solutions, self.wolny_get_next = (
+                    wolny_res if isinstance(wolny_res, tuple) else (wolny_res, None)
+                )
+                patterns["wolny"] = self.wolny_solutions[0]
+            else:
+                patterns["wolny"] = []
+
             def adjust(patt):
-                """Shrink algorithm output to account for spacing.
-
-                The packing algorithms operate on box dimensions that already
-                include the desired spacing.  Here we shift each carton by half
-                the spacing to center it inside its reserved area and then
-                restore the original orientation by subtracting the spacing from
-                its width and length.
-                """
-
-                adjusted = []
-                for x, y, w, h in patt:
-                    new_w = w - spacing
-                    new_h = h - spacing
-                    adjusted.append((x + spacing / 2, y + spacing / 2, new_w, new_h))
-                return adjusted
+                return apply_spacing(patt, spacing)
 
             patterns = {k: adjust(v) for k, v in patterns.items()}
             self.best_even = adjust(self.best_even)
@@ -853,6 +882,12 @@ class TabPallet(ttk.Frame):
             self.layout_map = {
                 name: idx for idx, (_, __, name) in enumerate(self.layouts)
             }
+            if self.wolny_solutions:
+                self.prev_btn.state(["!disabled"])
+                self.next_btn.state(["!disabled"])
+            else:
+                self.prev_btn.state(["disabled"])
+                self.next_btn.state(["disabled"])
             self.update_transform_frame()
             self.num_layers = num_layers
             self.slip_count = slip_count
@@ -1563,6 +1598,40 @@ class TabPallet(ttk.Frame):
         new_val = max(0.0, current + delta)
         self.spacing_var.set(f"{new_val:.1f}")
         self.compute_pallet()
+
+    # ------------------------------------------------------------------
+    # Wolny enumeration helpers
+    # ------------------------------------------------------------------
+
+    def update_wolny_layout(self) -> None:
+        if not self.wolny_solutions:
+            return
+        idx = self.layout_map.get("Wolny")
+        if idx is None:
+            return
+        pallet_w = parse_dim(self.pallet_w_var)
+        pallet_l = parse_dim(self.pallet_l_var)
+        spacing = parse_dim(self.spacing_var)
+        patt = apply_spacing(self.wolny_solutions[self.wolny_index], spacing)
+        centered = self.center_layout(patt, pallet_w, pallet_l)
+        self.layouts[idx] = (len(centered), centered, "Wolny")
+        self.update_layers()
+        self.draw_pallet()
+
+    def next_wolny(self) -> None:
+        if self.wolny_index + 1 < len(self.wolny_solutions):
+            self.wolny_index += 1
+        elif self.wolny_get_next:
+            nxt = self.wolny_get_next()
+            if nxt:
+                self.wolny_solutions.append(nxt)
+                self.wolny_index += 1
+        self.update_wolny_layout()
+
+    def prev_wolny(self) -> None:
+        if self.wolny_index > 0:
+            self.wolny_index -= 1
+        self.update_wolny_layout()
 
     # ------------------------------------------------------------------
     # JSON pattern export / import helpers

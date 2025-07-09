@@ -153,6 +153,16 @@ class PatternSelector:
         )
         patterns["dynamic"] = dynamic
 
+        # wolny CP-SAT search
+        res = algorithms.enumerate_packings_wolny(
+            pallet_w, pallet_l, box_w, box_l, want=1, time_first=2, time_each=2
+        )
+        if res:
+            sol, _ = res if isinstance(res, tuple) else (res, None)
+            patterns["wolny"] = sol[0]
+        else:
+            patterns["wolny"] = []
+
         return patterns
 
     def score(self, pattern: Pattern) -> PatternScore:
