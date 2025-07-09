@@ -124,12 +124,6 @@ class PatternSelector:
         )
         patterns["pinwheel"] = pinwheel_patt
 
-        # L pattern layout
-        _, l_patt = algorithms.pack_l_pattern(
-            pallet_w, pallet_l, box_w, box_l
-        )
-        patterns["l_pattern"] = l_patt
-
         # interlock layout - use first layer of result
         try:
             _, _, inter = algorithms.compute_interlocked_layout(

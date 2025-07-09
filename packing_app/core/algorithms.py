@@ -149,62 +149,6 @@ def pack_pinwheel(width, height, wprod, lprod, margin=0):
     return len(positions), positions
 
 
-def pack_l_pattern(width, height, wprod, lprod, margin=0):
-    """Pack cartons in repeating 2x2 L-shaped blocks.
-
-    A single block contains three cartons arranged in an ``L`` shape.
-    Remaining space around the grid is filled using a maximising
-    algorithm so that cartons never overlap and stay within the pallet
-    bounds.
-    """
-
-    eff_width = width - margin
-    eff_height = height - margin
-    block_w = wprod + lprod
-    block_h = wprod + lprod
-
-    # If a single block does not fit, fall back to the mixed layout
-    if eff_width < block_w or eff_height < block_h:
-        return pack_rectangles_mixed_greedy(eff_width, eff_height, wprod, lprod)
-
-    n_x = int(eff_width // block_w)
-    n_y = int(eff_height // block_h)
-    positions = []
-    for ix in range(n_x):
-        for iy in range(n_y):
-            x0 = ix * block_w
-            y0 = iy * block_h
-            positions.append((x0, y0, wprod, lprod))
-            positions.append((x0 + wprod, y0, lprod, wprod))
-            positions.append((x0, y0 + lprod, lprod, wprod))
-
-    leftover_x = eff_width - n_x * block_w
-    leftover_y = eff_height - n_y * block_h
-
-    if leftover_x > 0:
-        _, right_strip = pack_rectangles_mixed_max(
-            leftover_x, eff_height, wprod, lprod
-        )
-        positions.extend((n_x * block_w + x, y, w, h) for x, y, w, h in right_strip)
-
-    if leftover_y > 0 and n_x * block_w > 0:
-        _, top_strip = pack_rectangles_mixed_max(
-            n_x * block_w, leftover_y, wprod, lprod
-        )
-        positions.extend((x, n_y * block_h + y, w, h) for x, y, w, h in top_strip)
-
-    # Fill remaining gaps within the grid using a dynamic search.
-    count, filled = maximize_mixed_layout(width, height, wprod, lprod, margin, positions)
-
-    unique = []
-    for r in filled:
-        if all(
-            not (r[0] + r[2] > o[0] and o[0] + o[2] > r[0] and r[1] + r[3] > o[1] and o[1] + o[3] > r[1])
-            for o in unique
-        ):
-            unique.append(r)
-
-    return len(unique), unique
 
 def compute_interlocked_layout(
     pallet_w, pallet_l, box_w, box_l, num_layers=4, shift_even=True
