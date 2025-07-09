@@ -493,7 +493,7 @@ class TabPallet(ttk.Frame):
             command=lambda *_: self.update_layers("even"),
         ).grid(row=1, column=2, padx=5, pady=2)
 
-    def update_layers(self, side="both", *args):
+    def update_layers(self, side="both", force=False, *args):
         num_layers = getattr(self, "num_layers", int(parse_dim(self.num_layers_var)))
         if side == "both" or not self.layers:
             self.layers = [list() for _ in range(num_layers)]
@@ -523,7 +523,7 @@ class TabPallet(ttk.Frame):
                     if idx >= len(self.layers):
                         self.layers.append(list(odd_source))
                         self.carton_ids.append(list(range(1, len(odd_source) + 1)))
-                    elif self.layer_patterns[idx] != odd_name:
+                    elif self.layer_patterns[idx] != odd_name or force:
                         self.layers[idx] = list(odd_source)
                         self.carton_ids[idx] = list(range(1, len(odd_source) + 1))
                     self.layer_patterns[idx] = odd_name
@@ -533,7 +533,7 @@ class TabPallet(ttk.Frame):
                     if idx >= len(self.layers):
                         self.layers.append(list(even_source))
                         self.carton_ids.append(list(range(1, len(even_source) + 1)))
-                    elif self.layer_patterns[idx] != even_name:
+                    elif self.layer_patterns[idx] != even_name or force:
                         self.layers[idx] = list(even_source)
                         self.carton_ids[idx] = list(range(1, len(even_source) + 1))
                     self.layer_patterns[idx] = even_name
@@ -1623,7 +1623,7 @@ class TabPallet(ttk.Frame):
             self.odd_layout_var.set("Wolny")
         if hasattr(self, "even_layout_var") and self.even_layout_var.get() != "Wolny":
             self.even_layout_var.set("Wolny")
-        self.update_layers()
+        self.update_layers(force=True)
         self.draw_pallet()
 
     def generate_wolny_solution(self) -> bool:
