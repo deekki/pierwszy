@@ -505,6 +505,8 @@ def pack_rectangles_dynamic(width, height, wprod, lprod, margin=0):
 def _build_cp_model(W_i, H_i, w_i, h_i, N):
     """Return (model, vars_) for the CP-SAT solver."""
     from ortools.sat.python import cp_model
+    import random
+    import random
 
     m = cp_model.CpModel()
     x = [m.NewIntVar(0, W_i, f"x{i}") for i in range(N)]
@@ -552,6 +554,7 @@ def enumerate_packings_wolny(
     want=15,
     time_first=20,
     time_each=20,
+    seed=None,
 ):
     """Enumerate rectangle packings using a CP-SAT search (WOLNY)."""
     from ortools.sat.python import cp_model
@@ -559,6 +562,8 @@ def enumerate_packings_wolny(
     scale = 1000
     W_i, H_i = round(width * scale), round(height * scale)
     w_i, h_i = round(wprod * scale), round(lprod * scale)
+    if seed is None:
+        seed = random.randint(0, 1_000_000)
     if min(W_i, H_i, w_i, h_i) <= 0:
         return []
 
@@ -573,6 +578,8 @@ def enumerate_packings_wolny(
 
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = time_first
+        if seed is not None:
+            solver.parameters.random_seed = seed
         status = solver.Solve(model)
         if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
             continue
@@ -586,6 +593,8 @@ def enumerate_packings_wolny(
 
             solver2 = cp_model.CpSolver()
             solver2.parameters.max_time_in_seconds = time_each
+            if seed is not None:
+                solver2.parameters.random_seed = seed
             solver2.parameters.enumerate_all_solutions = True
             solver2.parameters.num_search_workers = 8
 
@@ -621,6 +630,7 @@ def pack_rectangles_wolny(width, height, wprod, lprod, *, time_limit=1.0):
         want=1,
         time_first=time_limit,
         time_each=time_limit,
+        seed=0,
     )
     if not result:
         return 0, []
