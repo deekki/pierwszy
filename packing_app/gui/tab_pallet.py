@@ -1615,13 +1615,6 @@ class TabPallet(ttk.Frame):
         patt = apply_spacing(self.wolny_solutions[self.wolny_index], spacing)
         centered = self.center_layout(patt, pallet_w, pallet_l)
         self.layouts[idx] = (len(centered), centered, "Wolny")
-        # When cycling through "Wolny" layouts make sure it is the active
-        # pattern for both odd and even layers so the preview updates even if
-        # another layout was previously selected.
-        if hasattr(self, "odd_layout_var") and self.odd_layout_var.get() != "Wolny":
-            self.odd_layout_var.set("Wolny")
-        if hasattr(self, "even_layout_var") and self.even_layout_var.get() != "Wolny":
-            self.even_layout_var.set("Wolny")
         self.update_layers()
         self.draw_pallet()
 
