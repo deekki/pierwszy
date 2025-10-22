@@ -397,10 +397,12 @@ def maximize_mixed_layout(w_c, l_c, w_p, l_p, margin, initial_positions):
                     if fy + l_p < afy + afh:
                         new_free.append((afx, fy + l_p, afw, afy + afh - (fy + l_p)))
             free_areas = new_free
-            if fx + w_p < eff_w:
-                free_areas.append((fx + w_p, fy, eff_w - (fx + w_p), l_p))
-            if fy + l_p < eff_l:
-                free_areas.append((fx, fy + l_p, w_p, eff_l - (fy + l_p)))
+            remaining_w = fw - w_p
+            remaining_h = fh - l_p
+            if remaining_w > 0:
+                free_areas.append((fx + w_p, fy, remaining_w, fh))
+            if remaining_h > 0:
+                free_areas.append((fx, fy + l_p, w_p, remaining_h))
             placed = True
 
         if not placed and fw >= l_p and fh >= w_p:
@@ -420,10 +422,12 @@ def maximize_mixed_layout(w_c, l_c, w_p, l_p, margin, initial_positions):
                     if fy + w_p < afy + afh:
                         new_free.append((afx, fy + w_p, afw, afy + afh - (fy + w_p)))
             free_areas = new_free
-            if fx + l_p < eff_w:
-                free_areas.append((fx + l_p, fy, eff_w - (fx + l_p), w_p))
-            if fy + w_p < eff_l:
-                free_areas.append((fx, fy + w_p, l_p, eff_l - (fy + w_p)))
+            remaining_w = fw - l_p
+            remaining_h = fh - w_p
+            if remaining_w > 0:
+                free_areas.append((fx + l_p, fy, remaining_w, fh))
+            if remaining_h > 0:
+                free_areas.append((fx, fy + w_p, l_p, remaining_h))
             placed = True
 
         if not placed:
