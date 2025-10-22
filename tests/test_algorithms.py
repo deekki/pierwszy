@@ -23,6 +23,34 @@ def test_maximize_mixed_layout_small_pallet_returns_empty():
     assert positions == []
 
 
+def test_maximize_mixed_layout_respects_initial_layout():
+    pallet_w, pallet_l = 800, 600
+    box_w, box_l = 250, 150
+    initial_positions = [(0, 0, 300, 200), (0, 200, 300, 200)]
+
+    count, positions = maximize_mixed_layout(
+        w_c=pallet_w,
+        l_c=pallet_l,
+        w_p=box_w,
+        l_p=box_l,
+        margin=0,
+        initial_positions=initial_positions,
+    )
+
+    # existing placements must be preserved
+    for seed in initial_positions:
+        assert seed in positions
+
+    # all placements must remain inside the pallet and non-overlapping
+    for x, y, w, h in positions:
+        assert 0 <= x <= pallet_w - w
+        assert 0 <= y <= pallet_l - h
+
+    for i, pos in enumerate(positions):
+        for other in positions[i + 1 :]:
+            assert not _overlap(pos, other)
+
+
 def test_pinwheel_layout_fits_and_no_collisions():
     pallet_w, pallet_l = 1000, 800
     box_w, box_l = 250, 150
