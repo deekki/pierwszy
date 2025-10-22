@@ -17,6 +17,13 @@ def var(val):
     ns.set = lambda v: setattr(ns, "val", v)
     return ns
 
+def bvar(val):
+    ns = types.SimpleNamespace()
+    ns.val = val
+    ns.get = lambda: ns.val
+    ns.set = lambda v: setattr(ns, "val", v)
+    return ns
+
 def make_dummy():
     d = types.SimpleNamespace()
     d.pallet_w_var = var(100)
@@ -43,6 +50,25 @@ def make_dummy():
     d.renumber_layer = lambda idx: d.carton_ids.__setitem__(idx, list(range(1, len(d.layers[idx]) + 1)))
     d.renumber_layers = lambda: [d.renumber_layer(i) for i in range(len(d.layers))]
     return d
+
+
+def make_tab_stub():
+    tab = object.__new__(TabPallet)
+    tab.pallet_w_var = var(1200)
+    tab.pallet_l_var = var(800)
+    tab.pallet_h_var = var(144)
+    tab.box_w_var = var(200)
+    tab.box_l_var = var(300)
+    tab.box_h_var = var(100)
+    tab.cardboard_thickness_var = var(0)
+    tab.spacing_var = var(0)
+    tab.slip_count_var = var(0)
+    tab.num_layers_var = var(1)
+    tab.max_stack_var = var(1600)
+    tab.include_pallet_height_var = bvar(True)
+    tab._layer_sync_source = "height"
+    tab._suspend_layer_sync = False
+    return tab
 
 def test_on_release_syncs_layers():
     dummy = make_dummy()
@@ -162,3 +188,37 @@ def test_no_sync_when_algorithms_differ():
     dummy.selected_indices = {(0, 0)}
     TabPallet.on_release(dummy, None)
     assert dummy.layers[1][0][:2] == (0, 0)
+
+
+def test_height_limit_updates_layer_count():
+    tab = make_tab_stub()
+    tab.max_stack_var.set(600)
+    tab._layer_sync_source = "height"
+    inputs = TabPallet._read_inputs(tab)
+    assert inputs.num_layers == 4
+    assert tab.num_layers_var.get() == "4"
+
+
+def test_layer_count_updates_height_limit():
+    tab = make_tab_stub()
+    tab.num_layers_var.set(5)
+    tab._layer_sync_source = "layers"
+    inputs = TabPallet._read_inputs(tab)
+    assert pytest.approx(inputs.max_stack) == 644
+    assert tab.max_stack_var.get() == "644"
+
+
+def test_sync_respects_pallet_toggle():
+    tab = make_tab_stub()
+    tab.include_pallet_height_var = bvar(False)
+    tab.max_stack_var.set(500)
+    tab._layer_sync_source = "height"
+    inputs = TabPallet._read_inputs(tab)
+    assert inputs.num_layers == 5
+    assert tab.num_layers_var.get() == "5"
+
+    tab.num_layers_var.set(3)
+    tab._layer_sync_source = "layers"
+    inputs = TabPallet._read_inputs(tab)
+    assert pytest.approx(inputs.max_stack) == 300
+    assert tab.max_stack_var.get() == "300"

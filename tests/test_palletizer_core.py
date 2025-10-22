@@ -76,3 +76,18 @@ def test_stability_penalizes_overhang():
     over_score = selector.score(overhang)
 
     assert inside_score.stability > over_score.stability
+
+
+def test_generate_all_includes_rotated_column():
+    carton = Carton(width=200, length=300)
+    pallet = Pallet(width=1200, length=1000)
+    selector = PatternSelector(carton, pallet)
+
+    patterns = selector.generate_all()
+
+    assert "column" in patterns
+    assert "column_rotated" in patterns
+    assert patterns["column"]
+    assert patterns["column_rotated"]
+    assert patterns["column"][0][2] == pytest.approx(carton.width)
+    assert patterns["column_rotated"][0][2] == pytest.approx(carton.length)

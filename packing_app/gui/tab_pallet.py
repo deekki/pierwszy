@@ -55,6 +55,12 @@ def apply_spacing(pattern, spacing):
 LayerLayout = List[Tuple[float, float, float, float]]
 
 
+DISPLAY_NAME_OVERRIDES = {
+    "column": "Column (W x L)",
+    "column_rotated": "Column (L x W)",
+}
+
+
 @dataclass
 class PalletInputs:
     pallet_w: float
@@ -118,6 +124,8 @@ class TabPallet(ttk.Frame):
         self.drag_offset = (0, 0)
         self.drag_info = None
         self.drag_select_origin = None
+        self._layer_sync_source = "height"
+        self._suspend_layer_sync = False
         self.drag_snapshot_saved = False
         self.press_cid = None
         self.motion_cid = None
@@ -275,6 +283,7 @@ class TabPallet(ttk.Frame):
             row=0, column=0, padx=5, pady=5
         )
         self.num_layers_var = tk.StringVar(value="1")
+        self.num_layers_var.trace_add("write", self._on_num_layers_changed)
         entry_num_layers = ttk.Entry(
             layers_frame, textvariable=self.num_layers_var, width=5
         )
@@ -287,6 +296,7 @@ class TabPallet(ttk.Frame):
         # Default maximum stack height is 1600 mm which roughly corresponds to
         # a common limit for palletized loads. Set to 0 to disable the limit.
         self.max_stack_var = tk.StringVar(value="1600")
+        self.max_stack_var.trace_add("write", self._on_max_stack_changed)
         entry_max_stack = ttk.Entry(
             layers_frame, textvariable=self.max_stack_var, width=8
         )
@@ -439,6 +449,37 @@ class TabPallet(ttk.Frame):
             self.ext_dims_label.config(text=f"{ext_w:.1f} x {ext_l:.1f} x {ext_h:.1f}")
         except ValueError:
             self.ext_dims_label.config(text="Błąd danych")
+
+    @staticmethod
+    def _format_number(value) -> str:
+        if isinstance(value, str):
+            return value
+        if isinstance(value, (int, float)):
+            try:
+                if float(value).is_integer():
+                    return str(int(round(float(value))))
+            except (TypeError, ValueError):
+                return str(value)
+            return f"{float(value):.2f}".rstrip("0").rstrip(".")
+        return str(value)
+
+    def _set_layer_field(self, var: tk.StringVar, value) -> None:
+        formatted = self._format_number(value)
+        if var.get() == formatted:
+            return
+        self._suspend_layer_sync = True
+        try:
+            var.set(formatted)
+        finally:
+            self._suspend_layer_sync = False
+
+    def _on_num_layers_changed(self, *_):
+        if not self._suspend_layer_sync:
+            self._layer_sync_source = "layers"
+
+    def _on_max_stack_changed(self, *_):
+        if not self._suspend_layer_sync:
+            self._layer_sync_source = "height"
 
     def update_transform_frame(self):
         for widget in self.transform_frame.winfo_children():
@@ -785,14 +826,19 @@ class TabPallet(ttk.Frame):
             include_pallet_height=self.include_pallet_height_var.get(),
         )
 
-        if inputs.max_stack > 0:
-            available = inputs.max_stack - (
-                inputs.pallet_h if inputs.include_pallet_height else 0
-            )
-            layer_height = inputs.box_h + 2 * inputs.thickness
-            if layer_height > 0:
-                inputs.num_layers = max(int(available // layer_height), 0)
-                self.num_layers_var.set(str(inputs.num_layers))
+        layer_height = inputs.box_h + 2 * inputs.thickness
+        include_height = inputs.pallet_h if inputs.include_pallet_height else 0
+        if layer_height > 0:
+            if self._layer_sync_source == "layers":
+                stack_height = inputs.num_layers * layer_height + include_height
+                if stack_height > 0:
+                    inputs.max_stack = stack_height
+                    self._set_layer_field(self.max_stack_var, stack_height)
+            else:
+                if inputs.max_stack > 0:
+                    available = max(inputs.max_stack - include_height, 0)
+                    inputs.num_layers = max(int(available // layer_height), 0)
+                    self._set_layer_field(self.num_layers_var, inputs.num_layers)
 
         return inputs
 
@@ -830,7 +876,9 @@ class TabPallet(ttk.Frame):
         for name, pattern in patterns.items():
             adjusted = apply_spacing(pattern, inputs.spacing)
             centered = self.center_layout(adjusted, inputs.pallet_w, inputs.pallet_l)
-            display = name.replace("_", " ").capitalize()
+            display = DISPLAY_NAME_OVERRIDES.get(
+                name, name.replace("_", " ").capitalize()
+            )
             layout_entries.append((len(centered), centered, display))
 
         if "interlock" in patterns:
@@ -854,7 +902,9 @@ class TabPallet(ttk.Frame):
             best_odd = apply_spacing(odd_centered, inputs.spacing)
 
         layout_map = {name: idx for idx, (_, __, name) in enumerate(layout_entries)}
-        best_layout_name = best_key.replace("_", " ").capitalize()
+        best_layout_name = DISPLAY_NAME_OVERRIDES.get(
+            best_key, best_key.replace("_", " ").capitalize()
+        )
 
         return LayoutComputation(
             layouts=layout_entries,
@@ -1634,7 +1684,7 @@ class TabPallet(ttk.Frame):
             self.layers = [list(layer) for layer in layers]
             self.carton_ids = [list(range(1, len(layer) + 1)) for layer in self.layers]
             self.num_layers = len(self.layers)
-            self.num_layers_var.set(str(self.num_layers))
+            self._set_layer_field(self.num_layers_var, self.num_layers)
             self.layer_patterns = ["" for _ in self.layers]
             self.transformations = ["Brak" for _ in self.layers]
             if hasattr(self, "undo_stack"):
