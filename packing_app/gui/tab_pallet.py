@@ -2,6 +2,8 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, simpledialog
 import matplotlib
 import json
+from dataclasses import dataclass
+from typing import List, Tuple, Dict
 
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
@@ -48,6 +50,42 @@ def apply_spacing(pattern, spacing):
         new_h = h - spacing
         adjusted.append((x + spacing / 2, y + spacing / 2, new_w, new_h))
     return adjusted
+
+
+LayerLayout = List[Tuple[float, float, float, float]]
+
+
+@dataclass
+class PalletInputs:
+    pallet_w: float
+    pallet_l: float
+    pallet_h: float
+    box_w: float
+    box_l: float
+    box_h: float
+    thickness: float
+    spacing: float
+    slip_count: int
+    num_layers: int
+    max_stack: float
+    include_pallet_height: bool
+
+    @property
+    def box_w_ext(self) -> float:
+        return self.box_w + 2 * self.thickness
+
+    @property
+    def box_l_ext(self) -> float:
+        return self.box_l + 2 * self.thickness
+
+
+@dataclass
+class LayoutComputation:
+    layouts: List[Tuple[int, LayerLayout, str]]
+    layout_map: Dict[str, int]
+    best_layout_name: str
+    best_even: LayerLayout
+    best_odd: LayerLayout
 
 
 class TabPallet(ttk.Frame):
@@ -702,41 +740,6 @@ class TabPallet(ttk.Frame):
         y = min(max(y, 0), pallet_l - h)
         return x, y
 
-    def _get_default_layout(
-        self,
-        selector: PatternSelector,
-        carton: Carton,
-        pallet: Pallet,
-        pallet_w: float,
-        pallet_l: float,
-    ) -> tuple[dict, str, list, list]:
-        """Return available patterns and best even/odd layers.
-
-        The interlock layout is preferred when available. The returned display
-        name always matches the pattern used for sequencing.
-        """
-
-        patterns = selector.generate_all(maximize_mixed=self.maximize_mixed.get())
-        if "interlock" in patterns:
-            best_name = "Interlock"
-            best_pattern = patterns["interlock"]
-        else:
-            raw_name, best_pattern, _ = selector.best(
-                maximize_mixed=self.maximize_mixed.get()
-            )
-            best_name = raw_name.replace("_", " ").capitalize()
-
-        seq = EvenOddSequencer(best_pattern, carton, pallet)
-        even_base, odd_shifted = seq.best_shift()
-        if self.shift_even_var.get():
-            best_even = self.center_layout(odd_shifted, pallet_w, pallet_l)
-            best_odd = self.center_layout(even_base, pallet_w, pallet_l)
-        else:
-            best_even = self.center_layout(even_base, pallet_w, pallet_l)
-            best_odd = self.center_layout(odd_shifted, pallet_w, pallet_l)
-
-        return patterns, best_name, best_even, best_odd
-
     def compute_pallet(self, event=None):
         """Calculate carton layouts on the pallet.
 
@@ -752,119 +755,129 @@ class TabPallet(ttk.Frame):
             self.compute_btn.state(["disabled"])
 
         try:
-            pallet_w = parse_dim(self.pallet_w_var)
-            pallet_l = parse_dim(self.pallet_l_var)
-            pallet_h = parse_dim(self.pallet_h_var)
-            box_w = parse_dim(self.box_w_var)
-            box_l = parse_dim(self.box_l_var)
-            box_h = parse_dim(self.box_h_var)
-            thickness = parse_dim(self.cardboard_thickness_var)
-            spacing = parse_dim(self.spacing_var)
-            slip_count = int(parse_dim(self.slip_count_var))
-            box_w_ext = box_w + 2 * thickness
-            box_l_ext = box_l + 2 * thickness
-            num_layers = int(parse_dim(self.num_layers_var))
-            max_stack = parse_dim(self.max_stack_var)
-
-            if max_stack > 0:
-                avail = max_stack - (
-                    pallet_h if self.include_pallet_height_var.get() else 0
-                )
-                box_h_ext = box_h + 2 * thickness
-                layer_height = box_h_ext
-                if layer_height > 0:
-                    num_layers = max(int(avail // layer_height), 0)
-                    self.num_layers_var.set(str(num_layers))
-
-            if (
-                pallet_w == 0
-                or pallet_l == 0
-                or pallet_h == 0
-                or box_w == 0
-                or box_l == 0
-                or box_h == 0
-                or num_layers <= 0
-            ):
-                messagebox.showwarning(
-                    "Błąd", "Wszystkie wymiary i liczba warstw muszą być większe od 0."
-                )
+            inputs = self._read_inputs()
+            if not self._validate_inputs(inputs):
                 return
 
-            self.layouts = []
-
-            pallet = Pallet(pallet_w, pallet_l, pallet_h)
-            calc_carton = Carton(box_w_ext + spacing, box_l_ext + spacing, box_h)
-            selector = PatternSelector(calc_carton, pallet)
-
-            (
-                patterns,
-                best_name,
-                self.best_even,
-                self.best_odd,
-            ) = self._get_default_layout(
-                selector,
-                calc_carton,
-                pallet,
-                pallet_w,
-                pallet_l,
-            )
-
-            def adjust(patt):
-                return apply_spacing(patt, spacing)
-
-            patterns = {k: adjust(v) for k, v in patterns.items()}
-            self.best_even = adjust(self.best_even)
-            self.best_odd = adjust(self.best_odd)
-
-            for name, patt in patterns.items():
-                centered = self.center_layout(patt, pallet_w, pallet_l)
-                display = name.replace("_", " ").capitalize()
-                self.layouts.append((len(centered), centered, display))
-
-            self.best_layout_name = best_name
-            # Force the interlock pattern to be the default selection when
-            # available.  Fallback to the best scored pattern otherwise.
-            if "interlock" in patterns:
-                best_name = "interlock"
-                best_pattern = selector.generate_all()["interlock"]
-            else:
-                raw_name, best_pattern, _ = selector.best(
-                    maximize_mixed=self.maximize_mixed.get()
-                )
-                best_name = raw_name
-
-            seq = EvenOddSequencer(best_pattern, calc_carton, pallet)
-            even_base, odd_shifted = seq.best_shift()
-            if self.shift_even_var.get():
-                self.best_even = adjust(
-                    self.center_layout(odd_shifted, pallet_w, pallet_l)
-                )
-                self.best_odd = adjust(
-                    self.center_layout(even_base, pallet_w, pallet_l)
-                )
-            else:
-                self.best_even = adjust(
-                    self.center_layout(even_base, pallet_w, pallet_l)
-                )
-                self.best_odd = adjust(
-                    self.center_layout(odd_shifted, pallet_w, pallet_l)
-                )
-            self.best_layout_name = best_name.replace("_", " ").capitalize()
-
-            self.layout_map = {
-                name: idx for idx, (_, __, name) in enumerate(self.layouts)
-            }
-            self.update_transform_frame()
-            self.num_layers = num_layers
-            self.slip_count = slip_count
-            self.update_layers()
-            getattr(self, "sort_layers", lambda: None)()
-            self.update_summary()
+            layouts = self._build_layouts(inputs)
+            self._finalize_results(inputs, layouts)
         finally:
             if hasattr(self, "status_var"):
                 self.status_var.set("")
             if hasattr(self, "compute_btn"):
                 self.compute_btn.state(["!disabled"])
+
+    def _read_inputs(self) -> PalletInputs:
+        """Collect and normalize numeric values from the UI widgets."""
+
+        inputs = PalletInputs(
+            pallet_w=parse_dim(self.pallet_w_var),
+            pallet_l=parse_dim(self.pallet_l_var),
+            pallet_h=parse_dim(self.pallet_h_var),
+            box_w=parse_dim(self.box_w_var),
+            box_l=parse_dim(self.box_l_var),
+            box_h=parse_dim(self.box_h_var),
+            thickness=parse_dim(self.cardboard_thickness_var),
+            spacing=parse_dim(self.spacing_var),
+            slip_count=int(parse_dim(self.slip_count_var)),
+            num_layers=int(parse_dim(self.num_layers_var)),
+            max_stack=parse_dim(self.max_stack_var),
+            include_pallet_height=self.include_pallet_height_var.get(),
+        )
+
+        if inputs.max_stack > 0:
+            available = inputs.max_stack - (
+                inputs.pallet_h if inputs.include_pallet_height else 0
+            )
+            layer_height = inputs.box_h + 2 * inputs.thickness
+            if layer_height > 0:
+                inputs.num_layers = max(int(available // layer_height), 0)
+                self.num_layers_var.set(str(inputs.num_layers))
+
+        return inputs
+
+    def _validate_inputs(self, inputs: PalletInputs) -> bool:
+        """Ensure all critical dimensions are positive before computing."""
+
+        if (
+            inputs.pallet_w == 0
+            or inputs.pallet_l == 0
+            or inputs.pallet_h == 0
+            or inputs.box_w == 0
+            or inputs.box_l == 0
+            or inputs.box_h == 0
+            or inputs.num_layers <= 0
+        ):
+            messagebox.showwarning(
+                "Błąd", "Wszystkie wymiary i liczba warstw muszą być większe od 0."
+            )
+            return False
+        return True
+
+    def _build_layouts(self, inputs: PalletInputs) -> LayoutComputation:
+        """Generate layout options and best even/odd layers for the pallet."""
+
+        pallet = Pallet(inputs.pallet_w, inputs.pallet_l, inputs.pallet_h)
+        calc_carton = Carton(
+            inputs.box_w_ext + inputs.spacing,
+            inputs.box_l_ext + inputs.spacing,
+            inputs.box_h,
+        )
+        selector = PatternSelector(calc_carton, pallet)
+        patterns = selector.generate_all(maximize_mixed=self.maximize_mixed.get())
+
+        layout_entries: List[Tuple[int, LayerLayout, str]] = []
+        for name, pattern in patterns.items():
+            adjusted = apply_spacing(pattern, inputs.spacing)
+            centered = self.center_layout(adjusted, inputs.pallet_w, inputs.pallet_l)
+            display = name.replace("_", " ").capitalize()
+            layout_entries.append((len(centered), centered, display))
+
+        if "interlock" in patterns:
+            best_key = "interlock"
+            best_pattern = patterns[best_key]
+        else:
+            raw_name, best_pattern, _ = selector.best(
+                maximize_mixed=self.maximize_mixed.get()
+            )
+            best_key = raw_name
+
+        seq = EvenOddSequencer(best_pattern, calc_carton, pallet)
+        even_base, odd_shifted = seq.best_shift()
+        even_centered = self.center_layout(even_base, inputs.pallet_w, inputs.pallet_l)
+        odd_centered = self.center_layout(odd_shifted, inputs.pallet_w, inputs.pallet_l)
+        if self.shift_even_var.get():
+            best_even = apply_spacing(odd_centered, inputs.spacing)
+            best_odd = apply_spacing(even_centered, inputs.spacing)
+        else:
+            best_even = apply_spacing(even_centered, inputs.spacing)
+            best_odd = apply_spacing(odd_centered, inputs.spacing)
+
+        layout_map = {name: idx for idx, (_, __, name) in enumerate(layout_entries)}
+        best_layout_name = best_key.replace("_", " ").capitalize()
+
+        return LayoutComputation(
+            layouts=layout_entries,
+            layout_map=layout_map,
+            best_layout_name=best_layout_name,
+            best_even=best_even,
+            best_odd=best_odd,
+        )
+
+    def _finalize_results(self, inputs: PalletInputs, result: LayoutComputation) -> None:
+        """Persist computed layouts and refresh dependent UI elements."""
+
+        self.layouts = result.layouts
+        self.layout_map = result.layout_map
+        self.best_layout_name = result.best_layout_name
+        self.best_even = result.best_even
+        self.best_odd = result.best_odd
+        self.update_transform_frame()
+        self.num_layers = inputs.num_layers
+        self.slip_count = inputs.slip_count
+        self.update_layers()
+        getattr(self, "sort_layers", lambda: None)()
+        self.update_summary()
 
     def draw_pallet(self):
         pallet_w = parse_dim(self.pallet_w_var)
