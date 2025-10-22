@@ -2,4 +2,3 @@ numpy
 matplotlib
 pyyaml
 rectpack
-ortools
