@@ -1,4 +1,5 @@
 import math
+import random
 import numpy as np
 
 def pack_rectangles_2d(width, height, wprod, lprod, margin=0):
@@ -505,8 +506,6 @@ def pack_rectangles_dynamic(width, height, wprod, lprod, margin=0):
 def _build_cp_model(W_i, H_i, w_i, h_i, N):
     """Return (model, vars_) for the CP-SAT solver."""
     from ortools.sat.python import cp_model
-    import random
-    import random
 
     m = cp_model.CpModel()
     x = [m.NewIntVar(0, W_i, f"x{i}") for i in range(N)]
