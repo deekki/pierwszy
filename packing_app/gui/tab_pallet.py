@@ -80,12 +80,15 @@ class TabPallet(ttk.Frame):
         self.drag_offset = (0, 0)
         self.drag_info = None
         self.drag_select_origin = None
+        self.drag_snapshot_saved = False
         self.press_cid = None
         self.motion_cid = None
         self.release_cid = None
+        self.key_cid = None
         self.context_menu = None
         self.context_layer = 0
         self.context_pos = (0, 0)
+        self.undo_stack = []
         self.build_ui()
 
     def layers_linked(self) -> bool:
@@ -489,6 +492,8 @@ class TabPallet(ttk.Frame):
             self.transformations = ["" for _ in range(num_layers)]
         self.selected_indices.clear()
         self.drag_info = None
+        if hasattr(self, "undo_stack"):
+            self.undo_stack.clear()
         odd_name = self.odd_layout_var.get()
         even_name = self.even_layout_var.get()
         odd_idx = self.layout_map.get(odd_name, 0)
@@ -1019,14 +1024,21 @@ class TabPallet(ttk.Frame):
             self.release_cid = self.canvas.mpl_connect(
                 "button_release_event", self.on_release
             )
+            self.key_cid = self.canvas.mpl_connect(
+                "key_press_event", self.on_key_press
+            )
         else:
             for cid in [self.press_cid, self.motion_cid, self.release_cid]:
                 if cid is not None:
                     self.canvas.mpl_disconnect(cid)
             self.press_cid = self.motion_cid = self.release_cid = None
+            if self.key_cid is not None:
+                self.canvas.mpl_disconnect(self.key_cid)
+            self.key_cid = None
             self.selected_indices.clear()
             self.drag_info = None
             self.drag_select_origin = None
+            self.drag_snapshot_saved = False
             self.draw_pallet()
             if hasattr(self, "status_var"):
                 self.status_var.set("")
@@ -1047,12 +1059,13 @@ class TabPallet(ttk.Frame):
         for patch, idx in self.patches[layer_idx]:
             contains, _ = patch.contains(event)
             if contains:
-                if event.key == "shift":
+                if self._shift_active(event):
                     if (layer_idx, idx) in self.selected_indices:
                         self.selected_indices.remove((layer_idx, idx))
                     else:
                         self.selected_indices.add((layer_idx, idx))
                     self.drag_info = None
+                    self.drag_snapshot_saved = False
                 else:
                     if (layer_idx, idx) not in self.selected_indices:
                         self.selected_indices = {(layer_idx, idx)}
@@ -1066,9 +1079,10 @@ class TabPallet(ttk.Frame):
                                 )
                                 break
                     self.drag_info = drag_items
+                    self.drag_snapshot_saved = False
                 break
         else:
-            if event.key == "shift":
+            if self._shift_active(event):
                 self.selected_indices.clear()
                 self.drag_select_origin = (event.xdata, event.ydata)
         self.highlight_selection()
@@ -1076,6 +1090,10 @@ class TabPallet(ttk.Frame):
     def on_motion(self, event):
         if not self.drag_info or event.xdata is None or event.ydata is None:
             return
+
+        if not self.drag_snapshot_saved:
+            TabPallet._record_state(self)
+            self.drag_snapshot_saved = True
 
         pallet_w = parse_dim(self.pallet_w_var)
         pallet_l = parse_dim(self.pallet_l_var)
@@ -1168,6 +1186,7 @@ class TabPallet(ttk.Frame):
                 self.layers[other_layer][idx] = (snap_x, snap_y, w, h)
 
         self.drag_info = None
+        self.drag_snapshot_saved = False
         getattr(self, "sort_layers", lambda: None)()
         self.draw_pallet()
         self.update_summary()
@@ -1175,6 +1194,7 @@ class TabPallet(ttk.Frame):
 
     def insert_carton(self, layer_idx, pos):
         """Insert a carton into the given layer at `pos`."""
+        TabPallet._record_state(self)
         thickness = parse_dim(self.cardboard_thickness_var)
         if self.layers[layer_idx]:
             _, _, w, h = self.layers[layer_idx][0]
@@ -1210,6 +1230,7 @@ class TabPallet(ttk.Frame):
         if not self.selected_indices:
             return
 
+        TabPallet._record_state(self)
         affected = set()
         for layer_idx, idx in sorted(
             self.selected_indices, key=lambda t: (t[0], -t[1])
@@ -1245,6 +1266,7 @@ class TabPallet(ttk.Frame):
         if not self.selected_indices:
             return
 
+        TabPallet._record_state(self)
         for layer_idx, idx in list(self.selected_indices):
             if layer_idx >= len(self.layers) or idx >= len(self.layers[layer_idx]):
                 continue
@@ -1306,6 +1328,7 @@ class TabPallet(ttk.Frame):
         if not indices:
             return
 
+        TabPallet._record_state(self)
         pallet_w = parse_dim(self.pallet_w_var)
         pallet_l = parse_dim(self.pallet_l_var)
         sel = [self.layers[layer_idx][i] for i in indices]
@@ -1328,6 +1351,7 @@ class TabPallet(ttk.Frame):
         if not indices:
             return
 
+        TabPallet._record_state(self)
         pallet_w = parse_dim(self.pallet_w_var)
         pallet_l = parse_dim(self.pallet_l_var)
         boxes = self.layers[layer_idx]
@@ -1385,6 +1409,7 @@ class TabPallet(ttk.Frame):
         if not indices:
             return
 
+        TabPallet._record_state(self)
         pallet_w = parse_dim(self.pallet_w_var)
         pallet_l = parse_dim(self.pallet_l_var)
         boxes = self.layers[layer_idx]
@@ -1599,8 +1624,73 @@ class TabPallet(ttk.Frame):
             self.num_layers_var.set(str(self.num_layers))
             self.layer_patterns = ["" for _ in self.layers]
             self.transformations = ["Brak" for _ in self.layers]
+            if hasattr(self, "undo_stack"):
+                self.undo_stack.clear()
             self.draw_pallet()
             self.update_summary()
+
+    def _modifier_active(self, event, mask: int) -> bool:
+        gui_event = getattr(event, "guiEvent", None)
+        if gui_event is not None and hasattr(gui_event, "state"):
+            try:
+                return bool(gui_event.state & mask)
+            except Exception:
+                pass
+        key = (event.key or "").lower()
+        if mask == 0x0001:
+            return "shift" in key
+        if mask == 0x0004:
+            return "ctrl" in key or "control" in key or "cmd" in key
+        return False
+
+    def _shift_active(self, event) -> bool:
+        return self._modifier_active(event, 0x0001)
+
+    def _ctrl_active(self, event) -> bool:
+        return self._modifier_active(event, 0x0004)
+
+    @staticmethod
+    def _record_state(obj) -> None:
+        recorder = getattr(obj, "push_undo_state", None)
+        if recorder is not None:
+            recorder()
+
+    def push_undo_state(self) -> None:
+        state = {
+            "layers": [list(layer) for layer in self.layers],
+            "carton_ids": [list(ids) for ids in self.carton_ids],
+            "selected": set(self.selected_indices),
+        }
+        if self.undo_stack:
+            last = self.undo_stack[-1]
+            if last["layers"] == state["layers"] and last["carton_ids"] == state["carton_ids"]:
+                return
+        self.undo_stack.append(state)
+        if len(self.undo_stack) > 50:
+            self.undo_stack.pop(0)
+
+    def undo(self) -> None:
+        if not self.undo_stack:
+            return
+        state = self.undo_stack.pop()
+        self.layers = [list(layer) for layer in state["layers"]]
+        self.carton_ids = [list(ids) for ids in state["carton_ids"]]
+        self.selected_indices = set(state.get("selected", set()))
+        self.drag_info = None
+        self.drag_select_origin = None
+        self.drag_snapshot_saved = False
+        self.draw_pallet()
+        self.update_summary()
+        self.highlight_selection()
+
+    def on_key_press(self, event):
+        if not self.modify_mode_var.get():
+            return
+        key = (event.key or "").lower()
+        if key in {"ctrl+z", "control+z", "cmd+z"} or (
+            key == "z" and self._ctrl_active(event)
+        ):
+            self.undo()
 
     def save_pattern_dialog(self):
         name = simpledialog.askstring("Zapisz wzór", "Nazwa wzoru:")
