@@ -1,13 +1,13 @@
 import types
 
-from palletizer_core import Carton, Pallet, PatternSelector
-from packing_app.gui.tab_pallet import TabPallet
+from palletizer_core import Carton, Pallet
+from packing_app.gui.tab_pallet import TabPallet, PalletInputs
 
 
 class Dummy:
     group_cartons = TabPallet.group_cartons
     center_layout = TabPallet.center_layout
-    _get_default_layout = TabPallet._get_default_layout
+    _build_layouts = TabPallet._build_layouts
 
     def __init__(self):
         def var(val):
@@ -22,14 +22,25 @@ def test_interlock_selected_by_default():
     dummy = Dummy()
     carton = Carton(200, 200, 0)
     pallet = Pallet(800, 600, 0)
-    selector = PatternSelector(carton, pallet)
-
-    patterns, name, _, _ = dummy._get_default_layout(
-        selector, carton, pallet, pallet.width, pallet.length
+    inputs = PalletInputs(
+        pallet_w=pallet.width,
+        pallet_l=pallet.length,
+        pallet_h=pallet.height,
+        box_w=carton.width,
+        box_l=carton.length,
+        box_h=carton.height,
+        thickness=0,
+        spacing=0,
+        slip_count=0,
+        num_layers=1,
+        max_stack=0,
+        include_pallet_height=False,
     )
 
-    assert "interlock" in patterns and patterns["interlock"], "interlock layout missing"
-    assert name == "Interlock"
+    result = dummy._build_layouts(inputs)
+
+    assert any(name == "Interlock" for _, __, name in result.layouts)
+    assert result.best_layout_name == "Interlock"
 
 
 def test_center_layout_keeps_groups_separate():
