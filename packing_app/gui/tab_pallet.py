@@ -443,7 +443,7 @@ class TabPallet(ttk.Frame):
         bottom_frame.columnconfigure(1, weight=1)
 
         control_frame = ttk.Frame(bottom_frame)
-        control_frame.pack(side=tk.LEFT, padx=5)
+        control_frame.grid(row=0, column=0, sticky="w", padx=5)
 
         self.compute_btn = ttk.Button(
             control_frame, text="Oblicz", command=self.compute_pallet
