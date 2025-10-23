@@ -906,14 +906,11 @@ class TabPallet(ttk.Frame):
             axis_changed=axis,
         )
 
-        if (
-            normalized_vertical == current_vertical
-            and normalized_horizontal == current_horizontal
-        ):
-            return
-
         self._row_by_row_user_modified = True
         self._set_row_by_row_counts(normalized_vertical, normalized_horizontal)
+
+        # Always recompute so the preview refreshes immediately after manual
+        # edits or pressing Enter inside the spinboxes.
         self.compute_pallet()
 
     def _get_products_per_carton(self) -> int:
@@ -1853,6 +1850,52 @@ class TabPallet(ttk.Frame):
         self.draw_pallet()
         self.update_summary()
 
+    @staticmethod
+    def _find_axis_limits(boxes, indices, axis, pallet_extent):
+        if not indices:
+            return 0.0, pallet_extent
+
+        selected = [boxes[i] for i in indices]
+        tol = 1e-6
+        if axis == "x":
+            coord_min = min(x for x, y, w, h in selected)
+            coord_max = max(x + w for x, y, w, h in selected)
+            perp_min = min(y for x, y, w, h in selected)
+            perp_max = max(y + h for x, y, w, h in selected)
+            lower_candidates = [0.0]
+            upper_candidates = [pallet_extent]
+            for j, (bx, by, bw, bh) in enumerate(boxes):
+                if j in indices:
+                    continue
+                if by >= perp_max - tol or by + bh <= perp_min + tol:
+                    continue
+                left_edge = bx + bw
+                right_edge = bx
+                if left_edge <= coord_min + tol:
+                    lower_candidates.append(left_edge)
+                if right_edge >= coord_max - tol:
+                    upper_candidates.append(right_edge)
+            return max(lower_candidates), min(upper_candidates)
+
+        coord_min = min(y for x, y, w, h in selected)
+        coord_max = max(y + h for x, y, w, h in selected)
+        perp_min = min(x for x, y, w, h in selected)
+        perp_max = max(x + w for x, y, w, h in selected)
+        lower_candidates = [0.0]
+        upper_candidates = [pallet_extent]
+        for j, (bx, by, bw, bh) in enumerate(boxes):
+            if j in indices:
+                continue
+            if bx >= perp_max - tol or bx + bw <= perp_min + tol:
+                continue
+            bottom_edge = by + bh
+            top_edge = by
+            if bottom_edge <= coord_min + tol:
+                lower_candidates.append(bottom_edge)
+            if top_edge >= coord_max - tol:
+                upper_candidates.append(top_edge)
+        return max(lower_candidates), min(upper_candidates)
+
     def _distribute(self, layer_idx, indices, start, end, orientation):
         boxes = self.layers[layer_idx]
         sizes = [boxes[i][2 if orientation == "x" else 3] for i in indices]
@@ -1897,12 +1940,20 @@ class TabPallet(ttk.Frame):
         span_x = max(x + w for x, y, w, h in sel) - min(x for x, y, w, h in sel)
         span_y = max(y + h for x, y, w, h in sel) - min(y for x, y, w, h in sel)
         orientation = "x" if span_x >= span_y else "y"
-        start = 0
-        end = pallet_w if orientation == "x" else pallet_l
+        boxes = self.layers[layer_idx]
+        start, end = TabPallet._find_axis_limits(
+            boxes,
+            indices,
+            orientation,
+            pallet_w if orientation == "x" else pallet_l,
+        )
+        if end - start <= 0:
+            return
         TabPallet._distribute(self, layer_idx, indices, start, end, orientation)
         getattr(self, "sort_layers", lambda: None)()
         self.draw_pallet()
         self.update_summary()
+        self.highlight_selection()
 
     def auto_space_selected(self):
         if not self.selected_indices:
@@ -2019,6 +2070,84 @@ class TabPallet(ttk.Frame):
         self.draw_pallet()
         self.update_summary()
 
+    def distribute_selected_long_side(self):
+        if not self.selected_indices:
+            return
+
+        layer_idx = next(iter(self.selected_indices))[0]
+        indices = [i for layer, i in self.selected_indices if layer == layer_idx]
+        if not indices:
+            return
+
+        TabPallet._record_state(self)
+        pallet_w = parse_dim(self.pallet_w_var)
+        pallet_l = parse_dim(self.pallet_l_var)
+        boxes = self.layers[layer_idx]
+        orientation = "x" if pallet_w >= pallet_l else "y"
+        extent = pallet_w if orientation == "x" else pallet_l
+        start, end = TabPallet._find_axis_limits(boxes, indices, orientation, extent)
+        if end - start <= 0:
+            return
+        self._distribute(layer_idx, indices, start, end, orientation)
+        getattr(self, "sort_layers", lambda: None)()
+        self.draw_pallet()
+        self.update_summary()
+        self.highlight_selection()
+
+    def center_selected_cartons(self):
+        if not self.selected_indices:
+            return
+
+        layer_idx = next(iter(self.selected_indices))[0]
+        indices = [i for layer, i in self.selected_indices if layer == layer_idx]
+        if not indices:
+            return
+
+        TabPallet._record_state(self)
+        pallet_w = parse_dim(self.pallet_w_var)
+        pallet_l = parse_dim(self.pallet_l_var)
+        boxes = self.layers[layer_idx]
+        selected = [boxes[i] for i in indices]
+        min_x = min(x for x, y, w, h in selected)
+        max_x = max(x + w for x, y, w, h in selected)
+        min_y = min(y for x, y, w, h in selected)
+        max_y = max(y + h for x, y, w, h in selected)
+
+        left, right = TabPallet._find_axis_limits(boxes, indices, "x", pallet_w)
+        bottom, top = TabPallet._find_axis_limits(boxes, indices, "y", pallet_l)
+
+        available_x = right - left
+        available_y = top - bottom
+        width = max_x - min_x
+        height = max_y - min_y
+        if available_x <= 0 or available_y <= 0:
+            return
+        if width > available_x + 1e-6 or height > available_y + 1e-6:
+            return
+
+        offset_x = (left + available_x / 2) - (min_x + width / 2)
+        offset_y = (bottom + available_y / 2) - (min_y + height / 2)
+
+        for i in indices:
+            x, y, w, h = boxes[i]
+            boxes[i] = (x + offset_x, y + offset_y, w, h)
+
+        other_layer = 1 - layer_idx
+        if (
+            other_layer < len(self.layers)
+            and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
+            and self.layers_linked()
+        ):
+            for i in indices:
+                if i < len(self.layers[other_layer]):
+                    x, y, w, h = self.layers[layer_idx][i]
+                    self.layers[other_layer][i] = (x, y, w, h)
+
+        getattr(self, "sort_layers", lambda: None)()
+        self.draw_pallet()
+        self.update_summary()
+        self.highlight_selection()
+
     def on_right_click(self, event):
         if not self.modify_mode_var.get() or event.inaxes not in [
             self.ax_odd,
@@ -2059,16 +2188,25 @@ class TabPallet(ttk.Frame):
                 command=self.distribute_selected_edges,
             )
             self.context_menu.add_command(
+                label="R\u00f3wnomiernie wzd\u0142u\u017c d\u0142u\u017cszego boku",
+                command=self.distribute_selected_long_side,
+            )
+            self.context_menu.add_command(
                 label="R\u00f3wnomiernie wzd\u0142u\u017c innych karton\u00f3w",
                 command=self.distribute_selected_between,
             )
             self.context_menu.add_command(
                 label="Automatyczny odst\u0119p", command=self.auto_space_selected
             )
+            self.context_menu.add_command(
+                label="Wycentruj zaznaczone",
+                command=self.center_selected_cartons,
+            )
 
         state = "normal" if self.selected_indices else "disabled"
-        for i in range(1, 6):
-            self.context_menu.entryconfigure(i, state=state if i > 0 else "normal")
+        last_index = self.context_menu.index("end") or 0
+        for i in range(1, last_index + 1):
+            self.context_menu.entryconfigure(i, state=state)
         gui_ev = event.guiEvent
         if gui_ev:
             self.context_menu.tk_popup(int(gui_ev.x_root), int(gui_ev.y_root))
