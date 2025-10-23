@@ -52,6 +52,13 @@ def make_raw_tab():
     tab.center_mode_var = DummyVar("Cała warstwa")
     tab.shift_even_var = DummyVar(False)
     tab.maximize_mixed = DummyVar(False)
+    tab.row_by_row_vertical_var = DummyVar(0)
+    tab.row_by_row_horizontal_var = DummyVar(0)
+    tab._row_by_row_user_modified = False
+    tab._updating_row_by_row = False
+    tab.products_per_carton_var = DummyVar("1")
+    tab._updating_products_per_carton = False
+    tab._last_2d_products_per_carton = ""
     return tab
 
 

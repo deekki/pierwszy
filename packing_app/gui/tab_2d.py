@@ -794,7 +794,7 @@ class TabPacking2D(ttk.Frame):
         self.pallet_tab.box_w_var.set(str(w_c))
         self.pallet_tab.box_l_var.set(str(l_c))
         self.pallet_tab.box_h_var.set(str(h_c))
-        self.pallet_tab.products_per_carton = best
+        self.pallet_tab.set_products_per_carton(best, from_2d=True)
         self.pallet_tab.compute_pallet()
         self.pallet_tab.draw_pallet()
 
