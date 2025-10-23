@@ -59,6 +59,7 @@ LayerLayout = List[Tuple[float, float, float, float]]
 DISPLAY_NAME_OVERRIDES = {
     "column": "Column (W x L)",
     "column_rotated": "Column (L x W)",
+    "row_by_row": "Row by row",
 }
 
 
@@ -397,40 +398,31 @@ class TabPallet(ttk.Frame):
         entry_slip_count.grid(row=2, column=1, padx=5, pady=5)
         entry_slip_count.bind("<Return>", self.compute_pallet)
 
-        ttk.Label(layers_frame, text="Interlock – linie pionowe:").grid(
+        ttk.Label(layers_frame, text="Row by row – kartony pionowe:").grid(
             row=3, column=0, padx=5, pady=5, sticky="w"
         )
-        self.interlock_cols_var = tk.StringVar(value="0")
-        cols_spin = ttk.Spinbox(
+        self.row_by_row_vertical_var = tk.StringVar(value="0")
+        vertical_entry = ttk.Entry(
             layers_frame,
-            from_=0,
-            to=99,
-            width=5,
-            textvariable=self.interlock_cols_var,
-            validate="key",
-            validatecommand=(self.register(self.validate_integer), "%P"),
+            textvariable=self.row_by_row_vertical_var,
+            width=8,
+            justify="center",
+            state="readonly",
         )
-        cols_spin.grid(row=3, column=1, padx=5, pady=5, sticky="w")
-        cols_spin.bind("<Return>", self.compute_pallet)
+        vertical_entry.grid(row=3, column=1, padx=5, pady=5, sticky="w")
 
-        ttk.Label(layers_frame, text="Interlock – linie poziome:").grid(
+        ttk.Label(layers_frame, text="Row by row – kartony poziome:").grid(
             row=3, column=2, padx=5, pady=5, sticky="w"
         )
-        self.interlock_rows_var = tk.StringVar(value="0")
-        rows_spin = ttk.Spinbox(
+        self.row_by_row_horizontal_var = tk.StringVar(value="0")
+        horizontal_entry = ttk.Entry(
             layers_frame,
-            from_=0,
-            to=99,
-            width=5,
-            textvariable=self.interlock_rows_var,
-            validate="key",
-            validatecommand=(self.register(self.validate_integer), "%P"),
+            textvariable=self.row_by_row_horizontal_var,
+            width=8,
+            justify="center",
+            state="readonly",
         )
-        rows_spin.grid(row=3, column=3, padx=5, pady=5, sticky="w")
-        rows_spin.bind("<Return>", self.compute_pallet)
-
-        self.interlock_cols_var.trace_add("write", self._on_interlock_lines_changed)
-        self.interlock_rows_var.trace_add("write", self._on_interlock_lines_changed)
+        horizontal_entry.grid(row=3, column=3, padx=5, pady=5, sticky="w")
 
         self.transform_frame = ttk.Frame(layers_frame)
         # Move transform options to the right to save vertical space
@@ -534,13 +526,6 @@ class TabPallet(ttk.Frame):
         except ValueError:
             return False
 
-    def validate_integer(self, value):
-        if value == "":
-            return True
-        if value.isdigit():
-            return True
-        return False
-
     def update_external_dimensions(self, *args):
         try:
             thickness = float(self.cardboard_thickness_var.get().replace(",", "."))
@@ -608,72 +593,32 @@ class TabPallet(ttk.Frame):
         if not self._suspend_layer_sync:
             self._layer_sync_source = "height"
 
-    def _on_interlock_lines_changed(self, *_):
-        self.compute_pallet()
+    def _update_row_by_row_stats(self, carton: Carton, pattern: LayerLayout | None) -> None:
+        if not hasattr(self, "row_by_row_vertical_var"):
+            return
 
-    @staticmethod
-    def _parse_interlock_value(var) -> int | None:
-        if not var:
-            return None
-        try:
-            raw = var.get() if hasattr(var, "get") else var
-        except Exception:
-            return None
-        if raw is None:
-            return None
-        try:
-            value = int(str(raw).strip())
-        except (TypeError, ValueError):
-            return None
-        return value if value > 0 else None
+        vertical = horizontal = 0
+        if pattern:
+            width = carton.width
+            length = carton.length
+            for _, _, w, h in pattern:
+                if math.isclose(w, width, rel_tol=1e-6, abs_tol=1e-6) and math.isclose(
+                    h, length, rel_tol=1e-6, abs_tol=1e-6
+                ):
+                    vertical += 1
+                elif math.isclose(w, length, rel_tol=1e-6, abs_tol=1e-6) and math.isclose(
+                    h, width, rel_tol=1e-6, abs_tol=1e-6
+                ):
+                    horizontal += 1
+                else:
+                    # Fallback for numerical noise – classify by aspect ratio
+                    if w >= h:
+                        vertical += 1
+                    else:
+                        horizontal += 1
 
-    @staticmethod
-    def _infer_interlock_orientation(pattern, box_w, box_l) -> str:
-        if not pattern:
-            return "normal"
-
-        def close(a, b):
-            return math.isclose(a, b, rel_tol=1e-6, abs_tol=1e-6)
-
-        normal = sum(1 for _, _, w, h in pattern if close(w, box_w) and close(h, box_l))
-        rotated = sum(1 for _, _, w, h in pattern if close(w, box_l) and close(h, box_w))
-        return "normal" if normal >= rotated else "rotated"
-
-    def _manual_interlock_pattern(self, inputs: PalletInputs, carton: Carton, fallback):
-        cols = self._parse_interlock_value(getattr(self, "interlock_cols_var", None))
-        rows = self._parse_interlock_value(getattr(self, "interlock_rows_var", None))
-        if cols is None and rows is None:
-            return None
-
-        orientation = self._infer_interlock_orientation(fallback or [], carton.width, carton.length)
-        if orientation == "rotated":
-            cell_w, cell_l = carton.length, carton.width
-        else:
-            cell_w, cell_l = carton.width, carton.length
-
-        if cell_w <= 0 or cell_l <= 0:
-            return []
-
-        max_cols = int((inputs.pallet_w + 1e-9) // cell_w)
-        max_rows = int((inputs.pallet_l + 1e-9) // cell_l)
-        if max_cols <= 0 or max_rows <= 0:
-            return []
-
-        if cols is None:
-            cols = max_cols
-        if rows is None:
-            rows = max_rows
-
-        if cols > max_cols or rows > max_rows:
-            return None
-
-        pattern = []
-        for col in range(cols):
-            x = col * cell_w
-            for row in range(rows):
-                y = row * cell_l
-                pattern.append((x, y, cell_w, cell_l))
-        return pattern
+        self.row_by_row_vertical_var.set(str(vertical))
+        self.row_by_row_horizontal_var.set(str(horizontal))
 
     def update_transform_frame(self):
         for widget in self.transform_frame.winfo_children():
@@ -691,8 +636,12 @@ class TabPallet(ttk.Frame):
         prev_odd_transform = getattr(self, "odd_transform_var", None)
         prev_even_transform = getattr(self, "even_transform_var", None)
 
+        preferred_row = DISPLAY_NAME_OVERRIDES["row_by_row"]
         interlock_name = "Interlock"
-        if interlock_name in layout_options:
+        if preferred_row in layout_options:
+            odd_default = preferred_row
+            even_default = preferred_row
+        elif interlock_name in layout_options:
             odd_default = interlock_name
             even_default = interlock_name
         else:
@@ -983,8 +932,8 @@ class TabPallet(ttk.Frame):
     def compute_pallet(self, event=None):
         """Calculate carton layouts on the pallet.
 
-        The interlock pattern is always selected as the default layout. Other
-        patterns are still generated for manual selection.
+        The row-by-row pattern is selected as the default layout whenever it is
+        available. Other patterns are still generated for manual selection.
         """
         self.selected_indices.clear()
         self.drag_info = None
@@ -1083,11 +1032,7 @@ class TabPallet(ttk.Frame):
         selector = PatternSelector(calc_carton, pallet)
         patterns = selector.generate_all(maximize_mixed=self.maximize_mixed.get())
 
-        manual_interlock = self._manual_interlock_pattern(
-            inputs, calc_carton, patterns.get("interlock")
-        )
-        if manual_interlock is not None:
-            patterns["interlock"] = manual_interlock
+        self._update_row_by_row_stats(calc_carton, patterns.get("row_by_row"))
 
         layout_entries: List[Tuple[int, LayerLayout, str]] = []
         for name, pattern in patterns.items():
@@ -1098,7 +1043,10 @@ class TabPallet(ttk.Frame):
             )
             layout_entries.append((len(centered), centered, display))
 
-        if "interlock" in patterns:
+        if patterns.get("row_by_row"):
+            best_key = "row_by_row"
+            best_pattern = patterns[best_key]
+        elif patterns.get("interlock"):
             best_key = "interlock"
             best_pattern = patterns[best_key]
         else:
@@ -1826,7 +1774,8 @@ class TabPallet(ttk.Frame):
         if self.include_pallet_height_var.get():
             stack_height += pallet_h
 
-        self.tape_per_carton = 4 * (box_w + box_l) / 1000
+        longer_side = max(box_w, box_l)
+        self.tape_per_carton = 2 * (longer_side + box_h) / 1000
         self.film_per_pallet = 2 * (pallet_w + pallet_l) / 1000 * 6
         total_tape = total_cartons * self.tape_per_carton
 
