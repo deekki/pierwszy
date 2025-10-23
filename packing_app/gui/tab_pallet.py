@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, simpledialog
 import matplotlib
 import json
+import math
 from dataclasses import dataclass
 from typing import List, Tuple, Dict
 
@@ -106,6 +107,12 @@ class TabPallet(ttk.Frame):
         self.material_weights = load_materials()
         slips = load_slip_sheets()
         self.slip_sheet_weight = slips[0] if slips else 0
+        first_carton = list(self.predefined_cartons.keys())[0]
+        initial_weight = self.carton_weights.get(first_carton, 0)
+        self.manual_carton_weight_var = tk.StringVar(
+            value=self._format_number(initial_weight) if initial_weight else ""
+        )
+        self.pallet_base_mass = 25.0
         self.pack(fill=tk.BOTH, expand=True)
         self.layouts = []
         self.layers = []
@@ -276,6 +283,22 @@ class TabPallet(ttk.Frame):
         spacing_frame.grid(row=2, column=1, padx=5, pady=5)
         entry_spacing.bind("<Return>", self.compute_pallet)
 
+        ttk.Label(carton_frame, text="Masa kartonu (kg):").grid(
+            row=3, column=0, padx=5, pady=5
+        )
+        weight_frame = ttk.Frame(carton_frame)
+        ttk.Entry(
+            weight_frame,
+            textvariable=self.manual_carton_weight_var,
+            width=8,
+            validate="key",
+            validatecommand=(self.register(self.validate_number), "%P"),
+        ).pack(side=tk.LEFT)
+        ttk.Label(weight_frame, text="(pozostaw puste = baza)").pack(
+            side=tk.LEFT, padx=5
+        )
+        weight_frame.grid(row=3, column=1, columnspan=3, padx=5, pady=5, sticky="w")
+
         layers_frame = ttk.LabelFrame(self, text="Ustawienia warstw")
         layers_frame.pack(fill=tk.X, padx=10, pady=5)
 
@@ -407,14 +430,27 @@ class TabPallet(ttk.Frame):
 
         self.summary_frame = ttk.LabelFrame(bottom_frame, text="Obliczenia")
         self.summary_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        self.totals_label = ttk.Label(self.summary_frame, text="")
-        self.totals_label.pack(side=tk.LEFT, padx=5)
-        self.materials_label = ttk.Label(self.summary_frame, text="")
-        self.materials_label.pack(side=tk.LEFT, padx=5)
-        self.weight_label = ttk.Label(self.summary_frame, text="")
-        self.weight_label.pack(side=tk.LEFT, padx=5)
-        self.area_label = ttk.Label(self.summary_frame, text="")
-        self.area_label.pack(side=tk.LEFT, padx=5)
+        self.summary_frame.columnconfigure(0, weight=1)
+        self.totals_label = ttk.Label(
+            self.summary_frame, text="", justify="left"
+        )
+        self.totals_label.grid(row=0, column=0, sticky="w", padx=5, pady=(2, 0))
+        self.materials_label = ttk.Label(
+            self.summary_frame, text="", justify="left"
+        )
+        self.materials_label.grid(row=1, column=0, sticky="w", padx=5)
+        self.mass_label = ttk.Label(
+            self.summary_frame, text="", justify="left"
+        )
+        self.mass_label.grid(row=2, column=0, sticky="w", padx=5)
+        self.limit_label = ttk.Label(
+            self.summary_frame, text="", justify="left", foreground="red"
+        )
+        self.limit_label.grid(row=3, column=0, sticky="w", padx=5)
+        self.area_label = ttk.Label(
+            self.summary_frame, text="", justify="left"
+        )
+        self.area_label.grid(row=4, column=0, sticky="w", padx=5, pady=(0, 4))
 
         self.fig = plt.Figure(figsize=(12, 6))
         self.ax_odd = self.fig.add_subplot(131)
@@ -427,6 +463,7 @@ class TabPallet(ttk.Frame):
         self.canvas.draw()
 
         self.compute_pallet()
+        self.manual_carton_weight_var.trace_add("write", self._on_manual_weight_changed)
 
     def validate_number(self, value):
         if value == "":
@@ -462,6 +499,29 @@ class TabPallet(ttk.Frame):
                 return str(value)
             return f"{float(value):.2f}".rstrip("0").rstrip(".")
         return str(value)
+
+    def _get_active_carton_weight(self) -> Tuple[float, str]:
+        var = getattr(self, "manual_carton_weight_var", None)
+        raw = ""
+        if var is not None and hasattr(var, "get"):
+            raw = var.get().strip()
+        elif isinstance(var, str):
+            raw = var.strip()
+        if raw:
+            try:
+                weight = float(raw.replace(",", "."))
+            except ValueError:
+                return 0.0, "invalid"
+            return max(weight, 0.0), "manual"
+        weights = getattr(self, "carton_weights", {})
+        carton_key = None
+        if hasattr(self, "carton_var") and hasattr(self.carton_var, "get"):
+            carton_key = self.carton_var.get()
+        base_weight = weights.get(carton_key, 0) if carton_key else 0
+        return max(base_weight, 0.0), "catalog"
+
+    def _on_manual_weight_changed(self, *_):
+        self.update_summary()
 
     def _set_layer_field(self, var: tk.StringVar, value) -> None:
         formatted = self._format_number(value)
@@ -626,6 +686,11 @@ class TabPallet(ttk.Frame):
         self.box_w_var.set(str(dims[0]))
         self.box_l_var.set(str(dims[1]))
         self.box_h_var.set(str(dims[2]))
+        weight = self.carton_weights.get(self.carton_var.get(), 0)
+        if weight:
+            self.manual_carton_weight_var.set(self._format_number(weight))
+        else:
+            self.manual_carton_weight_var.set("")
         self.compute_pallet()
 
     @staticmethod
@@ -829,16 +894,28 @@ class TabPallet(ttk.Frame):
         layer_height = inputs.box_h + 2 * inputs.thickness
         include_height = inputs.pallet_h if inputs.include_pallet_height else 0
         if layer_height > 0:
-            if self._layer_sync_source == "layers":
+            sync_source = getattr(self, "_layer_sync_source", "height")
+            setter = getattr(self, "_set_layer_field", None)
+            if sync_source == "layers":
                 stack_height = inputs.num_layers * layer_height + include_height
                 if stack_height > 0:
                     inputs.max_stack = stack_height
-                    self._set_layer_field(self.max_stack_var, stack_height)
+                    if setter is not None:
+                        setter(self.max_stack_var, stack_height)
+                    elif hasattr(self, "max_stack_var") and hasattr(
+                        self.max_stack_var, "set"
+                    ):
+                        self.max_stack_var.set(str(stack_height))
             else:
                 if inputs.max_stack > 0:
                     available = max(inputs.max_stack - include_height, 0)
                     inputs.num_layers = max(int(available // layer_height), 0)
-                    self._set_layer_field(self.num_layers_var, inputs.num_layers)
+                    if setter is not None:
+                        setter(self.num_layers_var, inputs.num_layers)
+                    elif hasattr(self, "num_layers_var") and hasattr(
+                        self.num_layers_var, "set"
+                    ):
+                        self.num_layers_var.set(str(inputs.num_layers))
 
         return inputs
 
@@ -1579,7 +1656,9 @@ class TabPallet(ttk.Frame):
         if not self.layers:
             self.totals_label.config(text="")
             self.materials_label.config(text="")
-            self.weight_label.config(text="")
+            self.mass_label.config(text="")
+            self.limit_label.config(text="")
+            self.area_label.config(text="")
             return
 
         pallet_w = parse_dim(self.pallet_w_var)
@@ -1617,19 +1696,43 @@ class TabPallet(ttk.Frame):
         self.materials_label.config(
             text=f"Taśma: {total_tape:.2f} m | Folia: {self.film_per_pallet:.2f} m"
         )
-        carton_wt = self.carton_weights.get(self.carton_var.get(), 0)
-        pallet_wt = (
-            self.pallet_weights.get(self.pallet_var.get(), 0)
-            if self.include_pallet_height_var.get()
-            else 0
+        carton_wt, weight_source = self._get_active_carton_weight()
+        source_label = "ręczna" if weight_source == "manual" else "z bazy"
+        carrier_mass = self.pallet_base_mass
+        total_mass = carton_wt * total_cartons + carrier_mass
+        self.mass_label.config(
+            text=(
+                f"Masa kartonu ({source_label}): {carton_wt:.2f} kg | "
+                f"Masa nośnika: {carrier_mass:.2f} kg | Masa palety: {total_mass:.2f} kg"
+            )
         )
-        tape_wt = total_tape * self.material_weights.get("tape", 0)
-        film_wt = self.film_per_pallet * self.material_weights.get("stretch_film", 0)
-        slip_mass = self.slip_sheet_weight * num_slip
-        total_mass = (
-            carton_wt * total_cartons + tape_wt + film_wt + pallet_wt + slip_mass
-        )
-        self.weight_label.config(text=f"Masa: {total_mass:.2f} kg")
+
+        limit_message = ""
+        if total_mass > 600:
+            excess = total_mass - 600
+            limit_message = f"Przekroczono limit 600 kg o {excess:.2f} kg."
+            if carton_wt > 0 and total_cartons > 0:
+                remove_cartons = math.ceil(excess / carton_wt)
+                remove_cartons = min(remove_cartons, total_cartons)
+                limit_message += f" Należy zdjąć {remove_cartons} kartonów."
+                removed_layers = 0
+                removed_cartons = 0
+                suggested_layers = 0
+                for layer_index in range(num_layers, 0, -1):
+                    layer_cartons = (
+                        cartons_per_even if layer_index % 2 == 0 else cartons_per_odd
+                    )
+                    removed_layers += 1
+                    removed_cartons += layer_cartons
+                    if removed_cartons >= remove_cartons:
+                        suggested_layers = max(num_layers - removed_layers, 0)
+                        break
+                else:
+                    suggested_layers = 0
+                limit_message += f" Sugerowana liczba warstw: {suggested_layers}."
+            else:
+                limit_message += " Brak danych o masie kartonu do wyliczeń."
+        self.limit_label.config(text=limit_message)
 
         pallet_area = pallet_w * pallet_l / 1_000_000
         carton_area = (box_w + 2 * thickness) * (box_l + 2 * thickness) / 1_000_000
@@ -1684,7 +1787,13 @@ class TabPallet(ttk.Frame):
             self.layers = [list(layer) for layer in layers]
             self.carton_ids = [list(range(1, len(layer) + 1)) for layer in self.layers]
             self.num_layers = len(self.layers)
-            self._set_layer_field(self.num_layers_var, self.num_layers)
+            setter = getattr(self, "_set_layer_field", None)
+            if setter is not None and hasattr(self, "num_layers_var"):
+                setter(self.num_layers_var, self.num_layers)
+            elif hasattr(self, "num_layers_var") and hasattr(
+                self.num_layers_var, "set"
+            ):
+                self.num_layers_var.set(str(self.num_layers))
             self.layer_patterns = ["" for _ in self.layers]
             self.transformations = ["Brak" for _ in self.layers]
             if hasattr(self, "undo_stack"):

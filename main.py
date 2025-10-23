@@ -47,7 +47,7 @@ def open_layer_packing(root):
 
 def main():
     root = tk.Tk()
-    root.title("Optymalizacja pakowania")
+    root.title("INŻYNIER 2.0")
     # Default window size adjusted for 1920x1080 displays
     root.geometry("1920x1080")
 
