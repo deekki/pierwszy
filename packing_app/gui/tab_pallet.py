@@ -4,7 +4,7 @@ import matplotlib
 import json
 import math
 from dataclasses import dataclass
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
@@ -124,7 +124,9 @@ class TabPallet(ttk.Frame):
         self.carton_ids = []
         self.layer_patterns = []
         self.transformations = []
-        self.products_per_carton = 1
+        self.products_per_carton_var = tk.StringVar(value="1")
+        self._updating_products_per_carton = False
+        self._last_2d_products_per_carton = ""
         self.tape_per_carton = 0.0
         self.film_per_pallet = 0.0
         self.best_layout_name = ""
@@ -147,6 +149,10 @@ class TabPallet(ttk.Frame):
         self.context_layer = 0
         self.context_pos = (0, 0)
         self.undo_stack = []
+        self.row_by_row_vertical_var = tk.IntVar(value=0)
+        self.row_by_row_horizontal_var = tk.IntVar(value=0)
+        self._row_by_row_user_modified = False
+        self._updating_row_by_row = False
         self.build_ui()
 
     def layers_linked(self) -> bool:
@@ -315,7 +321,7 @@ class TabPallet(ttk.Frame):
 
         layers_frame = ttk.LabelFrame(self, text="Ustawienia warstw")
         layers_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=5)
-        for col in range(8):
+        for col in range(10):
             layers_frame.columnconfigure(col, weight=1)
 
         ttk.Label(layers_frame, text="Liczba warstw:").grid(
@@ -385,7 +391,7 @@ class TabPallet(ttk.Frame):
         ).grid(row=0, column=6, padx=5, pady=5, sticky="w")
 
         ttk.Label(layers_frame, text="Liczba przekładek:").grid(
-            row=2, column=0, padx=5, pady=5
+            row=2, column=0, padx=5, pady=5, sticky="w"
         )
         self.slip_count_var = tk.StringVar(value="0")
         entry_slip_count = ttk.Entry(
@@ -395,39 +401,68 @@ class TabPallet(ttk.Frame):
             validate="key",
             validatecommand=(self.register(self.validate_number), "%P"),
         )
-        entry_slip_count.grid(row=2, column=1, padx=5, pady=5)
+        entry_slip_count.grid(row=2, column=1, padx=5, pady=5, sticky="w")
         entry_slip_count.bind("<Return>", self.compute_pallet)
 
-        ttk.Label(layers_frame, text="Row by row – kartony pionowe:").grid(
-            row=3, column=0, padx=5, pady=5, sticky="w"
+        ttk.Label(layers_frame, text="Produkty/karton zbiorczy:").grid(
+            row=2, column=2, padx=5, pady=5, sticky="e"
         )
-        self.row_by_row_vertical_var = tk.StringVar(value="0")
-        vertical_entry = ttk.Entry(
-            layers_frame,
-            textvariable=self.row_by_row_vertical_var,
-            width=8,
-            justify="center",
-            state="readonly",
+        products_frame = ttk.Frame(layers_frame)
+        products_frame.grid(row=2, column=3, padx=5, pady=5, sticky="w")
+        products_entry = ttk.Entry(
+            products_frame,
+            textvariable=self.products_per_carton_var,
+            width=6,
+            validate="key",
+            validatecommand=(self.register(self.validate_number), "%P"),
         )
-        vertical_entry.grid(row=3, column=1, padx=5, pady=5, sticky="w")
+        products_entry.pack(side=tk.LEFT)
+        products_entry.bind("<Return>", lambda *_: self._on_products_per_carton_changed())
+        products_entry.bind("<FocusOut>", lambda *_: self._on_products_per_carton_changed())
+        ttk.Button(
+            products_frame,
+            text="Pobierz z 2D",
+            command=self.use_2d_products_per_carton,
+        ).pack(side=tk.LEFT, padx=(5, 0))
 
-        ttk.Label(layers_frame, text="Row by row – kartony poziome:").grid(
-            row=3, column=2, padx=5, pady=5, sticky="w"
+        ttk.Label(layers_frame, text="Row by row – linie pionowe:").grid(
+            row=2, column=4, padx=5, pady=5, sticky="e"
         )
-        self.row_by_row_horizontal_var = tk.StringVar(value="0")
-        horizontal_entry = ttk.Entry(
+        vertical_spin = ttk.Spinbox(
             layers_frame,
-            textvariable=self.row_by_row_horizontal_var,
-            width=8,
-            justify="center",
-            state="readonly",
+            from_=0,
+            to=999,
+            width=5,
+            textvariable=self.row_by_row_vertical_var,
+            command=lambda: self._on_row_by_row_change("vertical"),
         )
-        horizontal_entry.grid(row=3, column=3, padx=5, pady=5, sticky="w")
+        vertical_spin.grid(row=2, column=5, padx=5, pady=5, sticky="w")
+        vertical_spin.bind("<Return>", lambda *_: self._on_row_by_row_change("vertical"))
+        vertical_spin.bind("<FocusOut>", lambda *_: self._on_row_by_row_change("vertical"))
+
+        ttk.Label(layers_frame, text="Row by row – linie poziome:").grid(
+            row=2, column=6, padx=5, pady=5, sticky="e"
+        )
+        horizontal_spin = ttk.Spinbox(
+            layers_frame,
+            from_=0,
+            to=999,
+            width=5,
+            textvariable=self.row_by_row_horizontal_var,
+            command=lambda: self._on_row_by_row_change("horizontal"),
+        )
+        horizontal_spin.grid(row=2, column=7, padx=5, pady=5, sticky="w")
+        horizontal_spin.bind(
+            "<Return>", lambda *_: self._on_row_by_row_change("horizontal")
+        )
+        horizontal_spin.bind(
+            "<FocusOut>", lambda *_: self._on_row_by_row_change("horizontal")
+        )
 
         self.transform_frame = ttk.Frame(layers_frame)
         # Move transform options to the right to save vertical space
         self.transform_frame.grid(
-            row=0, column=7, rowspan=4, padx=5, pady=5, sticky="n"
+            row=0, column=8, rowspan=3, padx=5, pady=5, sticky="n"
         )
 
         bottom_frame = ttk.Frame(self)
@@ -501,7 +536,7 @@ class TabPallet(ttk.Frame):
         figure_frame.columnconfigure(0, weight=1)
         figure_frame.rowconfigure(0, weight=1)
 
-        self.fig = plt.Figure(figsize=(14, 6))
+        self.fig = plt.Figure(figsize=(14, 5))
         self.ax_odd = self.fig.add_subplot(131)
         self.ax_even = self.fig.add_subplot(132)
         self.ax_overlay = self.fig.add_subplot(133)
@@ -593,32 +628,325 @@ class TabPallet(ttk.Frame):
         if not self._suspend_layer_sync:
             self._layer_sync_source = "height"
 
-    def _update_row_by_row_stats(self, carton: Carton, pattern: LayerLayout | None) -> None:
+    def _set_row_by_row_counts(self, vertical: int, horizontal: int) -> None:
         if not hasattr(self, "row_by_row_vertical_var"):
             return
+        self._updating_row_by_row = True
+        try:
+            self.row_by_row_vertical_var.set(max(int(vertical), 0))
+            self.row_by_row_horizontal_var.set(max(int(horizontal), 0))
+        finally:
+            self._updating_row_by_row = False
 
-        vertical = horizontal = 0
-        if pattern:
-            width = carton.width
-            length = carton.length
-            for _, _, w, h in pattern:
-                if math.isclose(w, width, rel_tol=1e-6, abs_tol=1e-6) and math.isclose(
-                    h, length, rel_tol=1e-6, abs_tol=1e-6
+    def _count_row_by_row_rows(
+        self, carton: Carton, pattern: LayerLayout | None
+    ) -> Tuple[int, int]:
+        if not pattern:
+            return 0, 0
+
+        vertical_rows: List[float] = []
+        horizontal_rows: List[float] = []
+        tol = 1e-6
+        width = carton.width
+        length = carton.length
+
+        for _, y, w, h in pattern:
+            if math.isclose(w, width, rel_tol=1e-6, abs_tol=1e-6) and math.isclose(
+                h, length, rel_tol=1e-6, abs_tol=1e-6
+            ):
+                target = vertical_rows
+            elif math.isclose(w, length, rel_tol=1e-6, abs_tol=1e-6) and math.isclose(
+                h, width, rel_tol=1e-6, abs_tol=1e-6
+            ):
+                target = horizontal_rows
+            else:
+                target = vertical_rows if w >= h else horizontal_rows
+
+            if not any(math.isclose(y, existing, rel_tol=1e-6, abs_tol=tol) for existing in target):
+                target.append(y)
+
+        return len(vertical_rows), len(horizontal_rows)
+
+    def _build_row_by_row_pattern(
+        self, carton: Carton, pallet: Pallet, vertical: int, horizontal: int
+    ) -> LayerLayout:
+        pattern: LayerLayout = []
+        vertical_remaining = max(vertical, 0)
+        horizontal_remaining = max(horizontal, 0)
+        y = 0.0
+        tol = 1e-6
+        orientation = "vertical" if vertical_remaining > 0 else "horizontal"
+
+        while y + tol < pallet.length and (
+            vertical_remaining > 0 or horizontal_remaining > 0
+        ):
+            if orientation == "vertical":
+                if vertical_remaining <= 0:
+                    orientation = "horizontal"
+                    continue
+                row_height = carton.length
+                col_width = carton.width
+                if (
+                    row_height <= 0
+                    or col_width <= 0
+                    or y + row_height - tol > pallet.length
                 ):
-                    vertical += 1
-                elif math.isclose(w, length, rel_tol=1e-6, abs_tol=1e-6) and math.isclose(
-                    h, width, rel_tol=1e-6, abs_tol=1e-6
+                    break
+                n_cols = int(pallet.width // col_width) if col_width > 0 else 0
+                if n_cols == 0:
+                    vertical_remaining = 0
+                    orientation = "horizontal"
+                    continue
+                for c in range(n_cols):
+                    pattern.append((c * col_width, y, col_width, row_height))
+                y += row_height
+                vertical_remaining -= 1
+            else:
+                if horizontal_remaining <= 0:
+                    orientation = "vertical"
+                    continue
+                row_height = carton.width
+                col_width = carton.length
+                if (
+                    row_height <= 0
+                    or col_width <= 0
+                    or y + row_height - tol > pallet.length
                 ):
-                    horizontal += 1
+                    break
+                n_cols = int(pallet.width // col_width) if col_width > 0 else 0
+                if n_cols == 0:
+                    horizontal_remaining = 0
+                    orientation = "vertical"
+                    continue
+                for c in range(n_cols):
+                    pattern.append((c * col_width, y, col_width, row_height))
+                y += row_height
+                horizontal_remaining -= 1
+
+            if vertical_remaining <= 0 and horizontal_remaining <= 0:
+                break
+            if orientation == "vertical":
+                orientation = "horizontal" if horizontal_remaining > 0 else "vertical"
+            else:
+                orientation = "vertical" if vertical_remaining > 0 else "horizontal"
+
+        return pattern
+
+    def _normalize_row_by_row_counts(
+        self,
+        carton: Carton,
+        pallet: Pallet,
+        vertical: int,
+        horizontal: int,
+        axis_changed: str | None = None,
+    ) -> Tuple[int, int]:
+        vertical = max(int(vertical), 0)
+        horizontal = max(int(horizontal), 0)
+
+        row_height_vertical = carton.length
+        row_height_horizontal = carton.width
+        available_height = pallet.length
+
+        max_vertical_total = (
+            int(available_height // row_height_vertical)
+            if row_height_vertical > 0
+            else 0
+        )
+        max_horizontal_total = (
+            int(available_height // row_height_horizontal)
+            if row_height_horizontal > 0
+            else 0
+        )
+
+        vertical_cols = int(pallet.width // carton.width) if carton.width > 0 else 0
+        horizontal_cols = int(pallet.width // carton.length) if carton.length > 0 else 0
+
+        if vertical_cols == 0:
+            vertical = 0
+        else:
+            vertical = min(vertical, max_vertical_total)
+        if horizontal_cols == 0:
+            horizontal = 0
+        else:
+            horizontal = min(horizontal, max_horizontal_total)
+
+        if axis_changed == "vertical":
+            remaining = available_height - vertical * row_height_vertical
+            remaining = max(remaining, 0)
+            max_horizontal = (
+                int(remaining // row_height_horizontal)
+                if row_height_horizontal > 0
+                else 0
+            )
+            horizontal = min(horizontal, max_horizontal)
+        elif axis_changed == "horizontal":
+            remaining = available_height - horizontal * row_height_horizontal
+            remaining = max(remaining, 0)
+            max_vertical = (
+                int(remaining // row_height_vertical)
+                if row_height_vertical > 0
+                else 0
+            )
+            vertical = min(vertical, max_vertical)
+        else:
+            while (
+                vertical * row_height_vertical
+                + horizontal * row_height_horizontal
+                > available_height
+                and (vertical > 0 or horizontal > 0)
+            ):
+                if vertical * row_height_vertical >= horizontal * row_height_horizontal:
+                    if vertical > 0:
+                        vertical -= 1
+                    elif horizontal > 0:
+                        horizontal -= 1
+                elif horizontal > 0:
+                    horizontal -= 1
                 else:
-                    # Fallback for numerical noise – classify by aspect ratio
-                    if w >= h:
-                        vertical += 1
-                    else:
-                        horizontal += 1
+                    break
 
-        self.row_by_row_vertical_var.set(str(vertical))
-        self.row_by_row_horizontal_var.set(str(horizontal))
+        return max(vertical, 0), max(horizontal, 0)
+
+    def _customize_row_by_row_pattern(
+        self,
+        carton: Carton,
+        pallet: Pallet,
+        pattern: LayerLayout | None,
+    ) -> Tuple[LayerLayout | None, int, int]:
+        if not pattern:
+            self._set_row_by_row_counts(0, 0)
+            return pattern, 0, 0
+
+        base_vertical, base_horizontal = self._count_row_by_row_rows(carton, pattern)
+        if self._row_by_row_user_modified:
+            requested_vertical = self.row_by_row_vertical_var.get()
+            requested_horizontal = self.row_by_row_horizontal_var.get()
+        else:
+            requested_vertical = base_vertical
+            requested_horizontal = base_horizontal
+
+        normalized_vertical, normalized_horizontal = self._normalize_row_by_row_counts(
+            carton,
+            pallet,
+            requested_vertical,
+            requested_horizontal,
+        )
+
+        custom_pattern = self._build_row_by_row_pattern(
+            carton, pallet, normalized_vertical, normalized_horizontal
+        )
+        used_vertical, used_horizontal = self._count_row_by_row_rows(
+            carton, custom_pattern
+        )
+        self._set_row_by_row_counts(used_vertical, used_horizontal)
+        return custom_pattern, used_vertical, used_horizontal
+
+    def _prepare_row_by_row_inputs(self) -> Optional[Tuple[Carton, Pallet]]:
+        pallet_w = parse_dim(self.pallet_w_var)
+        pallet_l = parse_dim(self.pallet_l_var)
+        pallet_h = parse_dim(self.pallet_h_var)
+        box_w = parse_dim(self.box_w_var)
+        box_l = parse_dim(self.box_l_var)
+        box_h = parse_dim(self.box_h_var)
+        thickness = parse_dim(self.cardboard_thickness_var)
+        spacing = parse_dim(self.spacing_var)
+
+        width = box_w + 2 * thickness + spacing
+        length = box_l + 2 * thickness + spacing
+        if min(width, length, pallet_w, pallet_l) <= 0:
+            return None
+
+        carton = Carton(width, length, box_h)
+        pallet = Pallet(pallet_w, pallet_l, pallet_h)
+        return carton, pallet
+
+    def _safe_int(self, value) -> int:
+        try:
+            if isinstance(value, tk.Variable):
+                raw = value.get()
+            else:
+                raw = value
+        except tk.TclError:
+            return 0
+
+        if isinstance(raw, str):
+            raw = raw.strip()
+            if not raw:
+                return 0
+            try:
+                raw = float(raw.replace(",", "."))
+            except ValueError:
+                return 0
+
+        try:
+            numeric = float(raw)
+        except (TypeError, ValueError):
+            return 0
+
+        return max(int(numeric), 0)
+
+    def _on_row_by_row_change(self, axis: str) -> None:
+        if self._updating_row_by_row:
+            return
+
+        prepared = self._prepare_row_by_row_inputs()
+        if not prepared:
+            self._set_row_by_row_counts(0, 0)
+            return
+
+        carton, pallet = prepared
+        current_vertical = self._safe_int(self.row_by_row_vertical_var)
+        current_horizontal = self._safe_int(self.row_by_row_horizontal_var)
+
+        normalized_vertical, normalized_horizontal = self._normalize_row_by_row_counts(
+            carton,
+            pallet,
+            current_vertical,
+            current_horizontal,
+            axis_changed=axis,
+        )
+
+        if (
+            normalized_vertical == current_vertical
+            and normalized_horizontal == current_horizontal
+        ):
+            return
+
+        self._row_by_row_user_modified = True
+        self._set_row_by_row_counts(normalized_vertical, normalized_horizontal)
+        self.compute_pallet()
+
+    def _get_products_per_carton(self) -> int:
+        return self._safe_int(self.products_per_carton_var)
+
+    def _on_products_per_carton_changed(self) -> None:
+        value = self._safe_int(self.products_per_carton_var)
+        self._updating_products_per_carton = True
+        try:
+            self.products_per_carton_var.set(str(value))
+        finally:
+            self._updating_products_per_carton = False
+        self.update_summary()
+
+    def set_products_per_carton(self, value, *, from_2d: bool = False) -> None:
+        sanitized = self._safe_int(value)
+        self._updating_products_per_carton = True
+        try:
+            self.products_per_carton_var.set(str(sanitized))
+        finally:
+            self._updating_products_per_carton = False
+        if from_2d:
+            self._last_2d_products_per_carton = str(sanitized)
+        self.update_summary()
+
+    def use_2d_products_per_carton(self) -> None:
+        if not self._last_2d_products_per_carton:
+            messagebox.showinfo(
+                "Brak danych",
+                "Brak zapisanych danych z zakładki Pakowanie 2D.",
+            )
+            return
+        self.set_products_per_carton(self._last_2d_products_per_carton)
 
     def update_transform_frame(self):
         for widget in self.transform_frame.winfo_children():
@@ -1032,7 +1360,13 @@ class TabPallet(ttk.Frame):
         selector = PatternSelector(calc_carton, pallet)
         patterns = selector.generate_all(maximize_mixed=self.maximize_mixed.get())
 
-        self._update_row_by_row_stats(calc_carton, patterns.get("row_by_row"))
+        if "row_by_row" in patterns:
+            custom_pattern, _, _ = self._customize_row_by_row_pattern(
+                calc_carton, pallet, patterns.get("row_by_row")
+            )
+            patterns["row_by_row"] = custom_pattern if custom_pattern is not None else []
+        else:
+            self._set_row_by_row_counts(0, 0)
 
         layout_entries: List[Tuple[int, LayerLayout, str]] = []
         for name, pattern in patterns.items():
@@ -1768,7 +2102,7 @@ class TabPallet(ttk.Frame):
             cartons_per_odd if i % 2 == 1 else cartons_per_even
             for i in range(1, num_layers + 1)
         )
-        total_products = total_cartons * self.products_per_carton
+        total_products = total_cartons * self._get_products_per_carton()
         num_slip = getattr(self, "slip_count", slip_count)
         stack_height = num_layers * box_h_ext
         if self.include_pallet_height_var.get():

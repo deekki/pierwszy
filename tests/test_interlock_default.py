@@ -8,14 +8,18 @@ class Dummy:
     group_cartons = TabPallet.group_cartons
     center_layout = TabPallet.center_layout
     _build_layouts = TabPallet._build_layouts
-    _update_row_by_row_stats = TabPallet._update_row_by_row_stats
+    _set_row_by_row_counts = TabPallet._set_row_by_row_counts
+    _count_row_by_row_rows = TabPallet._count_row_by_row_rows
+    _build_row_by_row_pattern = TabPallet._build_row_by_row_pattern
+    _normalize_row_by_row_counts = TabPallet._normalize_row_by_row_counts
+    _customize_row_by_row_pattern = TabPallet._customize_row_by_row_pattern
 
     def __init__(self):
         def var(val):
             return types.SimpleNamespace(get=lambda: val)
 
         class ReadVar:
-            def __init__(self, value="0"):
+            def __init__(self, value=0):
                 self.value = value
 
             def set(self, value):
@@ -30,6 +34,8 @@ class Dummy:
         self.center_mode_var = var("Cała warstwa")
         self.row_by_row_vertical_var = ReadVar()
         self.row_by_row_horizontal_var = ReadVar()
+        self._row_by_row_user_modified = False
+        self._updating_row_by_row = False
 
 
 def test_row_by_row_selected_by_default():
@@ -101,6 +107,6 @@ def test_row_by_row_counts_reflect_orientation():
 
     count, coords, _ = row_entry
     assert count == len(coords)
-    assert dummy.row_by_row_vertical_var.get() == "8"
-    assert dummy.row_by_row_horizontal_var.get() == "12"
+    assert dummy.row_by_row_vertical_var.get() == 2
+    assert dummy.row_by_row_horizontal_var.get() == 2
 
