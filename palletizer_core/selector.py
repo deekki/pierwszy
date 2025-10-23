@@ -112,6 +112,13 @@ class PatternSelector:
         _, patt = algorithms.pack_rectangles_2d(pallet_w, pallet_l, box_w, box_l)
         patterns["column"] = patt
 
+        # rotated column layout
+        if abs(box_w - box_l) > 1e-6:
+            _, rotated = algorithms.pack_rectangles_2d(
+                pallet_w, pallet_l, box_l, box_w
+            )
+            patterns["column_rotated"] = rotated
+
         # row-by-row layout
         _, row_patt = algorithms.pack_rectangles_row_by_row(
             pallet_w, pallet_l, box_w, box_l
