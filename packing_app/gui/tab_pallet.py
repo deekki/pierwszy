@@ -114,6 +114,10 @@ class TabPallet(ttk.Frame):
         )
         self.pallet_base_mass = 25.0
         self.pack(fill=tk.BOTH, expand=True)
+        self.columnconfigure(0, weight=1)
+        for row in range(5):
+            self.rowconfigure(row, weight=0)
+        self.rowconfigure(3, weight=1)
         self.layouts = []
         self.layers = []
         self.carton_ids = []
@@ -152,8 +156,15 @@ class TabPallet(ttk.Frame):
             return False
 
     def build_ui(self):
-        pallet_frame = ttk.LabelFrame(self, text="Parametry palety")
-        pallet_frame.pack(fill=tk.X, padx=10, pady=5)
+        top_container = ttk.Frame(self)
+        top_container.grid(row=0, column=0, sticky="nsew", padx=10, pady=(10, 5))
+        top_container.columnconfigure(0, weight=1)
+        top_container.columnconfigure(1, weight=1)
+
+        pallet_frame = ttk.LabelFrame(top_container, text="Parametry palety")
+        pallet_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
+        for col in range(0, 8):
+            pallet_frame.columnconfigure(col, weight=1)
 
         ttk.Label(pallet_frame, text="Paleta:").grid(row=0, column=0, padx=5, pady=5)
         self.pallet_var = tk.StringVar(value=self.predefined_pallets[0]["name"])
@@ -190,8 +201,10 @@ class TabPallet(ttk.Frame):
         entry_pallet_h.grid(row=0, column=7, padx=5, pady=5)
         entry_pallet_h.bind("<Return>", self.compute_pallet)
 
-        carton_frame = ttk.LabelFrame(self, text="Parametry kartonu")
-        carton_frame.pack(fill=tk.X, padx=10, pady=5)
+        carton_frame = ttk.LabelFrame(top_container, text="Parametry kartonu")
+        carton_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
+        for col in range(0, 8):
+            carton_frame.columnconfigure(col, weight=1)
 
         ttk.Label(carton_frame, text="Karton:").grid(row=0, column=0, padx=5, pady=5)
         self.carton_var = tk.StringVar(value=list(self.predefined_cartons.keys())[0])
@@ -300,7 +313,9 @@ class TabPallet(ttk.Frame):
         weight_frame.grid(row=3, column=1, columnspan=3, padx=5, pady=5, sticky="w")
 
         layers_frame = ttk.LabelFrame(self, text="Ustawienia warstw")
-        layers_frame.pack(fill=tk.X, padx=10, pady=5)
+        layers_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=5)
+        for col in range(8):
+            layers_frame.columnconfigure(col, weight=1)
 
         ttk.Label(layers_frame, text="Liczba warstw:").grid(
             row=0, column=0, padx=5, pady=5
@@ -382,14 +397,50 @@ class TabPallet(ttk.Frame):
         entry_slip_count.grid(row=2, column=1, padx=5, pady=5)
         entry_slip_count.bind("<Return>", self.compute_pallet)
 
+        ttk.Label(layers_frame, text="Interlock – linie pionowe:").grid(
+            row=3, column=0, padx=5, pady=5, sticky="w"
+        )
+        self.interlock_cols_var = tk.StringVar(value="0")
+        cols_spin = ttk.Spinbox(
+            layers_frame,
+            from_=0,
+            to=99,
+            width=5,
+            textvariable=self.interlock_cols_var,
+            validate="key",
+            validatecommand=(self.register(self.validate_integer), "%P"),
+        )
+        cols_spin.grid(row=3, column=1, padx=5, pady=5, sticky="w")
+        cols_spin.bind("<Return>", self.compute_pallet)
+
+        ttk.Label(layers_frame, text="Interlock – linie poziome:").grid(
+            row=3, column=2, padx=5, pady=5, sticky="w"
+        )
+        self.interlock_rows_var = tk.StringVar(value="0")
+        rows_spin = ttk.Spinbox(
+            layers_frame,
+            from_=0,
+            to=99,
+            width=5,
+            textvariable=self.interlock_rows_var,
+            validate="key",
+            validatecommand=(self.register(self.validate_integer), "%P"),
+        )
+        rows_spin.grid(row=3, column=3, padx=5, pady=5, sticky="w")
+        rows_spin.bind("<Return>", self.compute_pallet)
+
+        self.interlock_cols_var.trace_add("write", self._on_interlock_lines_changed)
+        self.interlock_rows_var.trace_add("write", self._on_interlock_lines_changed)
+
         self.transform_frame = ttk.Frame(layers_frame)
         # Move transform options to the right to save vertical space
         self.transform_frame.grid(
-            row=0, column=7, rowspan=3, padx=5, pady=5, sticky="n"
+            row=0, column=7, rowspan=4, padx=5, pady=5, sticky="n"
         )
 
         bottom_frame = ttk.Frame(self)
-        bottom_frame.pack(fill=tk.X, padx=10, pady=5)
+        bottom_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=5)
+        bottom_frame.columnconfigure(1, weight=1)
 
         control_frame = ttk.Frame(bottom_frame)
         control_frame.pack(side=tk.LEFT, padx=5)
@@ -429,7 +480,8 @@ class TabPallet(ttk.Frame):
         self.status_label.pack(side=tk.LEFT, padx=5)
 
         self.summary_frame = ttk.LabelFrame(bottom_frame, text="Obliczenia")
-        self.summary_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        self.summary_frame.grid(row=0, column=1, sticky="nsew", padx=5)
+        self.summary_frame.columnconfigure(0, weight=1)
         self.summary_frame.columnconfigure(0, weight=1)
         self.totals_label = ttk.Label(
             self.summary_frame, text="", justify="left"
@@ -452,14 +504,22 @@ class TabPallet(ttk.Frame):
         )
         self.area_label.grid(row=4, column=0, sticky="w", padx=5, pady=(0, 4))
 
-        self.fig = plt.Figure(figsize=(12, 6))
+        figure_frame = ttk.Frame(self)
+        figure_frame.grid(row=3, column=0, sticky="nsew", padx=10, pady=5)
+        figure_frame.columnconfigure(0, weight=1)
+        figure_frame.rowconfigure(0, weight=1)
+
+        self.fig = plt.Figure(figsize=(14, 6))
         self.ax_odd = self.fig.add_subplot(131)
         self.ax_even = self.fig.add_subplot(132)
         self.ax_overlay = self.fig.add_subplot(133)
-        self.canvas = FigureCanvasTkAgg(self.fig, master=self)
-        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-        self.toolbar = NavigationToolbar2Tk(self.canvas, self)
-        self.toolbar.pack()
+        self.canvas = FigureCanvasTkAgg(self.fig, master=figure_frame)
+        canvas_widget = self.canvas.get_tk_widget()
+        canvas_widget.grid(row=0, column=0, sticky="nsew")
+        toolbar_frame = ttk.Frame(figure_frame)
+        toolbar_frame.grid(row=1, column=0, sticky="ew")
+        self.toolbar = NavigationToolbar2Tk(self.canvas, toolbar_frame)
+        self.toolbar.update()
         self.canvas.draw()
 
         self.compute_pallet()
@@ -473,6 +533,13 @@ class TabPallet(ttk.Frame):
             return float_value >= 0
         except ValueError:
             return False
+
+    def validate_integer(self, value):
+        if value == "":
+            return True
+        if value.isdigit():
+            return True
+        return False
 
     def update_external_dimensions(self, *args):
         try:
@@ -540,6 +607,73 @@ class TabPallet(ttk.Frame):
     def _on_max_stack_changed(self, *_):
         if not self._suspend_layer_sync:
             self._layer_sync_source = "height"
+
+    def _on_interlock_lines_changed(self, *_):
+        self.compute_pallet()
+
+    @staticmethod
+    def _parse_interlock_value(var) -> int | None:
+        if not var:
+            return None
+        try:
+            raw = var.get() if hasattr(var, "get") else var
+        except Exception:
+            return None
+        if raw is None:
+            return None
+        try:
+            value = int(str(raw).strip())
+        except (TypeError, ValueError):
+            return None
+        return value if value > 0 else None
+
+    @staticmethod
+    def _infer_interlock_orientation(pattern, box_w, box_l) -> str:
+        if not pattern:
+            return "normal"
+
+        def close(a, b):
+            return math.isclose(a, b, rel_tol=1e-6, abs_tol=1e-6)
+
+        normal = sum(1 for _, _, w, h in pattern if close(w, box_w) and close(h, box_l))
+        rotated = sum(1 for _, _, w, h in pattern if close(w, box_l) and close(h, box_w))
+        return "normal" if normal >= rotated else "rotated"
+
+    def _manual_interlock_pattern(self, inputs: PalletInputs, carton: Carton, fallback):
+        cols = self._parse_interlock_value(getattr(self, "interlock_cols_var", None))
+        rows = self._parse_interlock_value(getattr(self, "interlock_rows_var", None))
+        if cols is None and rows is None:
+            return None
+
+        orientation = self._infer_interlock_orientation(fallback or [], carton.width, carton.length)
+        if orientation == "rotated":
+            cell_w, cell_l = carton.length, carton.width
+        else:
+            cell_w, cell_l = carton.width, carton.length
+
+        if cell_w <= 0 or cell_l <= 0:
+            return []
+
+        max_cols = int((inputs.pallet_w + 1e-9) // cell_w)
+        max_rows = int((inputs.pallet_l + 1e-9) // cell_l)
+        if max_cols <= 0 or max_rows <= 0:
+            return []
+
+        if cols is None:
+            cols = max_cols
+        if rows is None:
+            rows = max_rows
+
+        if cols > max_cols or rows > max_rows:
+            return None
+
+        pattern = []
+        for col in range(cols):
+            x = col * cell_w
+            for row in range(rows):
+                y = row * cell_l
+                pattern.append((x, y, cell_w, cell_l))
+        return pattern
 
     def update_transform_frame(self):
         for widget in self.transform_frame.winfo_children():
@@ -948,6 +1082,12 @@ class TabPallet(ttk.Frame):
         )
         selector = PatternSelector(calc_carton, pallet)
         patterns = selector.generate_all(maximize_mixed=self.maximize_mixed.get())
+
+        manual_interlock = self._manual_interlock_pattern(
+            inputs, calc_carton, patterns.get("interlock")
+        )
+        if manual_interlock is not None:
+            patterns["interlock"] = manual_interlock
 
         layout_entries: List[Tuple[int, LayerLayout, str]] = []
         for name, pattern in patterns.items():
