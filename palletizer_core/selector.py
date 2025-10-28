@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Dict, List, Tuple
 
+import math
+
 import yaml
 import os
 
@@ -21,6 +23,10 @@ DEFAULT_WEIGHTS = {
     "stability": 1.0,
     "grip_changes": 1.0,
 }
+
+RISK_STABILITY_THRESHOLD = 0.45
+RISK_SUPPORT_THRESHOLD = 0.5
+RISK_CONTACT_THRESHOLD = 0.25
 
 
 @lru_cache(maxsize=None)
@@ -60,6 +66,17 @@ class PatternScore:
     stability: float
     grip_changes: int
     penalty: float = field(init=False)
+    carton_count: int = 0
+    support_fraction: float = 0.0
+    min_support: float = 0.0
+    edge_contact: float = 0.0
+    edge_buffer: float = 0.0
+    min_edge_clearance: float = 0.0
+    orientation_mix: float = 0.0
+    com_offset: float = 0.0
+    instability_risk: bool = False
+    warnings: List[str] = field(default_factory=list)
+    display_name: str = ""
 
     def __post_init__(self) -> None:
         weights = load_weights()
@@ -95,6 +112,58 @@ class PatternSelector:
         box_w = self.carton.width + self.padding * 2
         box_l = self.carton.length + self.padding * 2
         return pallet_w, pallet_l, box_w, box_l
+
+    @staticmethod
+    def _edge_contact_fraction(pattern: Pattern) -> float:
+        if not pattern:
+            return 0.0
+        perimeter = 0.0
+        contact = 0.0
+        n = len(pattern)
+        for x, y, w, length in pattern:
+            perimeter += 2.0 * (w + length)
+        for i in range(n):
+            x1, y1, w1, l1 = pattern[i]
+            for j in range(i + 1, n):
+                x2, y2, w2, l2 = pattern[j]
+                if abs((x1 + w1) - x2) < 1e-6 or abs((x2 + w2) - x1) < 1e-6:
+                    overlap = max(0.0, min(y1 + l1, y2 + l2) - max(y1, y2))
+                    contact += overlap
+                if abs((y1 + l1) - y2) < 1e-6 or abs((y2 + l2) - y1) < 1e-6:
+                    overlap = max(0.0, min(x1 + w1, x2 + w2) - max(x1, x2))
+                    contact += overlap
+        if perimeter <= 1e-9:
+            return 0.0
+        return max(0.0, min(1.0, contact / perimeter))
+
+    def _edge_buffer_metrics(self, pattern: Pattern) -> Tuple[float, float]:
+        if not pattern:
+            return 0.0, 0.0
+        norm = max(1e-6, min(self.carton.width, self.carton.length) / 2.0)
+        acc = 0.0
+        min_clearance = float("inf")
+        for x, y, w, length in pattern:
+            clearance = min(
+                x,
+                y,
+                self.pallet.width - (x + w),
+                self.pallet.length - (y + length),
+            )
+            min_clearance = min(min_clearance, clearance)
+            acc += max(0.0, min(1.0, clearance / norm))
+        if math.isinf(min_clearance):
+            min_clearance = 0.0
+        return acc / len(pattern), min_clearance
+
+    def _orientation_mix(self, pattern: Pattern) -> float:
+        if not pattern:
+            return 0.0
+        default_orientation = self.carton.width >= self.carton.length
+        rotated = 0
+        for _, _, w, length in pattern:
+            if (w >= length) != default_orientation:
+                rotated += 1
+        return rotated / len(pattern)
 
     def generate_all(self, *, maximize_mixed: bool = False) -> Dict[str, Pattern]:
         """Return raw patterns keyed by algorithm name.
@@ -169,33 +238,95 @@ class PatternSelector:
         layer_eff = len(pattern) * box_area / pallet_area
         cube_eff = layer_eff  # simplified: same as area efficiency
 
-        # Stability metric based on center of mass and support area
+        # Stability metric combines COM, support, contact and vertical factors
         # -----------------------------------------------------------------
         # The layout's center of mass (COM) is compared with the pallet
         # center; large offsets reduce stability.  Layouts that extend
         # beyond the pallet bounds (overhang) lose stability in proportion
-        # to the fraction of their area that is unsupported.
+        # to the fraction of their area that is unsupported.  The metric also
+        # considers how strongly cartons interlock (edge contact), how much
+        # clearance remains to the pallet rim (edge buffer) and an estimated
+        # vertical slenderness penalty derived from the carton height.
         if pattern:
             com_x = sum(x + w / 2 for x, _, w, _ in pattern) / len(pattern)
             com_y = sum(y + length / 2 for _, y, _, length in pattern) / len(pattern)
             center_x = self.pallet.width / 2
             center_y = self.pallet.length / 2
             dist = ((com_x - center_x) ** 2 + (com_y - center_y) ** 2) ** 0.5
-            max_dist = min(self.pallet.width, self.pallet.length) / 2
+            max_dist = max(1e-6, min(self.pallet.width, self.pallet.length) / 2)
             com_factor = max(0.0, 1 - dist / max_dist)
 
             total_inside = 0.0
+            min_support_ratio = 1.0
+            support_ratios: List[float] = []
             for x, y, w, length in pattern:
                 overlap_w = max(0.0, min(x + w, self.pallet.width) - max(x, 0.0))
                 overlap_l = max(0.0, min(y + length, self.pallet.length) - max(y, 0.0))
-                total_inside += overlap_w * overlap_l
+                supported_area = overlap_w * overlap_l
+                total_inside += supported_area
+                ratio = supported_area / box_area if box_area > 0 else 0.0
+                support_ratios.append(ratio)
+            if support_ratios:
+                min_support_ratio = min(support_ratios)
             support_fraction = total_inside / (len(pattern) * box_area)
 
-            stability = com_factor * support_fraction
+            contact_fraction = self._edge_contact_fraction(pattern)
+            buffer_score, min_clearance = self._edge_buffer_metrics(pattern)
+            mix_ratio = self._orientation_mix(pattern)
+
+            contact_factor = 0.4 + 0.6 * contact_fraction
+            edge_factor = 0.6 + 0.4 * buffer_score
+
+            base_dim = max(1e-6, min(self.carton.width, self.carton.length))
+            height_ratio = self.carton.height / base_dim if self.carton.height > 0 else 0.0
+            vertical_factor = 1.0 / (1.0 + height_ratio / 2.0)
+
+            gap_factor = max(0.2, 1.0 - (self.padding * 2.0) / max(base_dim, 1e-6))
+
+            interlock_factor = 1.0 + 0.25 * mix_ratio
+
+            stability = (
+                com_factor
+                * support_fraction
+                * contact_factor
+                * edge_factor
+                * vertical_factor
+                * gap_factor
+                * interlock_factor
+            )
+            stability = max(0.0, min(1.0, stability))
+            risk_reasons: List[str] = []
+            if stability < RISK_STABILITY_THRESHOLD:
+                risk_reasons.append("niska stabilność warstwy")
+            if min_support_ratio < RISK_SUPPORT_THRESHOLD:
+                risk_reasons.append("karton podparty w <50%")
+            if contact_fraction < RISK_CONTACT_THRESHOLD:
+                risk_reasons.append("słaby kontakt krawędziowy")
+            if min_clearance < 0:
+                risk_reasons.append("wystawanie poza obrys palety")
         else:
             stability = 0.0
+            dist = 0.0
+            support_fraction = 0.0
+            min_support_ratio = 0.0
+            contact_fraction = 0.0
+            buffer_score = 0.0
+            min_clearance = 0.0
+            mix_ratio = 0.0
+            risk_reasons = []
         grip_changes = 0
-        return PatternScore("", layer_eff, cube_eff, stability, grip_changes)
+        score = PatternScore("", layer_eff, cube_eff, stability, grip_changes)
+        score.carton_count = len(pattern)
+        score.support_fraction = support_fraction
+        score.min_support = min_support_ratio
+        score.edge_contact = contact_fraction
+        score.edge_buffer = buffer_score
+        score.min_edge_clearance = min_clearance
+        score.orientation_mix = mix_ratio
+        score.com_offset = dist
+        score.instability_risk = bool(risk_reasons)
+        score.warnings = list(risk_reasons)
+        return score
 
     def best(
         self, *, maximize_mixed: bool = False

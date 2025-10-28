@@ -59,6 +59,8 @@ def make_raw_tab():
     tab.products_per_carton_var = DummyVar("1")
     tab._updating_products_per_carton = False
     tab._last_2d_products_per_carton = ""
+    tab.pattern_scores = {}
+    tab.best_layout_key = ""
     return tab
 
 

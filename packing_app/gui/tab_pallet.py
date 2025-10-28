@@ -3,7 +3,7 @@ from tkinter import ttk, messagebox, filedialog, simpledialog
 import matplotlib
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Tuple, Dict, Optional
 
 matplotlib.use("TkAgg")
@@ -22,6 +22,7 @@ from palletizer_core import (
     Carton,
     Pallet,
     PatternSelector,
+    PatternScore,
     EvenOddSequencer,
 )
 from core.utils import (
@@ -94,6 +95,8 @@ class LayoutComputation:
     best_layout_name: str
     best_even: LayerLayout
     best_odd: LayerLayout
+    best_layout_key: str = ""
+    scores: Dict[str, PatternScore] = field(default_factory=dict)
 
 
 class TabPallet(ttk.Frame):
@@ -130,8 +133,10 @@ class TabPallet(ttk.Frame):
         self.tape_per_carton = 0.0
         self.film_per_pallet = 0.0
         self.best_layout_name = ""
+        self.best_layout_key = ""
         self.best_even = []
         self.best_odd = []
+        self.pattern_scores: Dict[str, PatternScore] = {}
         self.modify_mode_var = tk.BooleanVar(value=False)
         self.patches = []
         self.selected_indices = set()
@@ -530,6 +535,79 @@ class TabPallet(ttk.Frame):
             self.summary_frame, text="", justify="left"
         )
         self.area_label.grid(row=4, column=0, sticky="w", padx=5, pady=(0, 4))
+        self.summary_frame.rowconfigure(5, weight=1)
+
+        self.pattern_stats_frame = ttk.LabelFrame(
+            self.summary_frame, text="Ocena stabilności"
+        )
+        self.pattern_stats_frame.grid(
+            row=5, column=0, sticky="nsew", padx=5, pady=(0, 5)
+        )
+        self.pattern_stats_frame.columnconfigure(0, weight=1)
+        self.pattern_stats_frame.rowconfigure(0, weight=1)
+
+        columns = (
+            "pattern",
+            "cartons",
+            "layer",
+            "cube",
+            "stability",
+            "support",
+            "min_support",
+            "contact",
+            "clearance",
+            "grip",
+            "risk",
+        )
+        self.pattern_tree = ttk.Treeview(
+            self.pattern_stats_frame,
+            columns=columns,
+            show="headings",
+            height=6,
+        )
+        headings = {
+            "pattern": "Wzór",
+            "cartons": "Kartony",
+            "layer": "Warstwa [%]",
+            "cube": "Kubatura [%]",
+            "stability": "Stabilność [%]",
+            "support": "Podparcie [%]",
+            "min_support": "Min. podparcie [%]",
+            "contact": "Kontakt [%]",
+            "clearance": "Min. luz [mm]",
+            "grip": "Zmiany chwytu",
+            "risk": "Ryzyko",
+        }
+        for col in columns:
+            self.pattern_tree.heading(col, text=headings[col])
+            self.pattern_tree.column(col, anchor="center", stretch=True)
+
+        scroll = ttk.Scrollbar(
+            self.pattern_stats_frame, orient="vertical", command=self.pattern_tree.yview
+        )
+        self.pattern_tree.configure(yscrollcommand=scroll.set)
+        self.pattern_tree.grid(row=0, column=0, sticky="nsew")
+        scroll.grid(row=0, column=1, sticky="ns")
+
+        self.pattern_detail_var = tk.StringVar(value="")
+        detail_label = ttk.Label(
+            self.pattern_stats_frame,
+            textvariable=self.pattern_detail_var,
+            justify="left",
+            wraplength=380,
+        )
+        detail_label.grid(row=1, column=0, columnspan=2, sticky="w", padx=5, pady=(4, 0))
+
+        self.pattern_warning_var = tk.StringVar(value="")
+        ttk.Label(
+            self.pattern_stats_frame,
+            textvariable=self.pattern_warning_var,
+            justify="left",
+            foreground="red",
+            wraplength=380,
+        ).grid(row=2, column=0, columnspan=2, sticky="w", padx=5, pady=(2, 2))
+
+        self.pattern_tree.bind("<<TreeviewSelect>>", self.on_pattern_select)
 
         figure_frame = ttk.Frame(self)
         figure_frame.grid(row=3, column=0, sticky="nsew", padx=10, pady=5)
@@ -1365,13 +1443,20 @@ class TabPallet(ttk.Frame):
         else:
             self._set_row_by_row_counts(0, 0)
 
+        scores: Dict[str, PatternScore] = {}
         layout_entries: List[Tuple[int, LayerLayout, str]] = []
+        for name, pattern in patterns.items():
+            score = selector.score(pattern)
+            score.name = name
+            score.display_name = DISPLAY_NAME_OVERRIDES.get(
+                name, name.replace("_", " ").capitalize()
+            )
+            scores[name] = score
+
         for name, pattern in patterns.items():
             adjusted = apply_spacing(pattern, inputs.spacing)
             centered = self.center_layout(adjusted, inputs.pallet_w, inputs.pallet_l)
-            display = DISPLAY_NAME_OVERRIDES.get(
-                name, name.replace("_", " ").capitalize()
-            )
+            display = scores[name].display_name
             layout_entries.append((len(centered), centered, display))
 
         if patterns.get("row_by_row"):
@@ -1381,10 +1466,8 @@ class TabPallet(ttk.Frame):
             best_key = "interlock"
             best_pattern = patterns[best_key]
         else:
-            raw_name, best_pattern, _ = selector.best(
-                maximize_mixed=self.maximize_mixed.get()
-            )
-            best_key = raw_name
+            best_key = min(scores.items(), key=lambda item: item[1].penalty)[0]
+            best_pattern = patterns.get(best_key, [])
 
         seq = EvenOddSequencer(best_pattern, calc_carton, pallet)
         even_base, odd_shifted = seq.best_shift()
@@ -1408,6 +1491,8 @@ class TabPallet(ttk.Frame):
             best_layout_name=best_layout_name,
             best_even=best_even,
             best_odd=best_odd,
+            best_layout_key=best_key,
+            scores=scores,
         )
 
     def _finalize_results(self, inputs: PalletInputs, result: LayoutComputation) -> None:
@@ -1416,6 +1501,8 @@ class TabPallet(ttk.Frame):
         self.layouts = result.layouts
         self.layout_map = result.layout_map
         self.best_layout_name = result.best_layout_name
+        self.best_layout_key = result.best_layout_key
+        self.pattern_scores = result.scores
         self.best_even = result.best_even
         self.best_odd = result.best_odd
         self.update_transform_frame()
@@ -2219,6 +2306,15 @@ class TabPallet(ttk.Frame):
             self.mass_label.config(text="")
             self.limit_label.config(text="")
             self.area_label.config(text="")
+            self.pattern_scores = {}
+            self.best_layout_key = ""
+            if hasattr(self, "pattern_tree"):
+                for item in self.pattern_tree.get_children():
+                    self.pattern_tree.delete(item)
+            if hasattr(self, "pattern_detail_var"):
+                self.pattern_detail_var.set("")
+            if hasattr(self, "pattern_warning_var"):
+                self.pattern_warning_var.set("")
             return
 
         pallet_w = parse_dim(self.pallet_w_var)
@@ -2301,6 +2397,102 @@ class TabPallet(ttk.Frame):
         self.area_label.config(
             text=f"Pow. palety: {pallet_area:.2f} m² | Pow. kartonu: {carton_area:.2f} m² | Miejsca: {area_ratio:.2f}"
         )
+
+        self.update_pattern_stats()
+
+    def update_pattern_stats(self):
+        if not hasattr(self, "pattern_tree"):
+            return
+
+        for item in self.pattern_tree.get_children():
+            self.pattern_tree.delete(item)
+
+        if not getattr(self, "pattern_scores", None):
+            if hasattr(self, "pattern_detail_var"):
+                self.pattern_detail_var.set("")
+            if hasattr(self, "pattern_warning_var"):
+                self.pattern_warning_var.set("")
+            return
+
+        sorted_scores = sorted(
+            self.pattern_scores.items(), key=lambda item: item[1].penalty
+        )
+        for name, score in sorted_scores:
+            display = score.display_name or DISPLAY_NAME_OVERRIDES.get(
+                name, name.replace("_", " ").capitalize()
+            )
+            values = (
+                display,
+                str(score.carton_count),
+                f"{score.layer_eff * 100:.1f}",
+                f"{score.cube_eff * 100:.1f}",
+                f"{score.stability * 100:.1f}",
+                f"{score.support_fraction * 100:.1f}",
+                f"{score.min_support * 100:.1f}",
+                f"{score.edge_contact * 100:.1f}",
+                f"{score.min_edge_clearance:.1f}",
+                str(score.grip_changes),
+                "Tak" if score.instability_risk else "Nie",
+            )
+            self.pattern_tree.insert("", "end", iid=name, values=values)
+
+        best_key = getattr(self, "best_layout_key", "")
+        if best_key and self.pattern_tree.exists(best_key):
+            self.pattern_tree.selection_set(best_key)
+            self.pattern_tree.see(best_key)
+        else:
+            first = self.pattern_tree.get_children()
+            if first:
+                self.pattern_tree.selection_set(first[0])
+        self.on_pattern_select()
+
+        warnings = []
+        for name, score in sorted_scores:
+            if score.instability_risk:
+                reason = ", ".join(score.warnings) if score.warnings else "ryzyko"
+                display = score.display_name or DISPLAY_NAME_OVERRIDES.get(
+                    name, name.replace("_", " ").capitalize()
+                )
+                warnings.append(f"{display}: {reason}")
+        if warnings and hasattr(self, "pattern_warning_var"):
+            self.pattern_warning_var.set(
+                "Uwaga na stabilność: " + "; ".join(warnings)
+            )
+        elif hasattr(self, "pattern_warning_var"):
+            self.pattern_warning_var.set("")
+
+    def on_pattern_select(self, event=None):
+        if not hasattr(self, "pattern_tree") or not hasattr(
+            self, "pattern_detail_var"
+        ):
+            return
+
+        selection = self.pattern_tree.selection()
+        if not selection:
+            self.pattern_detail_var.set("")
+            return
+
+        key = selection[0]
+        score = self.pattern_scores.get(key)
+        if not score:
+            self.pattern_detail_var.set("")
+            return
+
+        display = score.display_name or DISPLAY_NAME_OVERRIDES.get(
+            key, key.replace("_", " ").capitalize()
+        )
+        risk_text = (
+            "Tak: " + ", ".join(score.warnings)
+            if score.instability_risk and score.warnings
+            else ("Tak" if score.instability_risk else "Nie")
+        )
+        detail_text = (
+            f"{display}: środek ciężkości {score.com_offset:.0f} mm od centrum, "
+            f"podparcie średnie {score.support_fraction * 100:.1f}% (min {score.min_support * 100:.1f}%), "
+            f"min. luz przy krawędzi {score.min_edge_clearance:.1f} mm, orientacje mieszane "
+            f"{score.orientation_mix * 100:.1f}%. Ryzyko utraty stabilności: {risk_text}."
+        )
+        self.pattern_detail_var.set(detail_text)
 
     def adjust_spacing(self, delta: float) -> None:
         """Increase or decrease carton spacing by ``delta`` millimeters."""
