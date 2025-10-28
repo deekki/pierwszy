@@ -204,43 +204,85 @@ def compute_interlocked_layout(
 
 
 def pack_rectangles_mixed_max(width, height, wprod, lprod, margin=0):
+    """Search for dense mixed layouts without exhaustive DFS."""
+
     eff_width = width - margin
     eff_height = height - margin
     if eff_width < min(wprod, lprod) or eff_height < min(wprod, lprod):
         return 0, []
+
+    box_area = wprod * lprod
+    orientations = [(wprod, lprod)]
+    if abs(wprod - lprod) > 1e-9:
+        orientations.append((lprod, wprod))
+
     best_count = 0
     best_positions = []
-    free_list = [(0, 0, eff_width, eff_height)]
-    def dfs(count, positions, free_list):
-        nonlocal best_count, best_positions
+
+    max_nodes = 5000
+    nodes_explored = 0
+    stack = [(0, [], [(0.0, 0.0, eff_width, eff_height)])]
+
+    def _split(rect, w, h):
+        x, y, W, H = rect
+        pieces = []
+        if W - w > 1e-9:
+            pieces.append((x + w, y, W - w, H))
+        if H - h > 1e-9:
+            pieces.append((x, y + h, w, H - h))
+        return pieces
+
+    def _prune(free_rects):
+        pruned = []
+        for fx, fy, fw, fh in free_rects:
+            fits = False
+            for ow, oh in orientations:
+                if fw + 1e-9 >= ow and fh + 1e-9 >= oh:
+                    fits = True
+                    break
+            if fits:
+                pruned.append((fx, fy, fw, fh))
+        return pruned
+
+    while stack and nodes_explored < max_nodes:
+        count, positions, free_rects = stack.pop()
+        nodes_explored += 1
+
         if count > best_count:
             best_count = count
-            best_positions = positions.copy()
-        for i, rect in enumerate(free_list):
-            x, y, W, H = rect
-            if W >= wprod and H >= lprod:
-                new_positions = positions.copy()
-                new_positions.append((x, y, wprod, lprod))
-                new_free = split_rect(rect, wprod, lprod)
-                new_free_list = free_list[:i] + free_list[i+1:] + new_free
-                dfs(count + 1, new_positions, new_free_list)
-            if W >= lprod and H >= wprod:
-                new_positions = positions.copy()
-                new_positions.append((x, y, lprod, wprod))
-                new_free = split_rect(rect, lprod, wprod)
-                new_free_list = free_list[:i] + free_list[i+1:] + new_free
-                dfs(count + 1, new_positions, new_free_list)
-    dfs(0, [], free_list)
-    return best_count, best_positions
+            best_positions = positions
 
-def split_rect(rect, w, h):
-    x, y, W, H = rect
-    leftover = []
-    if W - w > 0:
-        leftover.append((x + w, y, W - w, H))
-    if H - h > 0:
-        leftover.append((x, y + h, w, H - h))
-    return leftover
+        free_area = sum(fw * fh for _, _, fw, fh in free_rects)
+        potential = count + int(free_area // box_area)
+        if potential <= best_count:
+            continue
+
+        if not free_rects:
+            continue
+
+        idx = max(range(len(free_rects)), key=lambda i: free_rects[i][2] * free_rects[i][3])
+        base_rect = free_rects[idx]
+        remaining = free_rects[:idx] + free_rects[idx + 1 :]
+
+        placed_any = False
+        for ow, oh in orientations:
+            if base_rect[2] + 1e-9 < ow or base_rect[3] + 1e-9 < oh:
+                continue
+            new_pos = positions + [(base_rect[0], base_rect[1], ow, oh)]
+            new_free = remaining + _split(base_rect, ow, oh)
+            new_free = _prune(new_free)
+            stack.append((count + 1, new_pos, new_free))
+            placed_any = True
+
+        if not placed_any:
+            filtered = _prune(remaining)
+            if len(filtered) != len(remaining):
+                remaining = filtered
+            if remaining:
+                stack.append((count, positions, remaining))
+
+    ordered = sorted(best_positions, key=lambda item: (item[1], item[0]))
+    return best_count, ordered
 
 def pack_circles_grid_bottomleft(W, H, diam, margin=0):
     eff_W = W - margin
@@ -464,16 +506,16 @@ def pack_rectangles_dynamic(width, height, wprod, lprod, margin=0):
     automatic rectangle rotation. The number of cartons is not predetermined;
     instead an upper bound is estimated from the available area and every box is
     submitted to the packer. The resulting list contains only the cartons that
-    successfully fit inside the pallet area without overlapping.
+    successfully fit inside the pallet area without overlapping. When
+    ``rectpack`` is not installed the function falls back to the bounded mixed
+    search used by :func:`maximize_mixed_layout`.
     """
 
     try:
         from rectpack import newPacker
-    except ImportError as exc:
-        raise ImportError(
-            "The 'rectpack' package is required for pack_rectangles_dynamic. "
-            "Install it with 'pip install rectpack'."
-        ) from exc
+    except ImportError:
+        count, positions = maximize_mixed_layout(width, height, wprod, lprod, margin, [])
+        return count, positions
 
     eff_w = width - margin
     eff_h = height - margin
@@ -493,16 +535,5 @@ def pack_rectangles_dynamic(width, height, wprod, lprod, margin=0):
     positions = [(x, y, w, h) for (_, x, y, w, h, _) in packer.rect_list()]
 
     return len(positions), positions
-    """Pack rectangles using a dynamic maximisation approach.
-
-    This is a convenience wrapper around :func:`maximize_mixed_layout` that
-    starts with an empty layout and searches for the densest placement.  The
-    algorithm explores both carton orientations recursively and keeps the best
-    result found.  It resembles the strategies used by online palletisation
-    tools such as Pally or OnPallet.
-    """
-
-    count, positions = maximize_mixed_layout(width, height, wprod, lprod, margin, [])
-    return count, positions
 
 
