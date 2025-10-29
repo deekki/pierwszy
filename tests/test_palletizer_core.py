@@ -1,5 +1,6 @@
 import pytest
 
+import palletizer_core.selector as selector
 from palletizer_core import Carton, Pallet, PatternSelector, EvenOddSequencer
 
 
@@ -91,3 +92,20 @@ def test_generate_all_includes_rotated_column():
     assert patterns["column_rotated"]
     assert patterns["column"][0][2] == pytest.approx(carton.width)
     assert patterns["column_rotated"][0][2] == pytest.approx(carton.length)
+
+
+def test_load_weights_without_yaml(tmp_path, monkeypatch):
+    settings_path = tmp_path / "settings.yaml"
+    settings_path.write_text("layer_eff: 2.5\nstability: 3.5\n", encoding="utf-8")
+
+    selector.load_weights.cache_clear()
+    monkeypatch.setattr(selector, "yaml", None, raising=False)
+    monkeypatch.setattr(selector.os.path, "join", lambda *args: str(settings_path))
+
+    weights = selector.load_weights()
+
+    assert weights["layer_eff"] == pytest.approx(2.5)
+    assert weights["stability"] == pytest.approx(3.5)
+    assert weights["cube_eff"] == pytest.approx(selector.DEFAULT_WEIGHTS["cube_eff"])
+
+    selector.load_weights.cache_clear()

@@ -6,8 +6,12 @@ from typing import Dict, List, Tuple
 
 import math
 
-import yaml
 import os
+
+try:  # pragma: no cover - exercised via tests when yaml is available
+    import yaml  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover - handled in load_weights
+    yaml = None  # type: ignore
 
 from packing_app.core import algorithms
 
@@ -29,22 +33,49 @@ RISK_SUPPORT_THRESHOLD = 0.5
 RISK_CONTACT_THRESHOLD = 0.25
 
 
+def _fallback_parse_settings(stream) -> Dict[str, float]:
+    """Parse simple ``key: value`` pairs without requiring PyYAML."""
+
+    parsed: Dict[str, float] = {}
+    for raw_line in stream:
+        line = raw_line.split("#", 1)[0].strip()
+        if not line or ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key or not value:
+            continue
+        try:
+            parsed[key] = float(value)
+        except ValueError:
+            continue
+    return parsed
+
+
 @lru_cache(maxsize=None)
 def load_weights() -> Dict[str, float]:
-    """Load scoring weights from settings.yaml if present."""
+    """Load scoring weights from ``settings.yaml`` when available."""
+
     settings_path = os.path.join(
         os.path.dirname(os.path.dirname(__file__)), "settings.yaml"
     )
+    data: Dict[str, float] = {}
     if os.path.exists(settings_path):
         try:
             with open(settings_path, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
-            if not isinstance(data, dict):
-                data = {}
+                if yaml is not None:
+                    loaded = yaml.safe_load(f) or {}
+                    if isinstance(loaded, dict):
+                        data = {
+                            key: float(value)
+                            for key, value in loaded.items()
+                            if isinstance(value, (int, float, str))
+                        }
+                else:
+                    data = _fallback_parse_settings(f)
         except Exception:
             data = {}
-    else:
-        data = {}
 
     weights = DEFAULT_WEIGHTS.copy()
     for key in DEFAULT_WEIGHTS:
@@ -52,7 +83,7 @@ def load_weights() -> Dict[str, float]:
             try:
                 weights[key] = float(data[key])
             except (TypeError, ValueError):
-                pass
+                continue
     return weights
 
 
