@@ -107,6 +107,8 @@ class PatternScore:
     com_offset: float = 0.0
     instability_risk: bool = False
     warnings: List[str] = field(default_factory=list)
+    weakest_carton: Tuple[float, float, float, float] | None = None
+    weakest_support: float = 0.0
     display_name: str = ""
 
     def __post_init__(self) -> None:
@@ -289,6 +291,7 @@ class PatternSelector:
 
             total_inside = 0.0
             min_support_ratio = 1.0
+            weakest_carton: Tuple[float, float, float, float] | None = None
             support_ratios: List[float] = []
             for x, y, w, length in pattern:
                 overlap_w = max(0.0, min(x + w, self.pallet.width) - max(x, 0.0))
@@ -297,9 +300,15 @@ class PatternSelector:
                 total_inside += supported_area
                 ratio = supported_area / box_area if box_area > 0 else 0.0
                 support_ratios.append(ratio)
-            if support_ratios:
-                min_support_ratio = min(support_ratios)
+                if ratio < min_support_ratio:
+                    min_support_ratio = ratio
+                    weakest_carton = (x, y, w, length)
+            if not support_ratios:
+                min_support_ratio = 0.0
+            if weakest_carton is None and pattern:
+                weakest_carton = pattern[0]
             support_fraction = total_inside / (len(pattern) * box_area)
+            weakest_support_ratio = min_support_ratio
 
             contact_fraction = self._edge_contact_fraction(pattern)
             buffer_score, min_clearance = self._edge_buffer_metrics(pattern)
@@ -340,6 +349,8 @@ class PatternSelector:
             dist = 0.0
             support_fraction = 0.0
             min_support_ratio = 0.0
+            weakest_carton = None
+            weakest_support_ratio = 0.0
             contact_fraction = 0.0
             buffer_score = 0.0
             min_clearance = 0.0
@@ -357,6 +368,8 @@ class PatternSelector:
         score.com_offset = dist
         score.instability_risk = bool(risk_reasons)
         score.warnings = list(risk_reasons)
+        score.weakest_carton = weakest_carton
+        score.weakest_support = weakest_support_ratio
         return score
 
     def best(

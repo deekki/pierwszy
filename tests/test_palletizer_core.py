@@ -77,6 +77,8 @@ def test_stability_penalizes_overhang():
     over_score = selector.score(overhang)
 
     assert inside_score.stability > over_score.stability
+    assert over_score.weakest_carton is not None
+    assert over_score.weakest_support < inside_score.weakest_support
 
 
 def test_generate_all_includes_rotated_column():

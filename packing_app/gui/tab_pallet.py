@@ -2486,11 +2486,21 @@ class TabPallet(ttk.Frame):
             if score.instability_risk and score.warnings
             else ("Tak" if score.instability_risk else "Nie")
         )
+        if score.weakest_carton:
+            wx, wy, ww, wl = score.weakest_carton
+            weakest_text = (
+                f"najmniej podparty karton przy ({wx:.0f}, {wy:.0f}) mm "
+                f"({score.weakest_support * 100:.1f}% podparcia)"
+            )
+        else:
+            weakest_text = "brak kartonów w układzie"
+
         detail_text = (
             f"{display}: środek ciężkości {score.com_offset:.0f} mm od centrum, "
             f"podparcie średnie {score.support_fraction * 100:.1f}% (min {score.min_support * 100:.1f}%), "
             f"min. luz przy krawędzi {score.min_edge_clearance:.1f} mm, orientacje mieszane "
-            f"{score.orientation_mix * 100:.1f}%. Ryzyko utraty stabilności: {risk_text}."
+            f"{score.orientation_mix * 100:.1f}%, {weakest_text}. "
+            f"Ryzyko utraty stabilności: {risk_text}."
         )
         self.pattern_detail_var.set(detail_text)
 
