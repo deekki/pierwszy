@@ -175,11 +175,6 @@ class PatternSelector:
         norm = max(1e-6, min(self.carton.width, self.carton.length) / 2.0)
         acc = 0.0
         min_clearance = float("inf")
-    def _edge_buffer_score(self, pattern: Pattern) -> float:
-        if not pattern:
-            return 0.0
-        norm = max(1e-6, min(self.carton.width, self.carton.length) / 2.0)
-        acc = 0.0
         for x, y, w, length in pattern:
             clearance = min(
                 x,
@@ -192,8 +187,10 @@ class PatternSelector:
         if math.isinf(min_clearance):
             min_clearance = 0.0
         return acc / len(pattern), min_clearance
-            acc += max(0.0, min(1.0, clearance / norm))
-        return acc / len(pattern)
+
+    def _edge_buffer_score(self, pattern: Pattern) -> float:
+        buffer_score, _ = self._edge_buffer_metrics(pattern)
+        return buffer_score
 
     def _orientation_mix(self, pattern: Pattern) -> float:
         if not pattern:
