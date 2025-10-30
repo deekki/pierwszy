@@ -4,8 +4,14 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Dict, List, Tuple
 
-import yaml
+import math
+
 import os
+
+try:  # pragma: no cover - exercised via tests when yaml is available
+    import yaml  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover - handled in load_weights
+    yaml = None  # type: ignore
 
 from packing_app.core import algorithms
 
@@ -22,23 +28,54 @@ DEFAULT_WEIGHTS = {
     "grip_changes": 1.0,
 }
 
+RISK_STABILITY_THRESHOLD = 0.45
+RISK_SUPPORT_THRESHOLD = 0.5
+RISK_CONTACT_THRESHOLD = 0.25
+
+
+def _fallback_parse_settings(stream) -> Dict[str, float]:
+    """Parse simple ``key: value`` pairs without requiring PyYAML."""
+
+    parsed: Dict[str, float] = {}
+    for raw_line in stream:
+        line = raw_line.split("#", 1)[0].strip()
+        if not line or ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key or not value:
+            continue
+        try:
+            parsed[key] = float(value)
+        except ValueError:
+            continue
+    return parsed
+
 
 @lru_cache(maxsize=None)
 def load_weights() -> Dict[str, float]:
-    """Load scoring weights from settings.yaml if present."""
+    """Load scoring weights from ``settings.yaml`` when available."""
+
     settings_path = os.path.join(
         os.path.dirname(os.path.dirname(__file__)), "settings.yaml"
     )
+    data: Dict[str, float] = {}
     if os.path.exists(settings_path):
         try:
             with open(settings_path, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
-            if not isinstance(data, dict):
-                data = {}
+                if yaml is not None:
+                    loaded = yaml.safe_load(f) or {}
+                    if isinstance(loaded, dict):
+                        data = {
+                            key: float(value)
+                            for key, value in loaded.items()
+                            if isinstance(value, (int, float, str))
+                        }
+                else:
+                    data = _fallback_parse_settings(f)
         except Exception:
             data = {}
-    else:
-        data = {}
 
     weights = DEFAULT_WEIGHTS.copy()
     for key in DEFAULT_WEIGHTS:
@@ -46,7 +83,7 @@ def load_weights() -> Dict[str, float]:
             try:
                 weights[key] = float(data[key])
             except (TypeError, ValueError):
-                pass
+                continue
     return weights
 
 
@@ -60,6 +97,19 @@ class PatternScore:
     stability: float
     grip_changes: int
     penalty: float = field(init=False)
+    carton_count: int = 0
+    support_fraction: float = 0.0
+    min_support: float = 0.0
+    edge_contact: float = 0.0
+    edge_buffer: float = 0.0
+    min_edge_clearance: float = 0.0
+    orientation_mix: float = 0.0
+    com_offset: float = 0.0
+    instability_risk: bool = False
+    warnings: List[str] = field(default_factory=list)
+    weakest_carton: Tuple[float, float, float, float] | None = None
+    weakest_support: float = 0.0
+    display_name: str = ""
 
     def __post_init__(self) -> None:
         weights = load_weights()
@@ -119,6 +169,12 @@ class PatternSelector:
             return 0.0
         return max(0.0, min(1.0, contact / perimeter))
 
+    def _edge_buffer_metrics(self, pattern: Pattern) -> Tuple[float, float]:
+        if not pattern:
+            return 0.0, 0.0
+        norm = max(1e-6, min(self.carton.width, self.carton.length) / 2.0)
+        acc = 0.0
+        min_clearance = float("inf")
     def _edge_buffer_score(self, pattern: Pattern) -> float:
         if not pattern:
             return 0.0
@@ -131,6 +187,11 @@ class PatternSelector:
                 self.pallet.width - (x + w),
                 self.pallet.length - (y + length),
             )
+            min_clearance = min(min_clearance, clearance)
+            acc += max(0.0, min(1.0, clearance / norm))
+        if math.isinf(min_clearance):
+            min_clearance = 0.0
+        return acc / len(pattern), min_clearance
             acc += max(0.0, min(1.0, clearance / norm))
         return acc / len(pattern)
 
@@ -232,15 +293,36 @@ class PatternSelector:
             center_x = self.pallet.width / 2
             center_y = self.pallet.length / 2
             dist = ((com_x - center_x) ** 2 + (com_y - center_y) ** 2) ** 0.5
-            max_dist = min(self.pallet.width, self.pallet.length) / 2
+            max_dist = max(1e-6, min(self.pallet.width, self.pallet.length) / 2)
             com_factor = max(0.0, 1 - dist / max_dist)
 
             total_inside = 0.0
+            min_support_ratio = 1.0
+            weakest_carton: Tuple[float, float, float, float] | None = None
+            support_ratios: List[float] = []
             for x, y, w, length in pattern:
                 overlap_w = max(0.0, min(x + w, self.pallet.width) - max(x, 0.0))
                 overlap_l = max(0.0, min(y + length, self.pallet.length) - max(y, 0.0))
-                total_inside += overlap_w * overlap_l
+                supported_area = overlap_w * overlap_l
+                total_inside += supported_area
+                ratio = supported_area / box_area if box_area > 0 else 0.0
+                support_ratios.append(ratio)
+                if ratio < min_support_ratio:
+                    min_support_ratio = ratio
+                    weakest_carton = (x, y, w, length)
+            if not support_ratios:
+                min_support_ratio = 0.0
+            if weakest_carton is None and pattern:
+                weakest_carton = pattern[0]
             support_fraction = total_inside / (len(pattern) * box_area)
+            weakest_support_ratio = min_support_ratio
+
+            contact_fraction = self._edge_contact_fraction(pattern)
+            buffer_score, min_clearance = self._edge_buffer_metrics(pattern)
+            mix_ratio = self._orientation_mix(pattern)
+
+            contact_factor = 0.4 + 0.6 * contact_fraction
+            edge_factor = 0.6 + 0.4 * buffer_score
 
             contact_fraction = self._edge_contact_fraction(pattern)
             buffer_score = self._edge_buffer_score(pattern)
@@ -267,10 +349,42 @@ class PatternSelector:
                 * interlock_factor
             )
             stability = max(0.0, min(1.0, stability))
+            risk_reasons: List[str] = []
+            if stability < RISK_STABILITY_THRESHOLD:
+                risk_reasons.append("niska stabilność warstwy")
+            if min_support_ratio < RISK_SUPPORT_THRESHOLD:
+                risk_reasons.append("karton podparty w <50%")
+            if contact_fraction < RISK_CONTACT_THRESHOLD:
+                risk_reasons.append("słaby kontakt krawędziowy")
+            if min_clearance < 0:
+                risk_reasons.append("wystawanie poza obrys palety")
         else:
             stability = 0.0
+            dist = 0.0
+            support_fraction = 0.0
+            min_support_ratio = 0.0
+            weakest_carton = None
+            weakest_support_ratio = 0.0
+            contact_fraction = 0.0
+            buffer_score = 0.0
+            min_clearance = 0.0
+            mix_ratio = 0.0
+            risk_reasons = []
         grip_changes = 0
-        return PatternScore("", layer_eff, cube_eff, stability, grip_changes)
+        score = PatternScore("", layer_eff, cube_eff, stability, grip_changes)
+        score.carton_count = len(pattern)
+        score.support_fraction = support_fraction
+        score.min_support = min_support_ratio
+        score.edge_contact = contact_fraction
+        score.edge_buffer = buffer_score
+        score.min_edge_clearance = min_clearance
+        score.orientation_mix = mix_ratio
+        score.com_offset = dist
+        score.instability_risk = bool(risk_reasons)
+        score.warnings = list(risk_reasons)
+        score.weakest_carton = weakest_carton
+        score.weakest_support = weakest_support_ratio
+        return score
 
     def best(
         self, *, maximize_mixed: bool = False
