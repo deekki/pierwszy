@@ -119,9 +119,9 @@ class TabPallet(ttk.Frame):
         self.pallet_base_mass = 25.0
         self.pack(fill=tk.BOTH, expand=True)
         self.columnconfigure(0, weight=1)
-        for row in range(5):
+        for row in range(3):
             self.rowconfigure(row, weight=0)
-        self.rowconfigure(3, weight=1)
+        self.rowconfigure(2, weight=1)
         self.layouts = []
         self.layers = []
         self.carton_ids = []
@@ -470,12 +470,16 @@ class TabPallet(ttk.Frame):
             row=0, column=8, rowspan=3, padx=5, pady=5, sticky="n"
         )
 
-        bottom_frame = ttk.Frame(self)
-        bottom_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=5)
-        bottom_frame.columnconfigure(1, weight=1)
+        content_paned = ttk.Panedwindow(self, orient=tk.HORIZONTAL)
+        content_paned.grid(row=2, column=0, sticky="nsew", padx=10, pady=5)
 
-        control_frame = ttk.Frame(bottom_frame)
-        control_frame.grid(row=0, column=0, sticky="w", padx=5)
+        left_panel = ttk.Frame(content_paned)
+        left_panel.columnconfigure(0, weight=1)
+        left_panel.rowconfigure(1, weight=1)
+        content_paned.add(left_panel, weight=1)
+
+        control_frame = ttk.Frame(left_panel)
+        control_frame.grid(row=0, column=0, sticky="w", padx=5, pady=(0, 5))
 
         self.compute_btn = ttk.Button(
             control_frame, text="Oblicz", command=self.compute_pallet
@@ -511,8 +515,8 @@ class TabPallet(ttk.Frame):
         self.status_label = ttk.Label(control_frame, textvariable=self.status_var)
         self.status_label.pack(side=tk.LEFT, padx=5)
 
-        self.summary_frame = ttk.LabelFrame(bottom_frame, text="Obliczenia")
-        self.summary_frame.grid(row=0, column=1, sticky="nsew", padx=5)
+        self.summary_frame = ttk.LabelFrame(left_panel, text="Obliczenia")
+        self.summary_frame.grid(row=1, column=0, sticky="nsew", padx=5)
         self.summary_frame.columnconfigure(0, weight=1)
         self.summary_frame.columnconfigure(0, weight=1)
         self.totals_label = ttk.Label(
@@ -609,10 +613,10 @@ class TabPallet(ttk.Frame):
 
         self.pattern_tree.bind("<<TreeviewSelect>>", self.on_pattern_select)
 
-        figure_frame = ttk.Frame(self)
-        figure_frame.grid(row=3, column=0, sticky="nsew", padx=10, pady=5)
+        figure_frame = ttk.Frame(content_paned)
         figure_frame.columnconfigure(0, weight=1)
         figure_frame.rowconfigure(0, weight=1)
+        content_paned.add(figure_frame, weight=2)
 
         self.fig = plt.Figure(figsize=(14, 5))
         self.ax_odd = self.fig.add_subplot(131)
