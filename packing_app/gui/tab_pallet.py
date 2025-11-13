@@ -119,9 +119,7 @@ class TabPallet(ttk.Frame):
         self.pallet_base_mass = 25.0
         self.pack(fill=tk.BOTH, expand=True)
         self.columnconfigure(0, weight=1)
-        for row in range(3):
-            self.rowconfigure(row, weight=0)
-        self.rowconfigure(2, weight=1)
+        self.rowconfigure(0, weight=1)
         self.layouts = []
         self.layers = []
         self.carton_ids = []
@@ -168,10 +166,21 @@ class TabPallet(ttk.Frame):
             return False
 
     def build_ui(self):
-        top_container = ttk.Frame(self)
-        top_container.grid(row=0, column=0, sticky="nsew", padx=10, pady=(8, 4))
+        main_paned = ttk.Panedwindow(self, orient=tk.HORIZONTAL)
+        main_paned.grid(row=0, column=0, sticky="nsew", padx=10, pady=8)
+
+        settings_panel = ttk.Frame(main_paned)
+        settings_panel.columnconfigure(0, weight=1)
+        settings_panel.rowconfigure(0, weight=1)
+        main_paned.add(settings_panel, weight=3)
+
+        settings_paned = ttk.Panedwindow(settings_panel, orient=tk.VERTICAL)
+        settings_paned.grid(row=0, column=0, sticky="nsew")
+
+        top_container = ttk.Frame(settings_paned)
         top_container.columnconfigure(0, weight=1)
         top_container.columnconfigure(1, weight=1)
+        settings_paned.add(top_container, weight=3)
 
         pallet_frame = ttk.LabelFrame(top_container, text="Parametry palety")
         pallet_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
@@ -318,8 +327,8 @@ class TabPallet(ttk.Frame):
         )
         weight_frame.grid(row=3, column=1, columnspan=3, padx=5, pady=5, sticky="w")
 
-        layers_frame = ttk.LabelFrame(self, text="Ustawienia warstw")
-        layers_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 4))
+        layers_frame = ttk.LabelFrame(settings_paned, text="Ustawienia warstw")
+        settings_paned.add(layers_frame, weight=2)
         for col in range(10):
             layers_frame.columnconfigure(col, weight=1)
 
@@ -464,16 +473,12 @@ class TabPallet(ttk.Frame):
             row=0, column=8, rowspan=3, padx=5, pady=5, sticky="n"
         )
 
-        content_paned = ttk.Panedwindow(self, orient=tk.VERTICAL)
-        content_paned.grid(row=2, column=0, sticky="nsew", padx=10, pady=5)
+        actions_frame = ttk.Frame(settings_paned)
+        actions_frame.columnconfigure(0, weight=1)
+        settings_paned.add(actions_frame, weight=1)
 
-        upper_panel = ttk.Frame(content_paned)
-        upper_panel.columnconfigure(0, weight=1)
-        upper_panel.rowconfigure(1, weight=1)
-        content_paned.add(upper_panel, weight=1)
-
-        control_frame = ttk.Frame(upper_panel)
-        control_frame.grid(row=0, column=0, sticky="w", padx=5, pady=(0, 5))
+        control_frame = ttk.Frame(actions_frame)
+        control_frame.grid(row=0, column=0, sticky="w", padx=5, pady=(5, 0))
 
         self.compute_btn = ttk.Button(
             control_frame, text="Oblicz", command=self.compute_pallet
@@ -492,7 +497,7 @@ class TabPallet(ttk.Frame):
         ).pack(side=tk.LEFT, padx=5)
         ttk.Button(
             control_frame,
-            text="Usu\u0144 karton",
+            text="Usuń karton",
             command=self.delete_selected_carton,
         ).pack(side=tk.LEFT, padx=5)
         ttk.Button(
@@ -506,12 +511,27 @@ class TabPallet(ttk.Frame):
             command=self.load_pattern_dialog,
         ).pack(side=tk.LEFT, padx=5)
         self.status_var = tk.StringVar(value="")
-        self.status_label = ttk.Label(control_frame, textvariable=self.status_var)
-        self.status_label.pack(side=tk.LEFT, padx=5)
+        status_frame = ttk.Frame(actions_frame)
+        status_frame.columnconfigure(0, weight=1)
+        status_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=(2, 5))
+        self.status_label = ttk.Label(status_frame, textvariable=self.status_var, anchor="w")
+        self.status_label.grid(row=0, column=0, sticky="w")
+
+        results_panel = ttk.Frame(main_paned)
+        results_panel.columnconfigure(0, weight=1)
+        results_panel.rowconfigure(0, weight=1)
+        main_paned.add(results_panel, weight=5)
+
+        content_paned = ttk.Panedwindow(results_panel, orient=tk.VERTICAL)
+        content_paned.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+
+        upper_panel = ttk.Frame(content_paned)
+        upper_panel.columnconfigure(0, weight=1)
+        upper_panel.rowconfigure(0, weight=1)
+        content_paned.add(upper_panel, weight=1)
 
         self.summary_frame = ttk.LabelFrame(upper_panel, text="Obliczenia")
-        self.summary_frame.grid(row=1, column=0, sticky="nsew", padx=5)
-        self.summary_frame.columnconfigure(0, weight=1)
+        self.summary_frame.grid(row=0, column=0, sticky="nsew", padx=5)
         self.summary_frame.columnconfigure(0, weight=1)
         self.totals_label = ttk.Label(
             self.summary_frame, text="", justify="left"
