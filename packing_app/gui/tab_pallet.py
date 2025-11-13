@@ -169,16 +169,18 @@ class TabPallet(ttk.Frame):
 
     def build_ui(self):
         top_container = ttk.Frame(self)
-        top_container.grid(row=0, column=0, sticky="nsew", padx=10, pady=(10, 5))
+        top_container.grid(row=0, column=0, sticky="nsew", padx=10, pady=(8, 4))
         top_container.columnconfigure(0, weight=1)
         top_container.columnconfigure(1, weight=1)
 
         pallet_frame = ttk.LabelFrame(top_container, text="Parametry palety")
         pallet_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
-        for col in range(0, 8):
-            pallet_frame.columnconfigure(col, weight=1)
+        pallet_frame.columnconfigure(1, weight=1)
+        pallet_frame.columnconfigure(3, weight=1)
 
-        ttk.Label(pallet_frame, text="Paleta:").grid(row=0, column=0, padx=5, pady=5)
+        ttk.Label(pallet_frame, text="Paleta:").grid(
+            row=0, column=0, padx=5, pady=5, sticky="w"
+        )
         self.pallet_var = tk.StringVar(value=self.predefined_pallets[0]["name"])
         pallet_menu = ttk.OptionMenu(
             pallet_frame,
@@ -187,31 +189,23 @@ class TabPallet(ttk.Frame):
             *[p["name"] for p in self.predefined_pallets],
             command=self.on_pallet_selected,
         )
-        pallet_menu.grid(row=0, column=1, padx=5, pady=5)
+        pallet_menu.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
 
-        ttk.Label(pallet_frame, text="W (mm):").grid(row=0, column=2, padx=5, pady=5)
         self.pallet_w_var = tk.StringVar(value=str(self.predefined_pallets[0]["w"]))
-        entry_pallet_w = ttk.Entry(
-            pallet_frame, textvariable=self.pallet_w_var, width=10
-        )
-        entry_pallet_w.grid(row=0, column=3, padx=5, pady=5)
-        entry_pallet_w.bind("<Return>", self.compute_pallet)
-
-        ttk.Label(pallet_frame, text="L (mm):").grid(row=0, column=4, padx=5, pady=5)
         self.pallet_l_var = tk.StringVar(value=str(self.predefined_pallets[0]["l"]))
-        entry_pallet_l = ttk.Entry(
-            pallet_frame, textvariable=self.pallet_l_var, width=10
-        )
-        entry_pallet_l.grid(row=0, column=5, padx=5, pady=5)
-        entry_pallet_l.bind("<Return>", self.compute_pallet)
-
-        ttk.Label(pallet_frame, text="H (mm):").grid(row=0, column=6, padx=5, pady=5)
         self.pallet_h_var = tk.StringVar(value=str(self.predefined_pallets[0]["h"]))
-        entry_pallet_h = ttk.Entry(
-            pallet_frame, textvariable=self.pallet_h_var, width=10
+        self.pallet_dims_var = tk.StringVar(value="")
+
+        ttk.Label(pallet_frame, text="W/L/H [mm]:").grid(
+            row=0, column=2, padx=5, pady=5, sticky="e"
         )
-        entry_pallet_h.grid(row=0, column=7, padx=5, pady=5)
-        entry_pallet_h.bind("<Return>", self.compute_pallet)
+        ttk.Label(pallet_frame, textvariable=self.pallet_dims_var).grid(
+            row=0, column=3, padx=5, pady=5, sticky="w"
+        )
+        self.pallet_w_var.trace_add("write", self._update_pallet_dimensions_label)
+        self.pallet_l_var.trace_add("write", self._update_pallet_dimensions_label)
+        self.pallet_h_var.trace_add("write", self._update_pallet_dimensions_label)
+        self._update_pallet_dimensions_label()
 
         carton_frame = ttk.LabelFrame(top_container, text="Parametry kartonu")
         carton_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
@@ -325,7 +319,7 @@ class TabPallet(ttk.Frame):
         weight_frame.grid(row=3, column=1, columnspan=3, padx=5, pady=5, sticky="w")
 
         layers_frame = ttk.LabelFrame(self, text="Ustawienia warstw")
-        layers_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=5)
+        layers_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 4))
         for col in range(10):
             layers_frame.columnconfigure(col, weight=1)
 
@@ -470,15 +464,15 @@ class TabPallet(ttk.Frame):
             row=0, column=8, rowspan=3, padx=5, pady=5, sticky="n"
         )
 
-        content_paned = ttk.Panedwindow(self, orient=tk.HORIZONTAL)
+        content_paned = ttk.Panedwindow(self, orient=tk.VERTICAL)
         content_paned.grid(row=2, column=0, sticky="nsew", padx=10, pady=5)
 
-        left_panel = ttk.Frame(content_paned)
-        left_panel.columnconfigure(0, weight=1)
-        left_panel.rowconfigure(1, weight=1)
-        content_paned.add(left_panel, weight=1)
+        upper_panel = ttk.Frame(content_paned)
+        upper_panel.columnconfigure(0, weight=1)
+        upper_panel.rowconfigure(1, weight=1)
+        content_paned.add(upper_panel, weight=1)
 
-        control_frame = ttk.Frame(left_panel)
+        control_frame = ttk.Frame(upper_panel)
         control_frame.grid(row=0, column=0, sticky="w", padx=5, pady=(0, 5))
 
         self.compute_btn = ttk.Button(
@@ -515,7 +509,7 @@ class TabPallet(ttk.Frame):
         self.status_label = ttk.Label(control_frame, textvariable=self.status_var)
         self.status_label.pack(side=tk.LEFT, padx=5)
 
-        self.summary_frame = ttk.LabelFrame(left_panel, text="Obliczenia")
+        self.summary_frame = ttk.LabelFrame(upper_panel, text="Obliczenia")
         self.summary_frame.grid(row=1, column=0, sticky="nsew", padx=5)
         self.summary_frame.columnconfigure(0, weight=1)
         self.summary_frame.columnconfigure(0, weight=1)
@@ -616,7 +610,7 @@ class TabPallet(ttk.Frame):
         figure_frame = ttk.Frame(content_paned)
         figure_frame.columnconfigure(0, weight=1)
         figure_frame.rowconfigure(0, weight=1)
-        content_paned.add(figure_frame, weight=2)
+        content_paned.add(figure_frame, weight=3)
 
         self.fig = plt.Figure(figsize=(14, 5))
         self.ax_odd = self.fig.add_subplot(131)
@@ -668,6 +662,13 @@ class TabPallet(ttk.Frame):
                 return str(value)
             return f"{float(value):.2f}".rstrip("0").rstrip(".")
         return str(value)
+
+    def _update_pallet_dimensions_label(self, *_):
+        values = []
+        for var in (self.pallet_w_var, self.pallet_l_var, self.pallet_h_var):
+            raw = var.get().strip() if hasattr(var, "get") else str(var)
+            values.append(self._format_number(raw) if raw else "-")
+        self.pallet_dims_var.set(" × ".join(values))
 
     def _get_active_carton_weight(self) -> Tuple[float, str]:
         var = getattr(self, "manual_carton_weight_var", None)

@@ -27,207 +27,322 @@ class TabPacking2D(ttk.Frame):
         self.build_ui()
 
     def build_ui(self):
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+
         main_frame = ttk.Frame(self)
-        main_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        main_frame.grid(row=0, column=0, sticky="nsew")
+        main_frame.columnconfigure(0, weight=1)
+        main_frame.rowconfigure(2, weight=1)
 
         gui_frame = ttk.Frame(main_frame)
-        gui_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
+        gui_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=(5, 2))
+        gui_frame.columnconfigure(0, weight=1)
 
         sections_frame = ttk.Frame(gui_frame)
-        sections_frame.pack(side=tk.TOP, fill=tk.X)
+        sections_frame.grid(row=0, column=0, sticky="ew")
+        for col in range(3):
+            sections_frame.columnconfigure(col, weight=1)
 
         f_carton = ttk.LabelFrame(sections_frame, text="Karton")
-        f_carton.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=2)
+        f_carton.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
+        for col in (1, 3, 5):
+            f_carton.columnconfigure(col, weight=1)
 
-        f_carton_row1 = ttk.Frame(f_carton)
-        f_carton_row1.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
-        ttk.Label(f_carton_row1, text="Wybierz karton:").pack(side=tk.LEFT, padx=5)
+        ttk.Label(f_carton, text="Wybierz karton:").grid(
+            row=0, column=0, sticky="w", padx=4, pady=(2, 1)
+        )
         self.carton_choice = tk.StringVar(value="Manual")
-        self.cb_carton = ttk.Combobox(f_carton_row1, textvariable=self.carton_choice, state="readonly", width=30)
-        self.cb_carton.pack(side=tk.LEFT, padx=5)
+        self.cb_carton = ttk.Combobox(
+            f_carton,
+            textvariable=self.carton_choice,
+            state="readonly",
+            width=28,
+        )
+        self.cb_carton.grid(row=0, column=1, columnspan=5, sticky="ew", padx=4, pady=(2, 1))
         self.cb_carton.bind("<<ComboboxSelected>>", self.on_carton_selected)
 
-        f_carton_row2 = ttk.Frame(f_carton)
-        f_carton_row2.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
-        ttk.Label(f_carton_row2, text="Szerokość [mm]:").pack(side=tk.LEFT, padx=5)
+        ttk.Label(f_carton, text="W/L/H [mm]:").grid(
+            row=1, column=0, sticky="w", padx=4, pady=(0, 2)
+        )
         self.carton_w = tk.StringVar(value="300")
-        entry_carton_w = ttk.Entry(f_carton_row2, textvariable=self.carton_w, width=8, validate="key", validatecommand=(self.register(self.validate_number), "%P"))
-        entry_carton_w.pack(side=tk.LEFT, padx=5)
+        entry_carton_w = ttk.Entry(
+            f_carton,
+            textvariable=self.carton_w,
+            width=8,
+            validate="key",
+            validatecommand=(self.register(self.validate_number), "%P"),
+        )
+        entry_carton_w.grid(row=1, column=1, sticky="ew", padx=(4, 2), pady=(0, 2))
         entry_carton_w.bind("<Return>", self.on_enter_pressed)
 
-        f_carton_row3 = ttk.Frame(f_carton)
-        f_carton_row3.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
-        ttk.Label(f_carton_row3, text="Długość [mm]:").pack(side=tk.LEFT, padx=5)
+        ttk.Label(f_carton, text="×").grid(row=1, column=2, padx=2, pady=(0, 2))
+
         self.carton_l = tk.StringVar(value="200")
-        entry_carton_l = ttk.Entry(f_carton_row3, textvariable=self.carton_l, width=8, validate="key", validatecommand=(self.register(self.validate_number), "%P"))
-        entry_carton_l.pack(side=tk.LEFT, padx=5)
+        entry_carton_l = ttk.Entry(
+            f_carton,
+            textvariable=self.carton_l,
+            width=8,
+            validate="key",
+            validatecommand=(self.register(self.validate_number), "%P"),
+        )
+        entry_carton_l.grid(row=1, column=3, sticky="ew", padx=(2, 2), pady=(0, 2))
         entry_carton_l.bind("<Return>", self.on_enter_pressed)
 
-        f_carton_row4 = ttk.Frame(f_carton)
-        f_carton_row4.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
-        ttk.Label(f_carton_row4, text="Wysokość [mm]:").pack(side=tk.LEFT, padx=5)
+        ttk.Label(f_carton, text="×").grid(row=1, column=4, padx=2, pady=(0, 2))
+
         self.carton_h = tk.StringVar(value="0")
-        entry_carton_h = ttk.Entry(f_carton_row4, textvariable=self.carton_h, width=8, validate="key", validatecommand=(self.register(self.validate_number), "%P"))
-        entry_carton_h.pack(side=tk.LEFT, padx=5)
+        entry_carton_h = ttk.Entry(
+            f_carton,
+            textvariable=self.carton_h,
+            width=8,
+            validate="key",
+            validatecommand=(self.register(self.validate_number), "%P"),
+        )
+        entry_carton_h.grid(row=1, column=5, sticky="ew", padx=(2, 4), pady=(0, 2))
         entry_carton_h.bind("<Return>", self.on_enter_pressed)
 
         f_prod = ttk.LabelFrame(sections_frame, text="Produkt")
-        f_prod.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=2)
+        f_prod.grid(row=0, column=1, sticky="nsew", padx=4)
+        f_prod.columnconfigure(0, weight=1)
 
-        f_type = ttk.LabelFrame(f_prod, text="Typ produktu")
-        f_type.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
+        f_type = ttk.Frame(f_prod)
+        f_type.grid(row=0, column=0, sticky="w", padx=4, pady=(2, 1))
 
         self.prod_type = tk.StringVar(value="rectangle")
         self.prod_type.trace_add("write", lambda *args: self.update_product_fields())
-        self.rb_rect = ttk.Radiobutton(f_type, text="Kartoniki", variable=self.prod_type, value="rectangle", command=self.update_product_fields)
-        self.rb_rect.pack(side=tk.LEFT, padx=5)
-        self.rb_circle = ttk.Radiobutton(f_type, text="Pojemniki/Butelki", variable=self.prod_type, value="circle", command=self.update_product_fields)
-        self.rb_circle.pack(side=tk.LEFT, padx=5)
+        self.rb_rect = ttk.Radiobutton(
+            f_type,
+            text="Kartoniki",
+            variable=self.prod_type,
+            value="rectangle",
+            command=self.update_product_fields,
+        )
+        self.rb_rect.pack(side=tk.LEFT, padx=(0, 6))
+        self.rb_circle = ttk.Radiobutton(
+            f_type,
+            text="Pojemniki/Butelki",
+            variable=self.prod_type,
+            value="circle",
+            command=self.update_product_fields,
+        )
+        self.rb_circle.pack(side=tk.LEFT)
 
         f_product_fields = ttk.Frame(f_prod)
-        f_product_fields.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
+        f_product_fields.grid(row=1, column=0, sticky="nsew", padx=4, pady=(0, 2))
+        f_product_fields.columnconfigure(0, weight=1)
 
         self.f_rect_container = ttk.LabelFrame(f_product_fields, text="Kartoniki")
-        self.f_rect_container.pack(side=tk.LEFT, fill=tk.X, padx=5)
+        self.f_rect_container.grid(row=0, column=0, sticky="nsew")
+        for col in (1, 3):
+            self.f_rect_container.columnconfigure(col, weight=1)
 
-        f_rect_row1 = ttk.Frame(self.f_rect_container)
-        f_rect_row1.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
-        ttk.Label(f_rect_row1, text="Długość kartonika [mm]:").pack(side=tk.LEFT, padx=5)
+        ttk.Label(self.f_rect_container, text="Dł. [mm]:").grid(
+            row=0, column=0, sticky="w", padx=4, pady=(2, 1)
+        )
         self.prod_w = tk.StringVar(value="50")
-        entry_prod_w = ttk.Entry(f_rect_row1, textvariable=self.prod_w, width=8, validate="key", validatecommand=(self.register(self.validate_number), "%P"))
-        entry_prod_w.pack(side=tk.LEFT, padx=5)
+        entry_prod_w = ttk.Entry(
+            self.f_rect_container,
+            textvariable=self.prod_w,
+            width=8,
+            validate="key",
+            validatecommand=(self.register(self.validate_number), "%P"),
+        )
+        entry_prod_w.grid(row=0, column=1, sticky="ew", padx=(2, 8), pady=(2, 1))
         entry_prod_w.bind("<Return>", self.on_enter_pressed)
 
-        f_rect_row2 = ttk.Frame(self.f_rect_container)
-        f_rect_row2.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
-        ttk.Label(f_rect_row2, text="Szerokość kartonika [mm]:").pack(side=tk.LEFT, padx=5)
+        ttk.Label(self.f_rect_container, text="Szer. [mm]:").grid(
+            row=0, column=2, sticky="w", padx=4, pady=(2, 1)
+        )
         self.prod_l = tk.StringVar(value="30")
-        entry_prod_l = ttk.Entry(f_rect_row2, textvariable=self.prod_l, width=8, validate="key", validatecommand=(self.register(self.validate_number), "%P"))
-        entry_prod_l.pack(side=tk.LEFT, padx=5)
+        entry_prod_l = ttk.Entry(
+            self.f_rect_container,
+            textvariable=self.prod_l,
+            width=8,
+            validate="key",
+            validatecommand=(self.register(self.validate_number), "%P"),
+        )
+        entry_prod_l.grid(row=0, column=3, sticky="ew", padx=(2, 4), pady=(2, 1))
         entry_prod_l.bind("<Return>", self.on_enter_pressed)
 
-        f_rect_row3 = ttk.Frame(self.f_rect_container)
-        f_rect_row3.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
-        ttk.Label(f_rect_row3, text="Wysokość kartonika [mm]:").pack(side=tk.LEFT, padx=5)
+        ttk.Label(self.f_rect_container, text="Wys. [mm]:").grid(
+            row=1, column=0, sticky="w", padx=4, pady=(0, 2)
+        )
         self.prod_h_rect = tk.StringVar(value="0")
-        entry_prod_h_rect = ttk.Entry(f_rect_row3, textvariable=self.prod_h_rect, width=8, validate="key", validatecommand=(self.register(self.validate_number), "%P"))
-        entry_prod_h_rect.pack(side=tk.LEFT, padx=5)
+        entry_prod_h_rect = ttk.Entry(
+            self.f_rect_container,
+            textvariable=self.prod_h_rect,
+            width=8,
+            validate="key",
+            validatecommand=(self.register(self.validate_number), "%P"),
+        )
+        entry_prod_h_rect.grid(row=1, column=1, sticky="ew", padx=(2, 8), pady=(0, 2))
         entry_prod_h_rect.bind("<Return>", self.on_enter_pressed)
 
-        self.f_circle_container = ttk.LabelFrame(f_product_fields, text="Pojemniki/Butelki")
-        self.f_circle_container.pack(side=tk.LEFT, fill=tk.X, padx=5)
+        self.f_circle_container = ttk.LabelFrame(
+            f_product_fields, text="Pojemniki/Butelki"
+        )
+        self.f_circle_container.grid(row=0, column=0, sticky="nsew")
+        self.f_circle_container.columnconfigure(1, weight=1)
+        self.f_circle_container.columnconfigure(3, weight=1)
+        self.f_circle_container.grid_remove()
 
-        f_circle_row1 = ttk.Frame(self.f_circle_container)
-        f_circle_row1.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
-        ttk.Label(f_circle_row1, text="Średnica pojemnika [mm]:").pack(side=tk.LEFT, padx=5)
+        ttk.Label(self.f_circle_container, text="Średnica [mm]:").grid(
+            row=0, column=0, sticky="w", padx=4, pady=(2, 1)
+        )
         self.prod_diam = tk.StringVar(value="25")
-        entry_prod_diam = ttk.Entry(f_circle_row1, textvariable=self.prod_diam, width=8, validate="key", validatecommand=(self.register(self.validate_number), "%P"))
-        entry_prod_diam.pack(side=tk.LEFT, padx=5)
+        entry_prod_diam = ttk.Entry(
+            self.f_circle_container,
+            textvariable=self.prod_diam,
+            width=8,
+            validate="key",
+            validatecommand=(self.register(self.validate_number), "%P"),
+        )
+        entry_prod_diam.grid(row=0, column=1, sticky="ew", padx=(2, 8), pady=(2, 1))
         entry_prod_diam.bind("<Return>", self.on_enter_pressed)
 
-        f_circle_row3 = ttk.Frame(self.f_circle_container)
-        f_circle_row3.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
-        ttk.Label(f_circle_row3, text="Obwód [mm]:").pack(side=tk.LEFT, padx=5)
+        ttk.Label(self.f_circle_container, text="Obwód [mm]:").grid(
+            row=0, column=2, sticky="w", padx=4, pady=(2, 1)
+        )
         self.circle_circ = tk.StringVar(value="0")
         entry_circle_circ = ttk.Entry(
-            f_circle_row3,
+            self.f_circle_container,
             textvariable=self.circle_circ,
             width=8,
             state="readonly",
         )
-        entry_circle_circ.pack(side=tk.LEFT, padx=5)
+        entry_circle_circ.grid(row=0, column=3, sticky="ew", padx=(2, 4), pady=(2, 1))
 
-        f_circle_row2 = ttk.Frame(self.f_circle_container)
-        f_circle_row2.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
-        ttk.Label(f_circle_row2, text="Wysokość pojemnika [mm]:").pack(side=tk.LEFT, padx=5)
+        ttk.Label(self.f_circle_container, text="Wys. [mm]:").grid(
+            row=1, column=0, sticky="w", padx=4, pady=(0, 2)
+        )
         self.prod_h_circle = tk.StringVar(value="0")
-        entry_prod_h_circle = ttk.Entry(f_circle_row2, textvariable=self.prod_h_circle, width=8, validate="key", validatecommand=(self.register(self.validate_number), "%P"))
-        entry_prod_h_circle.pack(side=tk.LEFT, padx=5)
+        entry_prod_h_circle = ttk.Entry(
+            self.f_circle_container,
+            textvariable=self.prod_h_circle,
+            width=8,
+            validate="key",
+            validatecommand=(self.register(self.validate_number), "%P"),
+        )
+        entry_prod_h_circle.grid(row=1, column=1, sticky="ew", padx=(2, 8), pady=(0, 2))
         entry_prod_h_circle.bind("<Return>", self.on_enter_pressed)
 
         f_settings = ttk.LabelFrame(sections_frame, text="Ustawienia dodatkowe")
-        f_settings.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=2)
+        f_settings.grid(row=0, column=2, sticky="nsew", padx=(4, 0))
+        for col in range(6):
+            f_settings.columnconfigure(col, weight=1)
 
-        f_settings_row1 = ttk.Frame(f_settings)
-        f_settings_row1.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
-        ttk.Label(f_settings_row1, text="Minimalny luz (prawo/góra) [mm]:").pack(side=tk.LEFT, padx=5)
+        ttk.Label(f_settings, text="Minimalny luz [mm]:").grid(
+            row=0, column=0, sticky="w", padx=4, pady=(2, 1)
+        )
         self.margin = tk.StringVar(value="1")
-        entry_margin = ttk.Entry(f_settings_row1, textvariable=self.margin, width=8, validate="key", validatecommand=(self.register(self.validate_number), "%P"))
-        entry_margin.pack(side=tk.LEFT, padx=5)
+        entry_margin = ttk.Entry(
+            f_settings,
+            textvariable=self.margin,
+            width=8,
+            validate="key",
+            validatecommand=(self.register(self.validate_number), "%P"),
+        )
+        entry_margin.grid(row=0, column=1, sticky="w", padx=(2, 8), pady=(2, 1))
         entry_margin.bind("<Return>", self.on_enter_pressed)
 
-        f_settings_row2 = ttk.Frame(f_settings)
-        f_settings_row2.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
         self.use_cushions = tk.BooleanVar(value=False)
-        ttk.Checkbutton(f_settings_row2, text="Dodaj poduszki z powietrzem", variable=self.use_cushions).pack(side=tk.LEFT, padx=5)
-        ttk.Label(f_settings_row2, text="Wymiary poduszek: 37 x 175 x 110 mm").pack(side=tk.LEFT, padx=5)
+        ttk.Checkbutton(
+            f_settings,
+            text="Poduszki powietrzne (37×175×110 mm)",
+            variable=self.use_cushions,
+            command=self.show_packing,
+        ).grid(row=0, column=2, columnspan=4, sticky="w", padx=4, pady=(2, 1))
         self.use_cushions.trace_add("write", lambda *args: self.show_packing())
 
-        f_settings_row6 = ttk.Frame(f_settings)
-        f_settings_row6.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
-        self.maximize_mixed = tk.BooleanVar(value=False)
-        ttk.Checkbutton(f_settings_row6, text="Maksymalizuj układ mieszany", variable=self.maximize_mixed).pack(side=tk.LEFT, padx=5)
-        self.maximize_mixed.trace_add("write", lambda *args: self.show_packing())
-
-        f_settings_row3 = ttk.Frame(f_settings)
-        f_settings_row3.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
-        ttk.Label(f_settings_row3, text="Minimalny odstęp między poduszkami [mm]:").pack(side=tk.LEFT, padx=5)
+        ttk.Label(f_settings, text="Odstęp poduszek [mm]:").grid(
+            row=1, column=0, sticky="w", padx=4, pady=(0, 1)
+        )
         self.cushion_gap = tk.StringVar(value="5")
-        entry_cushion_gap = ttk.Entry(f_settings_row3, textvariable=self.cushion_gap, width=8, validate="key", validatecommand=(self.register(self.validate_number), "%P"))
-        entry_cushion_gap.pack(side=tk.LEFT, padx=5)
+        entry_cushion_gap = ttk.Entry(
+            f_settings,
+            textvariable=self.cushion_gap,
+            width=8,
+            validate="key",
+            validatecommand=(self.register(self.validate_number), "%P"),
+        )
+        entry_cushion_gap.grid(row=1, column=1, sticky="w", padx=(2, 8), pady=(0, 1))
         entry_cushion_gap.bind("<Return>", self.on_enter_pressed)
 
-        f_settings_row4 = ttk.Frame(f_settings)
-        f_settings_row4.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
-        ttk.Label(f_settings_row4, text="Przesunięcie X [mm]:").pack(side=tk.LEFT, padx=5)
+        ttk.Label(f_settings, text="Przesunięcie X [mm]:").grid(
+            row=1, column=2, sticky="w", padx=4, pady=(0, 1)
+        )
         self.offset_x = tk.StringVar(value="0")
-        entry_offset_x = ttk.Entry(f_settings_row4, textvariable=self.offset_x, width=8, validate="key", validatecommand=(self.register(self.validate_number), "%P"))
-        entry_offset_x.pack(side=tk.LEFT, padx=5)
+        entry_offset_x = ttk.Entry(
+            f_settings,
+            textvariable=self.offset_x,
+            width=8,
+            validate="key",
+            validatecommand=(self.register(self.validate_number), "%P"),
+        )
+        entry_offset_x.grid(row=1, column=3, sticky="w", padx=(2, 8), pady=(0, 1))
         entry_offset_x.bind("<Return>", self.on_enter_pressed)
 
-        f_settings_row5 = ttk.Frame(f_settings)
-        f_settings_row5.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
-        ttk.Label(f_settings_row5, text="Przesunięcie Y [mm]:").pack(side=tk.LEFT, padx=5)
+        ttk.Label(f_settings, text="Przesunięcie Y [mm]:").grid(
+            row=1, column=4, sticky="w", padx=4, pady=(0, 1)
+        )
         self.offset_y = tk.StringVar(value="0")
-        entry_offset_y = ttk.Entry(f_settings_row5, textvariable=self.offset_y, width=8, validate="key", validatecommand=(self.register(self.validate_number), "%P"))
-        entry_offset_y.pack(side=tk.LEFT, padx=5)
+        entry_offset_y = ttk.Entry(
+            f_settings,
+            textvariable=self.offset_y,
+            width=8,
+            validate="key",
+            validatecommand=(self.register(self.validate_number), "%P"),
+        )
+        entry_offset_y.grid(row=1, column=5, sticky="w", padx=(2, 4), pady=(0, 1))
         entry_offset_y.bind("<Return>", self.on_enter_pressed)
 
+        self.maximize_mixed = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            f_settings,
+            text="Maksymalizuj układ mieszany",
+            variable=self.maximize_mixed,
+            command=self.show_packing,
+        ).grid(row=2, column=0, columnspan=6, sticky="w", padx=4, pady=(0, 2))
+        self.maximize_mixed.trace_add("write", lambda *args: self.show_packing())
+
         btn_frame = ttk.Frame(gui_frame)
-        btn_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
+        btn_frame.grid(row=1, column=0, sticky="w", pady=(3, 0))
 
         self.btn_show = ttk.Button(btn_frame, text="Pokaż układy", command=self.show_packing)
-        self.btn_show.pack(side=tk.LEFT, padx=5)
+        self.btn_show.grid(row=0, column=0, padx=(0, 5))
 
-        self.btn_compare = ttk.Button(btn_frame, text="Porównaj kartony", command=self.compare_cartons)
-        self.btn_compare.pack(side=tk.LEFT, padx=5)
+        self.btn_compare = ttk.Button(
+            btn_frame, text="Porównaj kartony", command=self.compare_cartons
+        )
+        self.btn_compare.grid(row=0, column=1, padx=5)
 
         self.btn_to_pallet = ttk.Button(
             btn_frame,
             text="Przenieś wybrany układ do paletyzacji",
             command=self.move_to_pallet,
         )
-        self.btn_to_pallet.pack(side=tk.LEFT, padx=5)
+        self.btn_to_pallet.grid(row=0, column=2, padx=5)
 
-        ttk.Label(btn_frame, text="Układ:").pack(side=tk.LEFT, padx=5)
+        ttk.Label(btn_frame, text="Układ:").grid(row=0, column=3, padx=(10, 5))
         self.layout_choice = tk.StringVar(value="Poziomo")
-        self.layout_menu = ttk.OptionMenu(
+        self.layout_menu = ttk.Combobox(
             btn_frame,
-            self.layout_choice,
-            "Poziomo",
-            "Poziomo",
-            "Pionowo",
-            "Mieszane",
+            textvariable=self.layout_choice,
+            state="readonly",
+            width=14,
         )
-        self.layout_menu.pack(side=tk.LEFT, padx=5)
+        self.layout_menu.grid(row=0, column=4, padx=(0, 5))
+        self.layout_menu.bind("<<ComboboxSelected>>", lambda *_: self.show_packing())
         self.update_layout_options()
+
+        self.area_label = ttk.Label(main_frame, text="")
+        self.area_label.grid(row=1, column=0, sticky="w", padx=5, pady=(0, 2))
 
         self.fig = plt.Figure(figsize=(12, 6))
         self.axes = self.fig.subplots(1, 3)
         self.canvas = FigureCanvasTkAgg(self.fig, master=main_frame)
-        self.canvas.get_tk_widget().pack(side=tk.BOTTOM, fill=tk.BOTH, expand=True)
-        self.area_label = ttk.Label(main_frame, text="")
-        self.area_label.pack(side=tk.BOTTOM, pady=5)
+        self.canvas.get_tk_widget().grid(row=2, column=0, sticky="nsew", padx=5, pady=(0, 5))
 
         self.carton_w.trace_add("write", self.reset_carton_choice)
         self.carton_l.trace_add("write", self.reset_carton_choice)
@@ -467,20 +582,20 @@ class TabPacking2D(ttk.Frame):
             options = ["Poziomo", "Pionowo", "Mieszane"]
         else:
             options = ["Siatka", "Hex", "Hex(rev)"]
-        menu = self.layout_menu["menu"]
-        menu.delete(0, "end")
-        for opt in options:
-            menu.add_command(label=opt, command=lambda val=opt: self.layout_choice.set(val))
-        if self.layout_choice.get() not in options:
-            self.layout_choice.set(options[0])
+        current = self.layout_choice.get()
+        if current not in options:
+            current = options[0]
+            self.layout_choice.set(current)
+        self.layout_menu["values"] = options
+        self.layout_menu.set(current)
 
     def update_product_fields(self):
         if self.prod_type.get() == "rectangle":
-            self.f_rect_container.pack(side=tk.LEFT, fill=tk.X, padx=5)
-            self.f_circle_container.pack_forget()
+            self.f_circle_container.grid_remove()
+            self.f_rect_container.grid()
         else:
-            self.f_rect_container.pack_forget()
-            self.f_circle_container.pack(side=tk.LEFT, fill=tk.X, padx=5)
+            self.f_rect_container.grid_remove()
+            self.f_circle_container.grid()
         self.update_layout_options()
         self.update_carton_list()
         self.show_packing()
