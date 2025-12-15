@@ -166,29 +166,26 @@ class TabPallet(ttk.Frame):
             return False
 
     def build_ui(self):
-        main_paned = ttk.Panedwindow(self, orient=tk.HORIZONTAL)
+        main_paned = ttk.Panedwindow(self, orient=tk.VERTICAL)
         main_paned.grid(row=0, column=0, sticky="nsew", padx=10, pady=8)
 
-        settings_panel = ttk.Frame(main_paned)
-        settings_panel.columnconfigure(0, weight=1)
-        settings_panel.rowconfigure(0, weight=1)
-        main_paned.add(settings_panel, weight=3)
+        inputs_panel = ttk.Frame(main_paned)
+        inputs_panel.columnconfigure(0, weight=1)
+        inputs_panel.rowconfigure(0, weight=1)
+        inputs_panel.rowconfigure(1, weight=1)
+        main_paned.add(inputs_panel, weight=2)
 
-        settings_paned = ttk.Panedwindow(settings_panel, orient=tk.VERTICAL)
-        settings_paned.grid(row=0, column=0, sticky="nsew")
+        inputs_grid = ttk.Frame(inputs_panel)
+        inputs_grid.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+        inputs_grid.columnconfigure(0, weight=1)
+        inputs_grid.columnconfigure(1, weight=1)
 
-        top_container = ttk.Frame(settings_paned)
-        top_container.columnconfigure(0, weight=1)
-        top_container.columnconfigure(1, weight=1)
-        settings_paned.add(top_container, weight=3)
-
-        pallet_frame = ttk.LabelFrame(top_container, text="Parametry palety")
-        pallet_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
+        pallet_frame = ttk.LabelFrame(inputs_grid, text="Parametry palety")
+        pallet_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 6), pady=(0, 6))
         pallet_frame.columnconfigure(1, weight=1)
-        pallet_frame.columnconfigure(3, weight=1)
 
         ttk.Label(pallet_frame, text="Paleta:").grid(
-            row=0, column=0, padx=5, pady=5, sticky="w"
+            row=0, column=0, padx=5, pady=4, sticky="w"
         )
         self.pallet_var = tk.StringVar(value=self.predefined_pallets[0]["name"])
         pallet_menu = ttk.OptionMenu(
@@ -198,7 +195,7 @@ class TabPallet(ttk.Frame):
             *[p["name"] for p in self.predefined_pallets],
             command=self.on_pallet_selected,
         )
-        pallet_menu.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+        pallet_menu.grid(row=0, column=1, padx=5, pady=4, sticky="ew")
 
         self.pallet_w_var = tk.StringVar(value=str(self.predefined_pallets[0]["w"]))
         self.pallet_l_var = tk.StringVar(value=str(self.predefined_pallets[0]["l"]))
@@ -206,22 +203,24 @@ class TabPallet(ttk.Frame):
         self.pallet_dims_var = tk.StringVar(value="")
 
         ttk.Label(pallet_frame, text="W/L/H [mm]:").grid(
-            row=0, column=2, padx=5, pady=5, sticky="e"
+            row=1, column=0, padx=5, pady=4, sticky="w"
         )
         ttk.Label(pallet_frame, textvariable=self.pallet_dims_var).grid(
-            row=0, column=3, padx=5, pady=5, sticky="w"
+            row=1, column=1, padx=5, pady=4, sticky="w"
         )
         self.pallet_w_var.trace_add("write", self._update_pallet_dimensions_label)
         self.pallet_l_var.trace_add("write", self._update_pallet_dimensions_label)
         self.pallet_h_var.trace_add("write", self._update_pallet_dimensions_label)
         self._update_pallet_dimensions_label()
 
-        carton_frame = ttk.LabelFrame(top_container, text="Parametry kartonu")
-        carton_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
-        for col in range(0, 8):
+        carton_frame = ttk.LabelFrame(inputs_grid, text="Parametry kartonu")
+        carton_frame.grid(row=0, column=1, sticky="nsew", padx=(6, 0), pady=(0, 6))
+        for col in range(0, 4):
             carton_frame.columnconfigure(col, weight=1)
 
-        ttk.Label(carton_frame, text="Karton:").grid(row=0, column=0, padx=5, pady=5)
+        ttk.Label(carton_frame, text="Karton:").grid(
+            row=0, column=0, padx=5, pady=4, sticky="w"
+        )
         self.carton_var = tk.StringVar(value=list(self.predefined_cartons.keys())[0])
         carton_menu = ttk.OptionMenu(
             carton_frame,
@@ -230,40 +229,47 @@ class TabPallet(ttk.Frame):
             *self.predefined_cartons.keys(),
             command=self.on_carton_selected,
         )
-        carton_menu.grid(row=0, column=1, padx=5, pady=5)
+        carton_menu.grid(row=0, column=1, padx=5, pady=4, sticky="ew", columnspan=3)
 
-        ttk.Label(carton_frame, text="W (mm):").grid(row=0, column=2, padx=5, pady=5)
         self.box_w_var = tk.StringVar(
             value=str(
                 self.predefined_cartons[list(self.predefined_cartons.keys())[0]][0]
             )
         )
-        entry_box_w = ttk.Entry(carton_frame, textvariable=self.box_w_var, width=10)
-        entry_box_w.grid(row=0, column=3, padx=5, pady=5)
-        entry_box_w.bind("<Return>", self.compute_pallet)
-
-        ttk.Label(carton_frame, text="L (mm):").grid(row=0, column=4, padx=5, pady=5)
         self.box_l_var = tk.StringVar(
             value=str(
                 self.predefined_cartons[list(self.predefined_cartons.keys())[0]][1]
             )
         )
-        entry_box_l = ttk.Entry(carton_frame, textvariable=self.box_l_var, width=10)
-        entry_box_l.grid(row=0, column=5, padx=5, pady=5)
-        entry_box_l.bind("<Return>", self.compute_pallet)
-
-        ttk.Label(carton_frame, text="H (mm):").grid(row=0, column=6, padx=5, pady=5)
         self.box_h_var = tk.StringVar(
             value=str(
                 self.predefined_cartons[list(self.predefined_cartons.keys())[0]][2]
             )
         )
+
+        ttk.Label(carton_frame, text="W (mm):").grid(
+            row=1, column=0, padx=5, pady=4, sticky="w"
+        )
+        entry_box_w = ttk.Entry(carton_frame, textvariable=self.box_w_var, width=10)
+        entry_box_w.grid(row=1, column=1, padx=5, pady=4, sticky="ew")
+        entry_box_w.bind("<Return>", self.compute_pallet)
+
+        ttk.Label(carton_frame, text="L (mm):").grid(
+            row=1, column=2, padx=5, pady=4, sticky="w"
+        )
+        entry_box_l = ttk.Entry(carton_frame, textvariable=self.box_l_var, width=10)
+        entry_box_l.grid(row=1, column=3, padx=5, pady=4, sticky="ew")
+        entry_box_l.bind("<Return>", self.compute_pallet)
+
+        ttk.Label(carton_frame, text="H (mm):").grid(
+            row=2, column=0, padx=5, pady=4, sticky="w"
+        )
         entry_box_h = ttk.Entry(carton_frame, textvariable=self.box_h_var, width=10)
-        entry_box_h.grid(row=0, column=7, padx=5, pady=5)
+        entry_box_h.grid(row=2, column=1, padx=5, pady=4, sticky="ew")
         entry_box_h.bind("<Return>", self.compute_pallet)
 
         ttk.Label(carton_frame, text="Grubość tektury (mm):").grid(
-            row=1, column=0, padx=5, pady=5
+            row=2, column=2, padx=5, pady=4, sticky="w"
         )
         self.cardboard_thickness_var = tk.StringVar(value="3")
         entry_cardboard = ttk.Entry(
@@ -273,15 +279,15 @@ class TabPallet(ttk.Frame):
             validate="key",
             validatecommand=(self.register(self.validate_number), "%P"),
         )
-        entry_cardboard.grid(row=1, column=1, padx=5, pady=5)
+        entry_cardboard.grid(row=2, column=3, padx=5, pady=4, sticky="ew")
         entry_cardboard.bind("<Return>", self.compute_pallet)
 
         ttk.Label(carton_frame, text="Wymiary zewnętrzne (mm):").grid(
-            row=1, column=2, padx=5, pady=5
+            row=3, column=0, padx=5, pady=4, sticky="w"
         )
         self.ext_dims_label = ttk.Label(carton_frame, text="")
         self.ext_dims_label.grid(
-            row=1, column=3, columnspan=5, padx=5, pady=5, sticky="w"
+            row=3, column=1, columnspan=3, padx=5, pady=4, sticky="w"
         )
         self.cardboard_thickness_var.trace_add("write", self.update_external_dimensions)
         self.box_w_var.trace_add("write", self.update_external_dimensions)
@@ -290,7 +296,7 @@ class TabPallet(ttk.Frame):
         self.update_external_dimensions()
 
         ttk.Label(carton_frame, text="Odstęp między kartonami (mm):").grid(
-            row=2, column=0, padx=5, pady=5
+            row=4, column=0, padx=5, pady=4, sticky="w"
         )
         self.spacing_var = tk.StringVar(value="0")
         spacing_frame = ttk.Frame(carton_frame)
@@ -304,15 +310,15 @@ class TabPallet(ttk.Frame):
         entry_spacing.pack(side=tk.LEFT)
         ttk.Button(
             spacing_frame, text="+", width=2, command=lambda: self.adjust_spacing(1)
-        ).pack(side=tk.LEFT)
+        ).pack(side=tk.LEFT, padx=(4, 0))
         ttk.Button(
             spacing_frame, text="-", width=2, command=lambda: self.adjust_spacing(-1)
-        ).pack(side=tk.LEFT)
-        spacing_frame.grid(row=2, column=1, padx=5, pady=5)
+        ).pack(side=tk.LEFT, padx=(4, 0))
+        spacing_frame.grid(row=4, column=1, padx=5, pady=4, sticky="w")
         entry_spacing.bind("<Return>", self.compute_pallet)
 
         ttk.Label(carton_frame, text="Masa kartonu (kg):").grid(
-            row=3, column=0, padx=5, pady=5
+            row=4, column=2, padx=5, pady=4, sticky="w"
         )
         weight_frame = ttk.Frame(carton_frame)
         ttk.Entry(
@@ -325,35 +331,33 @@ class TabPallet(ttk.Frame):
         ttk.Label(weight_frame, text="(pozostaw puste = baza)").pack(
             side=tk.LEFT, padx=5
         )
-        weight_frame.grid(row=3, column=1, columnspan=3, padx=5, pady=5, sticky="w")
+        weight_frame.grid(row=4, column=3, padx=5, pady=4, sticky="w")
 
-        layers_frame = ttk.LabelFrame(settings_paned, text="Ustawienia warstw")
-        settings_paned.add(layers_frame, weight=2)
-        for col in range(10):
+        layers_frame = ttk.LabelFrame(inputs_panel, text="Ustawienia warstw")
+        layers_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=(0, 6))
+        for col in range(6):
             layers_frame.columnconfigure(col, weight=1)
 
         ttk.Label(layers_frame, text="Liczba warstw:").grid(
-            row=0, column=0, padx=5, pady=5
+            row=0, column=0, padx=5, pady=4, sticky="w"
         )
         self.num_layers_var = tk.StringVar(value="1")
         self.num_layers_var.trace_add("write", self._on_num_layers_changed)
         entry_num_layers = ttk.Entry(
             layers_frame, textvariable=self.num_layers_var, width=5
         )
-        entry_num_layers.grid(row=0, column=1, padx=5, pady=5)
+        entry_num_layers.grid(row=0, column=1, padx=5, pady=4, sticky="w")
         entry_num_layers.bind("<Return>", self.compute_pallet)
 
-        ttk.Label(layers_frame, text="Maksymalna wysokość ułożenia (mm):").grid(
-            row=1, column=0, padx=5, pady=5
+        ttk.Label(layers_frame, text="Maksymalna wysokość (mm):").grid(
+            row=0, column=2, padx=5, pady=4, sticky="w"
         )
-        # Default maximum stack height is 1600 mm which roughly corresponds to
-        # a common limit for palletized loads. Set to 0 to disable the limit.
         self.max_stack_var = tk.StringVar(value="1600")
         self.max_stack_var.trace_add("write", self._on_max_stack_changed)
         entry_max_stack = ttk.Entry(
             layers_frame, textvariable=self.max_stack_var, width=8
         )
-        entry_max_stack.grid(row=1, column=1, padx=5, pady=5)
+        entry_max_stack.grid(row=0, column=3, padx=5, pady=4, sticky="w")
         entry_max_stack.bind("<Return>", self.compute_pallet)
         self.include_pallet_height_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(
@@ -361,25 +365,17 @@ class TabPallet(ttk.Frame):
             text="Uwzględnij wysokość nośnika",
             variable=self.include_pallet_height_var,
             command=self.compute_pallet,
-        ).grid(row=1, column=2, columnspan=2, padx=5, pady=5, sticky="w")
-
-        self.shift_even_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(
-            layers_frame,
-            text="Przesuwaj warstwy parzyste",
-            variable=self.shift_even_var,
-            command=self.compute_pallet,
-        ).grid(row=1, column=4, columnspan=2, padx=5, pady=5, sticky="w")
+        ).grid(row=0, column=4, columnspan=2, padx=5, pady=4, sticky="w")
 
         ttk.Label(layers_frame, text="Centrowanie:").grid(
-            row=0, column=2, padx=5, pady=5
+            row=1, column=0, padx=5, pady=4, sticky="w"
         )
         self.center_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(
             layers_frame, variable=self.center_var, command=self.compute_pallet
-        ).grid(row=0, column=3, padx=5, pady=5)
+        ).grid(row=1, column=1, padx=5, pady=4, sticky="w")
 
-        ttk.Label(layers_frame, text="Tryb:").grid(row=0, column=4, padx=5, pady=5)
+        ttk.Label(layers_frame, text="Tryb:").grid(row=1, column=2, padx=5, pady=4, sticky="w")
         self.center_mode_var = tk.StringVar(value="Cała warstwa")
         ttk.OptionMenu(
             layers_frame,
@@ -388,7 +384,15 @@ class TabPallet(ttk.Frame):
             "Cała warstwa",
             "Poszczególne obszary",
             command=self.compute_pallet,
-        ).grid(row=0, column=5, padx=5, pady=5)
+        ).grid(row=1, column=3, padx=5, pady=4, sticky="w")
+
+        self.shift_even_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            layers_frame,
+            text="Przesuwaj warstwy parzyste",
+            variable=self.shift_even_var,
+            command=self.compute_pallet,
+        ).grid(row=1, column=4, padx=5, pady=4, sticky="w")
 
         self.maximize_mixed = tk.BooleanVar(value=False)
         ttk.Checkbutton(
@@ -396,27 +400,27 @@ class TabPallet(ttk.Frame):
             text="Maksymalizuj mixed",
             variable=self.maximize_mixed,
             command=self.compute_pallet,
-        ).grid(row=0, column=6, padx=5, pady=5, sticky="w")
+        ).grid(row=1, column=5, padx=5, pady=4, sticky="w")
 
         ttk.Label(layers_frame, text="Liczba przekładek:").grid(
-            row=2, column=0, padx=5, pady=5, sticky="w"
+            row=2, column=0, padx=5, pady=4, sticky="w"
         )
         self.slip_count_var = tk.StringVar(value="0")
         entry_slip_count = ttk.Entry(
             layers_frame,
             textvariable=self.slip_count_var,
-            width=5,
+            width=6,
             validate="key",
             validatecommand=(self.register(self.validate_number), "%P"),
         )
-        entry_slip_count.grid(row=2, column=1, padx=5, pady=5, sticky="w")
+        entry_slip_count.grid(row=2, column=1, padx=5, pady=4, sticky="w")
         entry_slip_count.bind("<Return>", self.compute_pallet)
 
         ttk.Label(layers_frame, text="Produkty/karton zbiorczy:").grid(
-            row=2, column=2, padx=5, pady=5, sticky="e"
+            row=2, column=2, padx=5, pady=4, sticky="w"
         )
         products_frame = ttk.Frame(layers_frame)
-        products_frame.grid(row=2, column=3, padx=5, pady=5, sticky="w")
+        products_frame.grid(row=2, column=3, padx=5, pady=4, sticky="w")
         products_entry = ttk.Entry(
             products_frame,
             textvariable=self.products_per_carton_var,
@@ -431,10 +435,10 @@ class TabPallet(ttk.Frame):
             products_frame,
             text="Pobierz z 2D",
             command=self.use_2d_products_per_carton,
-        ).pack(side=tk.LEFT, padx=(5, 0))
+        ).pack(side=tk.LEFT, padx=(6, 0))
 
         ttk.Label(layers_frame, text="Row by row – linie pionowe:").grid(
-            row=2, column=4, padx=5, pady=5, sticky="e"
+            row=2, column=4, padx=5, pady=4, sticky="e"
         )
         vertical_spin = ttk.Spinbox(
             layers_frame,
@@ -444,12 +448,12 @@ class TabPallet(ttk.Frame):
             textvariable=self.row_by_row_vertical_var,
             command=lambda: self._on_row_by_row_change("vertical"),
         )
-        vertical_spin.grid(row=2, column=5, padx=5, pady=5, sticky="w")
+        vertical_spin.grid(row=2, column=5, padx=5, pady=4, sticky="w")
         vertical_spin.bind("<Return>", lambda *_: self._on_row_by_row_change("vertical"))
         vertical_spin.bind("<FocusOut>", lambda *_: self._on_row_by_row_change("vertical"))
 
         ttk.Label(layers_frame, text="Row by row – linie poziome:").grid(
-            row=2, column=6, padx=5, pady=5, sticky="e"
+            row=3, column=0, padx=5, pady=4, sticky="e"
         )
         horizontal_spin = ttk.Spinbox(
             layers_frame,
@@ -459,7 +463,7 @@ class TabPallet(ttk.Frame):
             textvariable=self.row_by_row_horizontal_var,
             command=lambda: self._on_row_by_row_change("horizontal"),
         )
-        horizontal_spin.grid(row=2, column=7, padx=5, pady=5, sticky="w")
+        horizontal_spin.grid(row=3, column=1, padx=5, pady=4, sticky="w")
         horizontal_spin.bind(
             "<Return>", lambda *_: self._on_row_by_row_change("horizontal")
         )
@@ -468,108 +472,120 @@ class TabPallet(ttk.Frame):
         )
 
         self.transform_frame = ttk.Frame(layers_frame)
-        # Move transform options to the right to save vertical space
         self.transform_frame.grid(
-            row=0, column=8, rowspan=3, padx=5, pady=5, sticky="n"
+            row=0, column=6, rowspan=4, padx=8, pady=4, sticky="ne"
         )
 
-        actions_frame = ttk.Frame(settings_paned)
+        actions_frame = ttk.LabelFrame(inputs_panel, text="Akcje i status")
+        actions_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=(0, 5))
         actions_frame.columnconfigure(0, weight=1)
-        settings_paned.add(actions_frame, weight=1)
 
         control_frame = ttk.Frame(actions_frame)
-        control_frame.grid(row=0, column=0, sticky="w", padx=5, pady=(5, 0))
+        control_frame.grid(row=0, column=0, sticky="w", padx=5, pady=(4, 0))
 
         self.compute_btn = ttk.Button(
             control_frame, text="Oblicz", command=self.compute_pallet
         )
-        self.compute_btn.pack(side=tk.LEFT, padx=5)
+        self.compute_btn.pack(side=tk.LEFT, padx=(0, 6))
         ttk.Checkbutton(
             control_frame,
             text="Tryb edycji",
             variable=self.modify_mode_var,
             command=self.toggle_edit_mode,
-        ).pack(side=tk.LEFT, padx=5)
+        ).pack(side=tk.LEFT, padx=6)
         ttk.Button(
             control_frame,
             text="Wstaw karton",
             command=self.insert_carton_button,
-        ).pack(side=tk.LEFT, padx=5)
+        ).pack(side=tk.LEFT, padx=6)
         ttk.Button(
             control_frame,
             text="Usuń karton",
             command=self.delete_selected_carton,
-        ).pack(side=tk.LEFT, padx=5)
+        ).pack(side=tk.LEFT, padx=6)
         ttk.Button(
             control_frame,
             text="Zapisz wzór",
             command=self.save_pattern_dialog,
-        ).pack(side=tk.LEFT, padx=5)
+        ).pack(side=tk.LEFT, padx=6)
         ttk.Button(
             control_frame,
             text="Wczytaj wzór",
             command=self.load_pattern_dialog,
-        ).pack(side=tk.LEFT, padx=5)
+        ).pack(side=tk.LEFT, padx=6)
         self.status_var = tk.StringVar(value="")
         status_frame = ttk.Frame(actions_frame)
         status_frame.columnconfigure(0, weight=1)
-        status_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=(2, 5))
+        status_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=(2, 6))
         self.status_label = ttk.Label(status_frame, textvariable=self.status_var, anchor="w")
         self.status_label.grid(row=0, column=0, sticky="w")
 
         results_panel = ttk.Frame(main_paned)
         results_panel.columnconfigure(0, weight=1)
-        results_panel.rowconfigure(0, weight=1)
+        results_panel.rowconfigure(1, weight=1)
         main_paned.add(results_panel, weight=5)
 
-        content_paned = ttk.Panedwindow(results_panel, orient=tk.VERTICAL)
-        content_paned.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
-
-        upper_panel = ttk.Frame(content_paned)
+        upper_panel = ttk.Frame(results_panel)
+        upper_panel.grid(row=0, column=0, sticky="nsew", padx=5, pady=(5, 8))
         upper_panel.columnconfigure(0, weight=1)
+        upper_panel.columnconfigure(1, weight=2)
         upper_panel.rowconfigure(0, weight=1)
-        content_paned.add(upper_panel, weight=1)
 
-        self.summary_frame = ttk.LabelFrame(upper_panel, text="Obliczenia")
-        self.summary_frame.grid(row=0, column=0, sticky="nsew", padx=5)
-        self.summary_frame.columnconfigure(0, weight=1)
-        self.totals_label = ttk.Label(
-            self.summary_frame, text="", justify="left"
+        self.summary_frame = ttk.LabelFrame(upper_panel, text="Podsumowanie")
+        self.summary_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+        for i in range(4):
+            self.summary_frame.rowconfigure(i, weight=0)
+        self.summary_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(self.summary_frame, text="Kartonów na palecie:").grid(
+            row=0, column=0, padx=6, pady=(6, 2), sticky="w"
         )
-        self.totals_label.grid(row=0, column=0, sticky="w", padx=5, pady=(2, 0))
+        self.totals_label = ttk.Label(
+            self.summary_frame, text="", justify="left", font=("TkDefaultFont", 10, "bold")
+        )
+        self.totals_label.grid(row=0, column=1, padx=6, pady=(6, 2), sticky="w")
+
+        ttk.Label(self.summary_frame, text="Materiały/taśma:").grid(
+            row=1, column=0, padx=6, pady=2, sticky="w"
+        )
         self.materials_label = ttk.Label(
             self.summary_frame, text="", justify="left"
         )
-        self.materials_label.grid(row=1, column=0, sticky="w", padx=5)
+        self.materials_label.grid(row=1, column=1, padx=6, pady=2, sticky="w")
+
+        ttk.Label(self.summary_frame, text="Masy i ograniczenia:").grid(
+            row=2, column=0, padx=6, pady=2, sticky="w"
+        )
         self.mass_label = ttk.Label(
             self.summary_frame, text="", justify="left"
         )
-        self.mass_label.grid(row=2, column=0, sticky="w", padx=5)
+        self.mass_label.grid(row=2, column=1, padx=6, pady=2, sticky="w")
         self.limit_label = ttk.Label(
             self.summary_frame, text="", justify="left", foreground="red"
         )
-        self.limit_label.grid(row=3, column=0, sticky="w", padx=5)
+        self.limit_label.grid(row=3, column=1, padx=6, pady=2, sticky="w")
+
+        ttk.Label(self.summary_frame, text="Powierzchnie:").grid(
+            row=4, column=0, padx=6, pady=(2, 6), sticky="w"
+        )
         self.area_label = ttk.Label(
             self.summary_frame, text="", justify="left"
         )
-        self.area_label.grid(row=4, column=0, sticky="w", padx=5, pady=(0, 4))
-        self.summary_frame.rowconfigure(5, weight=1)
+        self.area_label.grid(row=4, column=1, padx=6, pady=(2, 6), sticky="w")
 
         self.pattern_stats_frame = ttk.LabelFrame(
-            self.summary_frame, text="Ocena stabilności"
+            upper_panel, text="Ocena stabilności"
         )
-        self.pattern_stats_frame.grid(
-            row=5, column=0, sticky="nsew", padx=5, pady=(0, 5)
-        )
+        self.pattern_stats_frame.grid(row=0, column=1, sticky="nsew")
         self.pattern_stats_frame.columnconfigure(0, weight=1)
         self.pattern_stats_frame.rowconfigure(0, weight=1)
 
         columns = (
             "pattern",
             "cartons",
+            "stability",
             "layer",
             "cube",
-            "stability",
             "support",
             "min_support",
             "contact",
@@ -581,7 +597,7 @@ class TabPallet(ttk.Frame):
             self.pattern_stats_frame,
             columns=columns,
             show="headings",
-            height=6,
+            height=10,
         )
         headings = {
             "pattern": "Wzór",
@@ -597,13 +613,14 @@ class TabPallet(ttk.Frame):
             "risk": "Ryzyko",
         }
         for col in columns:
+            anchor = "w" if col == "pattern" else "e"
             self.pattern_tree.heading(col, text=headings[col])
-            self.pattern_tree.column(col, anchor="center", stretch=True)
+            self.pattern_tree.column(col, anchor=anchor, stretch=True)
 
         scroll = ttk.Scrollbar(
             self.pattern_stats_frame, orient="vertical", command=self.pattern_tree.yview
         )
-        self.pattern_tree.configure(yscrollcommand=scroll.set)
+        self.pattern_tree.configure(yscrollcommand=scroll.set, selectmode="browse")
         self.pattern_tree.grid(row=0, column=0, sticky="nsew")
         scroll.grid(row=0, column=1, sticky="ns")
 
@@ -612,41 +629,92 @@ class TabPallet(ttk.Frame):
             self.pattern_stats_frame,
             textvariable=self.pattern_detail_var,
             justify="left",
-            wraplength=380,
+            wraplength=520,
         )
-        detail_label.grid(row=1, column=0, columnspan=2, sticky="w", padx=5, pady=(4, 0))
+        detail_label.grid(row=1, column=0, columnspan=2, sticky="w", padx=6, pady=(6, 0))
 
         self.pattern_warning_var = tk.StringVar(value="")
         ttk.Label(
             self.pattern_stats_frame,
             textvariable=self.pattern_warning_var,
             justify="left",
-            foreground="red",
-            wraplength=380,
-        ).grid(row=2, column=0, columnspan=2, sticky="w", padx=5, pady=(2, 2))
+            foreground="darkred",
+            font=("TkDefaultFont", 9, "bold"),
+            wraplength=520,
+        ).grid(row=2, column=0, columnspan=2, sticky="w", padx=6, pady=(4, 6))
 
         self.pattern_tree.bind("<<TreeviewSelect>>", self.on_pattern_select)
 
-        figure_frame = ttk.Frame(content_paned)
-        figure_frame.columnconfigure(0, weight=1)
-        figure_frame.rowconfigure(0, weight=1)
-        content_paned.add(figure_frame, weight=3)
+        chart_panel = ttk.Frame(results_panel)
+        chart_panel.grid(row=1, column=0, sticky="nsew", padx=5, pady=(0, 5))
+        chart_panel.columnconfigure(0, weight=1)
+        chart_panel.rowconfigure(1, weight=1)
 
-        self.fig = plt.Figure(figsize=(14, 5))
+        self.chart_tabs = ttk.Notebook(chart_panel)
+        self.chart_frames = {}
+        tab_labels = {
+            "odd": "Warstwa nieparzysta",
+            "even": "Warstwa parzysta",
+            "overlay": "Nakładanie",
+        }
+        for key, label in tab_labels.items():
+            frame = ttk.Frame(self.chart_tabs)
+            frame.columnconfigure(0, weight=1)
+            frame.rowconfigure(0, weight=1)
+            self.chart_tabs.add(frame, text=label)
+            self.chart_frames[key] = frame
+        self.chart_tabs.grid(row=0, column=0, sticky="ew")
+
+        self.fig = plt.Figure(figsize=(12, 7))
         self.ax_odd = self.fig.add_subplot(131)
         self.ax_even = self.fig.add_subplot(132)
         self.ax_overlay = self.fig.add_subplot(133)
-        self.canvas = FigureCanvasTkAgg(self.fig, master=figure_frame)
+        self.canvas = FigureCanvasTkAgg(self.fig, master=chart_panel)
         canvas_widget = self.canvas.get_tk_widget()
-        canvas_widget.grid(row=0, column=0, sticky="nsew")
-        toolbar_frame = ttk.Frame(figure_frame)
-        toolbar_frame.grid(row=1, column=0, sticky="ew")
+        canvas_widget.grid(row=1, column=0, sticky="nsew", pady=(4, 0))
+        toolbar_frame = ttk.Frame(chart_panel)
+        toolbar_frame.grid(row=2, column=0, sticky="ew", pady=(4, 0))
         self.toolbar = NavigationToolbar2Tk(self.canvas, toolbar_frame)
         self.toolbar.update()
+        self.active_chart = "odd"
+        self.chart_tabs.bind("<<NotebookTabChanged>>", self._on_chart_tab_changed)
+        self._update_chart_visibility()
         self.canvas.draw()
 
         self.compute_pallet()
         self.manual_carton_weight_var.trace_add("write", self._on_manual_weight_changed)
+
+    def _on_chart_tab_changed(self, event=None):
+        if not hasattr(self, "chart_tabs"):
+            return
+        selected = self.chart_tabs.select()
+        for key, frame in getattr(self, "chart_frames", {}).items():
+            if str(frame) == selected:
+                self.active_chart = key
+                break
+        self._update_chart_visibility()
+
+    def _update_chart_visibility(self):
+        axes = {
+            "odd": getattr(self, "ax_odd", None),
+            "even": getattr(self, "ax_even", None),
+            "overlay": getattr(self, "ax_overlay", None),
+        }
+        active = getattr(self, "active_chart", "odd")
+        for key, ax in axes.items():
+            if ax is None:
+                continue
+            visible = key == active
+            ax.set_visible(visible)
+            for spine in ax.spines.values():
+                spine.set_visible(visible)
+            ax.xaxis.set_visible(visible)
+            ax.yaxis.set_visible(visible)
+            ax.title.set_visible(visible)
+            if visible:
+                ax.set_position([0.07, 0.08, 0.9, 0.85])
+        if hasattr(self, "canvas"):
+            self.canvas.draw_idle()
 
     def validate_number(self, value):
         if value == "":
@@ -1633,6 +1701,7 @@ class TabPallet(ttk.Frame):
             ax.set_xlim(-50, pallet_w + 50)
             ax.set_ylim(-50, pallet_l + 50)
             ax.set_aspect("equal")
+        self._update_chart_visibility()
         self.canvas.draw()
         if hasattr(self, "status_var"):
             self.status_var.set("")
@@ -2449,9 +2518,9 @@ class TabPallet(ttk.Frame):
             values = (
                 display,
                 str(score.carton_count),
+                f"{score.stability * 100:.1f}",
                 f"{score.layer_eff * 100:.1f}",
                 f"{score.cube_eff * 100:.1f}",
-                f"{score.stability * 100:.1f}",
                 f"{score.support_fraction * 100:.1f}",
                 f"{score.min_support * 100:.1f}",
                 f"{score.edge_contact * 100:.1f}",
