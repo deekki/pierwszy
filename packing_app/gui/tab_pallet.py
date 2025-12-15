@@ -673,22 +673,7 @@ class TabPallet(ttk.Frame):
         chart_panel = ttk.Frame(results_panel)
         chart_panel.grid(row=1, column=0, sticky="nsew", padx=5, pady=(0, 5))
         chart_panel.columnconfigure(0, weight=1)
-        chart_panel.rowconfigure(1, weight=1)
-
-        self.chart_tabs = ttk.Notebook(chart_panel)
-        self.chart_frames = {}
-        tab_labels = {
-            "odd": "Warstwa nieparzysta",
-            "even": "Warstwa parzysta",
-            "overlay": "Nakładanie",
-        }
-        for key, label in tab_labels.items():
-            frame = ttk.Frame(self.chart_tabs)
-            frame.columnconfigure(0, weight=1)
-            frame.rowconfigure(0, weight=1)
-            self.chart_tabs.add(frame, text=label)
-            self.chart_frames[key] = frame
-        self.chart_tabs.grid(row=0, column=0, sticky="ew")
+        chart_panel.rowconfigure(0, weight=1)
 
         self.fig = plt.Figure(figsize=(12, 7))
         self.ax_odd = self.fig.add_subplot(131)
@@ -696,50 +681,15 @@ class TabPallet(ttk.Frame):
         self.ax_overlay = self.fig.add_subplot(133)
         self.canvas = FigureCanvasTkAgg(self.fig, master=chart_panel)
         canvas_widget = self.canvas.get_tk_widget()
-        canvas_widget.grid(row=1, column=0, sticky="nsew", pady=(4, 0))
+        canvas_widget.grid(row=0, column=0, sticky="nsew", pady=(4, 0))
         toolbar_frame = ttk.Frame(chart_panel)
-        toolbar_frame.grid(row=2, column=0, sticky="ew", pady=(4, 0))
+        toolbar_frame.grid(row=1, column=0, sticky="ew", pady=(4, 0))
         self.toolbar = NavigationToolbar2Tk(self.canvas, toolbar_frame)
         self.toolbar.update()
-        self.active_chart = "odd"
-        self.chart_tabs.bind("<<NotebookTabChanged>>", self._on_chart_tab_changed)
-        self._update_chart_visibility()
         self.canvas.draw()
 
         self.compute_pallet()
         self.manual_carton_weight_var.trace_add("write", self._on_manual_weight_changed)
-
-    def _on_chart_tab_changed(self, event=None):
-        if not hasattr(self, "chart_tabs"):
-            return
-        selected = self.chart_tabs.select()
-        for key, frame in getattr(self, "chart_frames", {}).items():
-            if str(frame) == selected:
-                self.active_chart = key
-                break
-        self._update_chart_visibility()
-
-    def _update_chart_visibility(self):
-        axes = {
-            "odd": getattr(self, "ax_odd", None),
-            "even": getattr(self, "ax_even", None),
-            "overlay": getattr(self, "ax_overlay", None),
-        }
-        active = getattr(self, "active_chart", "odd")
-        for key, ax in axes.items():
-            if ax is None:
-                continue
-            visible = key == active
-            ax.set_visible(visible)
-            for spine in ax.spines.values():
-                spine.set_visible(visible)
-            ax.xaxis.set_visible(visible)
-            ax.yaxis.set_visible(visible)
-            ax.title.set_visible(visible)
-            if visible:
-                ax.set_position([0.07, 0.08, 0.9, 0.85])
-        if hasattr(self, "canvas"):
-            self.canvas.draw_idle()
 
     def validate_number(self, value):
         if value == "":
@@ -1730,7 +1680,6 @@ class TabPallet(ttk.Frame):
             ax.set_xlim(-50, pallet_w + 50)
             ax.set_ylim(-50, pallet_l + 50)
             ax.set_aspect("equal")
-        self._update_chart_visibility()
         self.canvas.draw()
         if hasattr(self, "status_var"):
             self.status_var.set("")

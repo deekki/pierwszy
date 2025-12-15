@@ -10,7 +10,7 @@ from packing_app.gui.tab_indirect_packaging import TabIndirectPackaging
 from packing_app.gui.tab_auxiliary import TabAuxiliaryMaterials
 from pack_layer import pack_layer
 
-APP_VERSION = "0.0.100"  # Increment this version string by 1 for each change.
+APP_VERSION = "0.0.101"  # Increment this version string by 1 for each change.
 
 
 def open_layer_packing(root):
