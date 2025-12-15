@@ -483,45 +483,38 @@ class TabPallet(ttk.Frame):
         actions_frame.columnconfigure(0, weight=1)
 
         control_frame = ttk.Frame(actions_frame)
-        control_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=(4, 0))
-        for col in range(3):
-            control_frame.columnconfigure(col, weight=1)
+        control_frame.grid(row=0, column=0, sticky="w", padx=5, pady=(4, 0))
 
         self.compute_btn = ttk.Button(
             control_frame, text="Oblicz", command=self.compute_pallet
         )
-        self.compute_btn.grid(row=0, column=0, padx=(0, 4), pady=(0, 4), sticky="ew")
-
+        self.compute_btn.pack(side=tk.LEFT, padx=(0, 6))
         ttk.Checkbutton(
             control_frame,
             text="Tryb edycji",
             variable=self.modify_mode_var,
             command=self.toggle_edit_mode,
-        ).grid(row=0, column=1, padx=4, pady=(0, 4), sticky="ew")
-
+        ).pack(side=tk.LEFT, padx=6)
         ttk.Button(
             control_frame,
             text="Wstaw karton",
             command=self.insert_carton_button,
-        ).grid(row=0, column=2, padx=(4, 0), pady=(0, 4), sticky="ew")
-
+        ).pack(side=tk.LEFT, padx=6)
         ttk.Button(
             control_frame,
             text="Usuń karton",
             command=self.delete_selected_carton,
-        ).grid(row=1, column=0, padx=(0, 4), pady=(0, 4), sticky="ew")
-
+        ).pack(side=tk.LEFT, padx=6)
         ttk.Button(
             control_frame,
             text="Zapisz wzór",
             command=self.save_pattern_dialog,
-        ).grid(row=1, column=1, padx=4, pady=(0, 4), sticky="ew")
-
+        ).pack(side=tk.LEFT, padx=6)
         ttk.Button(
             control_frame,
             text="Wczytaj wzór",
             command=self.load_pattern_dialog,
-        ).grid(row=1, column=2, padx=(4, 0), pady=(0, 4), sticky="ew")
+        ).pack(side=tk.LEFT, padx=6)
         self.status_var = tk.StringVar(value="")
         status_frame = ttk.Frame(actions_frame)
         status_frame.columnconfigure(0, weight=1)
@@ -616,31 +609,16 @@ class TabPallet(ttk.Frame):
             "cube": "Kubatura [%]",
             "stability": "Stabilność [%]",
             "support": "Podparcie [%]",
-            "min_support": "Min.\npodparcie [%]",
+            "min_support": "Min. podparcie [%]",
             "contact": "Kontakt [%]",
-            "clearance": "Min.\nluz [mm]",
-            "grip": "Zmiany\nchwytu",
+            "clearance": "Min. luz [mm]",
+            "grip": "Zmiany chwytu",
             "risk": "Ryzyko",
-        }
-        column_widths = {
-            "pattern": 130,
-            "cartons": 80,
-            "stability": 115,
-            "layer": 95,
-            "cube": 95,
-            "support": 105,
-            "min_support": 115,
-            "contact": 95,
-            "clearance": 95,
-            "grip": 110,
-            "risk": 85,
         }
         for col in columns:
             anchor = "w" if col == "pattern" else "e"
             self.pattern_tree.heading(col, text=headings[col])
-            self.pattern_tree.column(
-                col, anchor=anchor, stretch=True, width=column_widths[col]
-            )
+            self.pattern_tree.column(col, anchor=anchor, stretch=True)
 
         scroll = ttk.Scrollbar(
             self.pattern_stats_frame, orient="vertical", command=self.pattern_tree.yview
@@ -654,7 +632,7 @@ class TabPallet(ttk.Frame):
             self.pattern_stats_frame,
             textvariable=self.pattern_detail_var,
             justify="left",
-            wraplength=480,
+            wraplength=520,
         )
         detail_label.grid(row=1, column=0, columnspan=2, sticky="w", padx=6, pady=(6, 0))
 
@@ -665,7 +643,7 @@ class TabPallet(ttk.Frame):
             justify="left",
             foreground="darkred",
             font=("TkDefaultFont", 9, "bold"),
-            wraplength=480,
+            wraplength=520,
         ).grid(row=2, column=0, columnspan=2, sticky="w", padx=6, pady=(4, 6))
 
         self.pattern_tree.bind("<<TreeviewSelect>>", self.on_pattern_select)
@@ -673,22 +651,7 @@ class TabPallet(ttk.Frame):
         chart_panel = ttk.Frame(results_panel)
         chart_panel.grid(row=1, column=0, sticky="nsew", padx=5, pady=(0, 5))
         chart_panel.columnconfigure(0, weight=1)
-        chart_panel.rowconfigure(1, weight=1)
-
-        self.chart_tabs = ttk.Notebook(chart_panel)
-        self.chart_frames = {}
-        tab_labels = {
-            "odd": "Warstwa nieparzysta",
-            "even": "Warstwa parzysta",
-            "overlay": "Nakładanie",
-        }
-        for key, label in tab_labels.items():
-            frame = ttk.Frame(self.chart_tabs)
-            frame.columnconfigure(0, weight=1)
-            frame.rowconfigure(0, weight=1)
-            self.chart_tabs.add(frame, text=label)
-            self.chart_frames[key] = frame
-        self.chart_tabs.grid(row=0, column=0, sticky="ew")
+        chart_panel.rowconfigure(0, weight=1)
 
         self.fig = plt.Figure(figsize=(12, 7))
         self.ax_odd = self.fig.add_subplot(131)
@@ -696,50 +659,15 @@ class TabPallet(ttk.Frame):
         self.ax_overlay = self.fig.add_subplot(133)
         self.canvas = FigureCanvasTkAgg(self.fig, master=chart_panel)
         canvas_widget = self.canvas.get_tk_widget()
-        canvas_widget.grid(row=1, column=0, sticky="nsew", pady=(4, 0))
+        canvas_widget.grid(row=0, column=0, sticky="nsew", pady=(4, 0))
         toolbar_frame = ttk.Frame(chart_panel)
-        toolbar_frame.grid(row=2, column=0, sticky="ew", pady=(4, 0))
+        toolbar_frame.grid(row=1, column=0, sticky="ew", pady=(4, 0))
         self.toolbar = NavigationToolbar2Tk(self.canvas, toolbar_frame)
         self.toolbar.update()
-        self.active_chart = "odd"
-        self.chart_tabs.bind("<<NotebookTabChanged>>", self._on_chart_tab_changed)
-        self._update_chart_visibility()
         self.canvas.draw()
 
         self.compute_pallet()
         self.manual_carton_weight_var.trace_add("write", self._on_manual_weight_changed)
-
-    def _on_chart_tab_changed(self, event=None):
-        if not hasattr(self, "chart_tabs"):
-            return
-        selected = self.chart_tabs.select()
-        for key, frame in getattr(self, "chart_frames", {}).items():
-            if str(frame) == selected:
-                self.active_chart = key
-                break
-        self._update_chart_visibility()
-
-    def _update_chart_visibility(self):
-        axes = {
-            "odd": getattr(self, "ax_odd", None),
-            "even": getattr(self, "ax_even", None),
-            "overlay": getattr(self, "ax_overlay", None),
-        }
-        active = getattr(self, "active_chart", "odd")
-        for key, ax in axes.items():
-            if ax is None:
-                continue
-            visible = key == active
-            ax.set_visible(visible)
-            for spine in ax.spines.values():
-                spine.set_visible(visible)
-            ax.xaxis.set_visible(visible)
-            ax.yaxis.set_visible(visible)
-            ax.title.set_visible(visible)
-            if visible:
-                ax.set_position([0.07, 0.08, 0.9, 0.85])
-        if hasattr(self, "canvas"):
-            self.canvas.draw_idle()
 
     def validate_number(self, value):
         if value == "":
@@ -1730,7 +1658,6 @@ class TabPallet(ttk.Frame):
             ax.set_xlim(-50, pallet_w + 50)
             ax.set_ylim(-50, pallet_l + 50)
             ax.set_aspect("equal")
-        self._update_chart_visibility()
         self.canvas.draw()
         if hasattr(self, "status_var"):
             self.status_var.set("")
