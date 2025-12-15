@@ -483,38 +483,45 @@ class TabPallet(ttk.Frame):
         actions_frame.columnconfigure(0, weight=1)
 
         control_frame = ttk.Frame(actions_frame)
-        control_frame.grid(row=0, column=0, sticky="w", padx=5, pady=(4, 0))
+        control_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=(4, 0))
+        for col in range(3):
+            control_frame.columnconfigure(col, weight=1)
 
         self.compute_btn = ttk.Button(
             control_frame, text="Oblicz", command=self.compute_pallet
         )
-        self.compute_btn.pack(side=tk.LEFT, padx=(0, 6))
+        self.compute_btn.grid(row=0, column=0, padx=(0, 4), pady=(0, 4), sticky="ew")
+
         ttk.Checkbutton(
             control_frame,
             text="Tryb edycji",
             variable=self.modify_mode_var,
             command=self.toggle_edit_mode,
-        ).pack(side=tk.LEFT, padx=6)
+        ).grid(row=0, column=1, padx=4, pady=(0, 4), sticky="ew")
+
         ttk.Button(
             control_frame,
             text="Wstaw karton",
             command=self.insert_carton_button,
-        ).pack(side=tk.LEFT, padx=6)
+        ).grid(row=0, column=2, padx=(4, 0), pady=(0, 4), sticky="ew")
+
         ttk.Button(
             control_frame,
             text="Usuń karton",
             command=self.delete_selected_carton,
-        ).pack(side=tk.LEFT, padx=6)
+        ).grid(row=1, column=0, padx=(0, 4), pady=(0, 4), sticky="ew")
+
         ttk.Button(
             control_frame,
             text="Zapisz wzór",
             command=self.save_pattern_dialog,
-        ).pack(side=tk.LEFT, padx=6)
+        ).grid(row=1, column=1, padx=4, pady=(0, 4), sticky="ew")
+
         ttk.Button(
             control_frame,
             text="Wczytaj wzór",
             command=self.load_pattern_dialog,
-        ).pack(side=tk.LEFT, padx=6)
+        ).grid(row=1, column=2, padx=(4, 0), pady=(0, 4), sticky="ew")
         self.status_var = tk.StringVar(value="")
         status_frame = ttk.Frame(actions_frame)
         status_frame.columnconfigure(0, weight=1)
@@ -609,16 +616,31 @@ class TabPallet(ttk.Frame):
             "cube": "Kubatura [%]",
             "stability": "Stabilność [%]",
             "support": "Podparcie [%]",
-            "min_support": "Min. podparcie [%]",
+            "min_support": "Min.\npodparcie [%]",
             "contact": "Kontakt [%]",
-            "clearance": "Min. luz [mm]",
-            "grip": "Zmiany chwytu",
+            "clearance": "Min.\nluz [mm]",
+            "grip": "Zmiany\nchwytu",
             "risk": "Ryzyko",
+        }
+        column_widths = {
+            "pattern": 130,
+            "cartons": 80,
+            "stability": 115,
+            "layer": 95,
+            "cube": 95,
+            "support": 105,
+            "min_support": 115,
+            "contact": 95,
+            "clearance": 95,
+            "grip": 110,
+            "risk": 85,
         }
         for col in columns:
             anchor = "w" if col == "pattern" else "e"
             self.pattern_tree.heading(col, text=headings[col])
-            self.pattern_tree.column(col, anchor=anchor, stretch=True)
+            self.pattern_tree.column(
+                col, anchor=anchor, stretch=True, width=column_widths[col]
+            )
 
         scroll = ttk.Scrollbar(
             self.pattern_stats_frame, orient="vertical", command=self.pattern_tree.yview
@@ -632,7 +654,7 @@ class TabPallet(ttk.Frame):
             self.pattern_stats_frame,
             textvariable=self.pattern_detail_var,
             justify="left",
-            wraplength=520,
+            wraplength=480,
         )
         detail_label.grid(row=1, column=0, columnspan=2, sticky="w", padx=6, pady=(6, 0))
 
@@ -643,7 +665,7 @@ class TabPallet(ttk.Frame):
             justify="left",
             foreground="darkred",
             font=("TkDefaultFont", 9, "bold"),
-            wraplength=520,
+            wraplength=480,
         ).grid(row=2, column=0, columnspan=2, sticky="w", padx=6, pady=(4, 6))
 
         self.pattern_tree.bind("<<TreeviewSelect>>", self.on_pattern_select)
