@@ -97,6 +97,7 @@ class LayoutComputation:
     best_odd: LayerLayout
     best_layout_key: str = ""
     scores: Dict[str, PatternScore] = field(default_factory=dict)
+    display_map: Dict[str, str] = field(default_factory=dict)
 
 
 class TabPallet(ttk.Frame):
@@ -156,6 +157,7 @@ class TabPallet(ttk.Frame):
         self.row_by_row_horizontal_var = tk.IntVar(value=0)
         self._row_by_row_user_modified = False
         self._updating_row_by_row = False
+        self.pattern_display_map: Dict[str, str] = {}
         self.build_ui()
 
     def layers_linked(self) -> bool:
@@ -522,6 +524,7 @@ class TabPallet(ttk.Frame):
 
         results_panel = ttk.Frame(main_paned)
         results_panel.columnconfigure(0, weight=1)
+        results_panel.rowconfigure(0, weight=1)
         results_panel.rowconfigure(1, weight=1)
         main_paned.add(results_panel, weight=5)
 
@@ -1538,6 +1541,7 @@ class TabPallet(ttk.Frame):
 
         scores: Dict[str, PatternScore] = {}
         layout_entries: List[Tuple[int, LayerLayout, str]] = []
+        display_map: Dict[str, str] = {}
         for name, pattern in patterns.items():
             score = selector.score(pattern)
             score.name = name
@@ -1545,6 +1549,7 @@ class TabPallet(ttk.Frame):
                 name, name.replace("_", " ").capitalize()
             )
             scores[name] = score
+            display_map[name] = score.display_name
 
         for name, pattern in patterns.items():
             adjusted = apply_spacing(pattern, inputs.spacing)
@@ -1586,6 +1591,7 @@ class TabPallet(ttk.Frame):
             best_odd=best_odd,
             best_layout_key=best_key,
             scores=scores,
+            display_map=display_map,
         )
 
     def _finalize_results(self, inputs: PalletInputs, result: LayoutComputation) -> None:
@@ -1596,6 +1602,7 @@ class TabPallet(ttk.Frame):
         self.best_layout_name = result.best_layout_name
         self.best_layout_key = result.best_layout_key
         self.pattern_scores = result.scores
+        self.pattern_display_map = result.display_map
         self.best_even = result.best_even
         self.best_odd = result.best_odd
         self.update_transform_frame()
@@ -2575,6 +2582,7 @@ class TabPallet(ttk.Frame):
         display = score.display_name or DISPLAY_NAME_OVERRIDES.get(
             key, key.replace("_", " ").capitalize()
         )
+        self._apply_pattern_selection(display)
         risk_text = (
             "Tak: " + ", ".join(score.warnings)
             if score.instability_risk and score.warnings
@@ -2597,6 +2605,21 @@ class TabPallet(ttk.Frame):
             f"Ryzyko utraty stabilności: {risk_text}."
         )
         self.pattern_detail_var.set(detail_text)
+
+    def _apply_pattern_selection(self, display_name: str) -> None:
+        """Update layout selection and redraw charts for the chosen pattern."""
+
+        if not display_name:
+            return
+        if display_name not in self.layout_map:
+            return
+
+        if hasattr(self, "odd_layout_var"):
+            self.odd_layout_var.set(display_name)
+        if hasattr(self, "even_layout_var"):
+            self.even_layout_var.set(display_name)
+
+        self.update_layers(force=True)
 
     def adjust_spacing(self, delta: float) -> None:
         """Increase or decrease carton spacing by ``delta`` millimeters."""
