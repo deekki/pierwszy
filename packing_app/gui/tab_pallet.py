@@ -137,10 +137,12 @@ class TabPallet(ttk.Frame):
         self.best_odd = []
         self.pattern_scores: Dict[str, PatternScore] = {}
         self.modify_mode_var = tk.BooleanVar(value=False)
+        self.show_numbers_var = tk.BooleanVar(value=True)
         self.patches = []
         self.selected_indices = set()
         self.drag_offset = (0, 0)
         self.drag_info = None
+        self.drag_button = None
         self.drag_select_origin = None
         self._layer_sync_source = "height"
         self._suspend_layer_sync = False
@@ -494,6 +496,12 @@ class TabPallet(ttk.Frame):
             text="Tryb edycji",
             variable=self.modify_mode_var,
             command=self.toggle_edit_mode,
+        ).pack(side=tk.LEFT, padx=6)
+        ttk.Checkbutton(
+            control_frame,
+            text="Pokaż numerację",
+            variable=self.show_numbers_var,
+            command=self.draw_pallet,
         ).pack(side=tk.LEFT, padx=6)
         ttk.Button(
             control_frame,
@@ -1604,16 +1612,22 @@ class TabPallet(ttk.Frame):
                     )
                     ax.add_patch(patch)
                     self.patches[idx].append((patch, i))
-                    ax.text(
-                        x + w / 2,
-                        y + h / 2,
-                        str(self.carton_ids[idx][i] if idx < len(self.carton_ids) and i < len(self.carton_ids[idx]) else i + 1),
-                        ha="center",
-                        va="center",
-                        fontsize=8,
-                        color="black",
-                        zorder=10,
-                    )
+                    if self.show_numbers_var.get():
+                        ax.text(
+                            x + w / 2,
+                            y + h / 2,
+                            str(
+                                self.carton_ids[idx][i]
+                                if idx < len(self.carton_ids)
+                                and i < len(self.carton_ids[idx])
+                                else i + 1
+                            ),
+                            ha="center",
+                            va="center",
+                            fontsize=8,
+                            color="black",
+                            zorder=10,
+                        )
                 ax.set_title(f"{labels[idx]}: {len(self.layers[idx])}")
             elif idx == 2:
                 if self.layers:
@@ -1733,11 +1747,20 @@ class TabPallet(ttk.Frame):
             self.key_cid = None
             self.selected_indices.clear()
             self.drag_info = None
+            self.drag_button = None
             self.drag_select_origin = None
             self.drag_snapshot_saved = False
             self.draw_pallet()
             if hasattr(self, "status_var"):
                 self.status_var.set("")
+
+    def _toolbar_busy(self) -> bool:
+        toolbar = getattr(self, "toolbar", None)
+        if toolbar is None:
+            return False
+        mode = getattr(toolbar, "mode", "") or ""
+        active = getattr(toolbar, "_active", "") or ""
+        return bool(mode) or bool(active)
 
     def on_press(self, event):
         if not self.modify_mode_var.get() or event.inaxes not in [
@@ -1745,9 +1768,14 @@ class TabPallet(ttk.Frame):
             self.ax_even,
         ]:
             return
+        if self._toolbar_busy():
+            return
         if event.button == 3:
             self.on_right_click(event)
             return
+        if event.button != 1:
+            return
+        self.drag_button = None
         layer_idx = 0 if event.inaxes is self.ax_odd else 1
         if event.xdata is not None and event.ydata is not None:
             self.context_layer = layer_idx
@@ -1761,6 +1789,7 @@ class TabPallet(ttk.Frame):
                     else:
                         self.selected_indices.add((layer_idx, idx))
                     self.drag_info = None
+                    self.drag_button = None
                     self.drag_snapshot_saved = False
                 else:
                     if (layer_idx, idx) not in self.selected_indices:
@@ -1775,6 +1804,7 @@ class TabPallet(ttk.Frame):
                                 )
                                 break
                     self.drag_info = drag_items
+                    self.drag_button = event.button
                     self.drag_snapshot_saved = False
                 break
         else:
@@ -1785,6 +1815,8 @@ class TabPallet(ttk.Frame):
 
     def on_motion(self, event):
         if not self.drag_info or event.xdata is None or event.ydata is None:
+            return
+        if self._toolbar_busy() or self.drag_button != 1:
             return
 
         if not self.drag_snapshot_saved:
@@ -1848,6 +1880,10 @@ class TabPallet(ttk.Frame):
     def on_release(self, event):
         if not self.drag_info:
             return
+        if self._toolbar_busy() or self.drag_button != 1:
+            self.drag_info = None
+            self.drag_button = None
+            return
 
         pallet_w = parse_dim(self.pallet_w_var)
         pallet_l = parse_dim(self.pallet_l_var)
@@ -1883,6 +1919,7 @@ class TabPallet(ttk.Frame):
 
         self.drag_info = None
         self.drag_snapshot_saved = False
+        self.drag_button = None
         getattr(self, "sort_layers", lambda: None)()
         self.draw_pallet()
         self.update_summary()
