@@ -534,13 +534,14 @@ class TabPallet(ttk.Frame):
         results_panel = ttk.Frame(main_paned)
         results_panel.columnconfigure(0, weight=1)
         results_panel.rowconfigure(0, weight=1)
-        results_panel.rowconfigure(1, weight=0)
         main_paned.add(results_panel, weight=5)
 
-        upper_panel = ttk.Frame(results_panel)
-        upper_panel.grid(row=0, column=0, sticky="nsew", padx=5, pady=(5, 8))
+        results_split = ttk.Panedwindow(results_panel, orient=tk.VERTICAL)
+        results_split.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
+
+        upper_panel = ttk.Frame(results_split)
         upper_panel.columnconfigure(0, weight=1)
-        upper_panel.columnconfigure(1, weight=2)
+        upper_panel.columnconfigure(1, weight=3)
         upper_panel.rowconfigure(0, weight=1)
 
         self.summary_frame = ttk.LabelFrame(upper_panel, text="Podsumowanie")
@@ -588,9 +589,10 @@ class TabPallet(ttk.Frame):
         self.pattern_stats_frame = ttk.LabelFrame(
             upper_panel, text="Ocena stabilności"
         )
-        self.pattern_stats_frame.grid(row=0, column=1, sticky="nsew")
+        self.pattern_stats_frame.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
         self.pattern_stats_frame.columnconfigure(0, weight=1)
         self.pattern_stats_frame.rowconfigure(0, weight=1)
+        self.pattern_stats_frame.rowconfigure(1, weight=0)
 
         columns = (
             "pattern",
@@ -609,7 +611,7 @@ class TabPallet(ttk.Frame):
             self.pattern_stats_frame,
             columns=columns,
             show="headings",
-            height=14,
+            height=16,
         )
         headings = {
             "pattern": "Wzór",
@@ -626,44 +628,56 @@ class TabPallet(ttk.Frame):
         }
         for col in columns:
             anchor = "w" if col == "pattern" else "e"
+            width = 180 if col == "pattern" else 110
+            min_width = 140 if col == "pattern" else 90
             self.pattern_tree.heading(col, text=headings[col])
-            self.pattern_tree.column(col, anchor=anchor, stretch=True)
+            self.pattern_tree.column(
+                col, anchor=anchor, stretch=True, width=width, minwidth=min_width
+            )
 
         scroll = ttk.Scrollbar(
             self.pattern_stats_frame, orient="vertical", command=self.pattern_tree.yview
         )
-        self.pattern_tree.configure(yscrollcommand=scroll.set, selectmode="browse")
+        xscroll = ttk.Scrollbar(
+            self.pattern_stats_frame, orient="horizontal", command=self.pattern_tree.xview
+        )
+        self.pattern_tree.configure(
+            yscrollcommand=scroll.set, xscrollcommand=xscroll.set, selectmode="browse"
+        )
         self.pattern_tree.grid(row=0, column=0, sticky="nsew")
         scroll.grid(row=0, column=1, sticky="ns")
+        xscroll.grid(row=1, column=0, columnspan=2, sticky="ew")
 
         self.pattern_detail_var = tk.StringVar(value="")
         detail_label = ttk.Label(
             self.pattern_stats_frame,
             textvariable=self.pattern_detail_var,
             justify="left",
-            wraplength=520,
+            wraplength=620,
         )
-        detail_label.grid(row=1, column=0, columnspan=2, sticky="w", padx=6, pady=(6, 0))
+        detail_label.grid(row=2, column=0, columnspan=2, sticky="w", padx=6, pady=(6, 0))
 
         self.pattern_tree.bind("<<TreeviewSelect>>", self.on_pattern_select)
 
-        chart_panel = ttk.Frame(results_panel)
-        chart_panel.grid(row=1, column=0, sticky="nsew", padx=5, pady=(0, 5))
+        chart_panel = ttk.Frame(results_split)
         chart_panel.columnconfigure(0, weight=1)
         chart_panel.rowconfigure(0, weight=1)
 
-        self.fig = plt.Figure(figsize=(11, 5.5))
+        self.fig = plt.Figure(figsize=(9, 3.8))
         self.ax_odd = self.fig.add_subplot(131)
         self.ax_even = self.fig.add_subplot(132)
         self.ax_overlay = self.fig.add_subplot(133)
         self.canvas = FigureCanvasTkAgg(self.fig, master=chart_panel)
         canvas_widget = self.canvas.get_tk_widget()
-        canvas_widget.grid(row=0, column=0, sticky="n", pady=(8, 0))
+        canvas_widget.grid(row=0, column=0, sticky="nsew", pady=(8, 0))
         toolbar_frame = ttk.Frame(chart_panel)
         toolbar_frame.grid(row=1, column=0, sticky="ew", pady=(6, 0))
         self.toolbar = NavigationToolbar2Tk(self.canvas, toolbar_frame)
         self.toolbar.update()
         self.canvas.draw()
+
+        results_split.add(upper_panel, weight=3)
+        results_split.add(chart_panel, weight=2)
 
         self.compute_pallet()
         self.manual_carton_weight_var.trace_add("write", self._on_manual_weight_changed)
