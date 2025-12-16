@@ -96,6 +96,7 @@ class LayoutComputation:
     best_even: LayerLayout
     best_odd: LayerLayout
     best_layout_key: str = ""
+    best_count_layout_name: str = ""
     scores: Dict[str, PatternScore] = field(default_factory=dict)
     display_map: Dict[str, str] = field(default_factory=dict)
 
@@ -1093,6 +1094,9 @@ class TabPallet(ttk.Frame):
             "Obrót 180°",
         ]
 
+        layout_width = max((len(opt) for opt in layout_options), default=0) + 2
+        transform_width = max((len(opt) for opt in transform_options), default=0) + 2
+
         prev_odd_layout = getattr(self, "odd_layout_var", None)
         prev_even_layout = getattr(self, "even_layout_var", None)
         prev_odd_transform = getattr(self, "odd_transform_var", None)
@@ -1100,7 +1104,11 @@ class TabPallet(ttk.Frame):
 
         preferred_row = DISPLAY_NAME_OVERRIDES["row_by_row"]
         interlock_name = "Interlock"
-        if preferred_row in layout_options:
+        best_layout = getattr(self, "best_layout_name", "")
+        if best_layout in layout_options:
+            odd_default = best_layout
+            even_default = best_layout
+        elif preferred_row in layout_options:
             odd_default = preferred_row
             even_default = preferred_row
         elif interlock_name in layout_options:
@@ -1131,41 +1139,49 @@ class TabPallet(ttk.Frame):
             row=0, column=0, padx=5, pady=2
         )
         self.odd_layout_var = tk.StringVar(value=odd_default)
-        ttk.OptionMenu(
+        odd_menu = ttk.OptionMenu(
             self.transform_frame,
             self.odd_layout_var,
             odd_default,
             *layout_options,
             command=lambda *_: self.update_layers("odd"),
-        ).grid(row=0, column=1, padx=5, pady=2)
+        )
+        odd_menu.config(width=layout_width)
+        odd_menu.grid(row=0, column=1, padx=5, pady=2)
         self.odd_transform_var = tk.StringVar(value=odd_tr_default)
-        ttk.OptionMenu(
+        odd_transform_menu = ttk.OptionMenu(
             self.transform_frame,
             self.odd_transform_var,
             odd_tr_default,
             *transform_options,
             command=lambda *_: self.update_layers("odd"),
-        ).grid(row=0, column=2, padx=5, pady=2)
+        )
+        odd_transform_menu.config(width=transform_width)
+        odd_transform_menu.grid(row=0, column=2, padx=5, pady=2)
 
         ttk.Label(self.transform_frame, text="Warstwy parzyste:").grid(
             row=1, column=0, padx=5, pady=2
         )
         self.even_layout_var = tk.StringVar(value=even_default)
-        ttk.OptionMenu(
+        even_menu = ttk.OptionMenu(
             self.transform_frame,
             self.even_layout_var,
             even_default,
             *layout_options,
             command=lambda *_: self.update_layers("even"),
-        ).grid(row=1, column=1, padx=5, pady=2)
+        )
+        even_menu.config(width=layout_width)
+        even_menu.grid(row=1, column=1, padx=5, pady=2)
         self.even_transform_var = tk.StringVar(value=even_tr_default)
-        ttk.OptionMenu(
+        even_transform_menu = ttk.OptionMenu(
             self.transform_frame,
             self.even_transform_var,
             even_tr_default,
             *transform_options,
             command=lambda *_: self.update_layers("even"),
-        ).grid(row=1, column=2, padx=5, pady=2)
+        )
+        even_transform_menu.config(width=transform_width)
+        even_transform_menu.grid(row=1, column=2, padx=5, pady=2)
 
     def update_layers(self, side="both", force=False, *args):
         num_layers = getattr(self, "num_layers", int(parse_dim(self.num_layers_var)))
@@ -1520,15 +1536,18 @@ class TabPallet(ttk.Frame):
             display = scores[name].display_name
             layout_entries.append((len(centered), centered, display))
 
-        if patterns.get("row_by_row"):
-            best_key = "row_by_row"
-            best_pattern = patterns[best_key]
-        elif patterns.get("interlock"):
-            best_key = "interlock"
-            best_pattern = patterns[best_key]
-        else:
-            best_key = min(scores.items(), key=lambda item: item[1].penalty)[0]
-            best_pattern = patterns.get(best_key, [])
+        best_key = ""
+        best_pattern = []
+        best_metric = (-1, float("inf"))
+        for name, pattern in patterns.items():
+            penalty = scores[name].penalty if name in scores else float("inf")
+            metric = (len(pattern), penalty)
+            if metric[0] > best_metric[0] or (
+                metric[0] == best_metric[0] and metric[1] < best_metric[1]
+            ):
+                best_metric = metric
+                best_key = name
+                best_pattern = pattern
 
         seq = EvenOddSequencer(best_pattern, calc_carton, pallet)
         even_base, odd_shifted = seq.best_shift()
@@ -1545,6 +1564,9 @@ class TabPallet(ttk.Frame):
         best_layout_name = DISPLAY_NAME_OVERRIDES.get(
             best_key, best_key.replace("_", " ").capitalize()
         )
+        best_count_layout_name = DISPLAY_NAME_OVERRIDES.get(
+            best_key, best_key.replace("_", " ").capitalize()
+        )
 
         return LayoutComputation(
             layouts=layout_entries,
@@ -1553,6 +1575,7 @@ class TabPallet(ttk.Frame):
             best_even=best_even,
             best_odd=best_odd,
             best_layout_key=best_key,
+            best_count_layout_name=best_count_layout_name,
             scores=scores,
             display_map=display_map,
         )
@@ -1562,7 +1585,9 @@ class TabPallet(ttk.Frame):
 
         self.layouts = result.layouts
         self.layout_map = result.layout_map
-        self.best_layout_name = result.best_layout_name
+        self.best_layout_name = (
+            result.best_count_layout_name or result.best_layout_name
+        )
         self.best_layout_key = result.best_layout_key
         self.pattern_scores = result.scores
         self.pattern_display_map = result.display_map
@@ -2485,7 +2510,10 @@ class TabPallet(ttk.Frame):
         carton_area = (box_w + 2 * thickness) * (box_l + 2 * thickness) / 1_000_000
         area_ratio = pallet_area / carton_area if carton_area > 0 else 0
         self.area_label.config(
-            text=f"Pow. palety: {pallet_area:.2f} m² | Pow. kartonu: {carton_area:.2f} m² | Miejsca: {area_ratio:.2f}"
+            text=(
+                f"Pow. palety: {pallet_area:.3f} m² | "
+                f"Pow. kartonu: {carton_area:.3f} m² | Miejsca: {area_ratio:.2f}"
+            )
         )
 
         self.update_pattern_stats()
@@ -2545,7 +2573,13 @@ class TabPallet(ttk.Frame):
                 self.pattern_tree.see(target_key)
             self.on_pattern_select()
         finally:
-            self._suspend_pattern_apply = previous_flag
+            restore_flag = lambda prev=previous_flag: setattr(
+                self, "_suspend_pattern_apply", prev
+            )
+            if hasattr(self, "after"):
+                self.after_idle(restore_flag)
+            else:
+                restore_flag()
 
     def on_pattern_select(self, event=None):
         if not hasattr(self, "pattern_tree") or not hasattr(

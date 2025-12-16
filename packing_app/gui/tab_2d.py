@@ -699,7 +699,10 @@ class TabPacking2D(ttk.Frame):
             prod_area = w_p * l_p / 1_000_000 if w_p > 0 and l_p > 0 else 0
             area_ratio = carton_area / prod_area if prod_area > 0 else 0
             self.area_label.config(
-                text=f"Pow. kartonu: {carton_area:.2f} m² | Pow. kartonika: {prod_area:.2f} m² | Miejsca: {area_ratio:.2f}"
+                text=(
+                    f"Pow. kartonu: {carton_area:.3f} m² | "
+                    f"Pow. kartonika: {prod_area:.2f} m² | Miejsca: {area_ratio:.2f}"
+                )
             )
         else:
             diam = self.parse_dim_safe(self.prod_diam)
@@ -773,7 +776,10 @@ class TabPacking2D(ttk.Frame):
             prod_area = math.pi * (diam / 2) ** 2 / 1_000_000 if diam > 0 else 0
             area_ratio = carton_area / prod_area if prod_area > 0 else 0
             self.area_label.config(
-                text=f"Pow. kartonu: {carton_area:.2f} m² | Pow. kartonika: {prod_area:.2f} m² | Miejsca: {area_ratio:.2f}"
+                text=(
+                    f"Pow. kartonu: {carton_area:.3f} m² | "
+                    f"Pow. kartonika: {prod_area:.2f} m² | Miejsca: {area_ratio:.2f}"
+                )
             )
 
         self.fig.tight_layout()
