@@ -534,7 +534,7 @@ class TabPallet(ttk.Frame):
         results_panel = ttk.Frame(main_paned)
         results_panel.columnconfigure(0, weight=1)
         results_panel.rowconfigure(0, weight=1)
-        results_panel.rowconfigure(1, weight=1)
+        results_panel.rowconfigure(1, weight=0)
         main_paned.add(results_panel, weight=5)
 
         upper_panel = ttk.Frame(results_panel)
@@ -652,15 +652,15 @@ class TabPallet(ttk.Frame):
         chart_panel.columnconfigure(0, weight=1)
         chart_panel.rowconfigure(0, weight=1)
 
-        self.fig = plt.Figure(figsize=(12, 7))
+        self.fig = plt.Figure(figsize=(11, 5.5))
         self.ax_odd = self.fig.add_subplot(131)
         self.ax_even = self.fig.add_subplot(132)
         self.ax_overlay = self.fig.add_subplot(133)
         self.canvas = FigureCanvasTkAgg(self.fig, master=chart_panel)
         canvas_widget = self.canvas.get_tk_widget()
-        canvas_widget.grid(row=0, column=0, sticky="nsew", pady=(4, 0))
+        canvas_widget.grid(row=0, column=0, sticky="n", pady=(8, 0))
         toolbar_frame = ttk.Frame(chart_panel)
-        toolbar_frame.grid(row=1, column=0, sticky="ew", pady=(4, 0))
+        toolbar_frame.grid(row=1, column=0, sticky="ew", pady=(6, 0))
         self.toolbar = NavigationToolbar2Tk(self.canvas, toolbar_frame)
         self.toolbar.update()
         self.canvas.draw()
@@ -2480,6 +2480,7 @@ class TabPallet(ttk.Frame):
         if not hasattr(self, "pattern_tree"):
             return
 
+        previous_selection = self.pattern_tree.selection()
         for item in self.pattern_tree.get_children():
             self.pattern_tree.delete(item)
 
@@ -2514,13 +2515,20 @@ class TabPallet(ttk.Frame):
         self._suspend_pattern_apply = True
         try:
             best_key = getattr(self, "best_layout_key", "")
-            if best_key and self.pattern_tree.exists(best_key):
-                self.pattern_tree.selection_set(best_key)
-                self.pattern_tree.see(best_key)
-            else:
+            target_key = ""
+            if previous_selection:
+                prev = previous_selection[0]
+                if self.pattern_tree.exists(prev):
+                    target_key = prev
+            if not target_key and best_key and self.pattern_tree.exists(best_key):
+                target_key = best_key
+            if not target_key:
                 first = self.pattern_tree.get_children()
                 if first:
-                    self.pattern_tree.selection_set(first[0])
+                    target_key = first[0]
+            if target_key:
+                self.pattern_tree.selection_set(target_key)
+                self.pattern_tree.see(target_key)
             self.on_pattern_select()
         finally:
             self._suspend_pattern_apply = previous_flag
