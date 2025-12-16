@@ -146,6 +146,7 @@ class TabPallet(ttk.Frame):
         self.drag_select_origin = None
         self._layer_sync_source = "height"
         self._suspend_layer_sync = False
+        self._suspend_pattern_apply = False
         self.drag_snapshot_saved = False
         self.press_cid = None
         self.motion_cid = None
@@ -608,7 +609,7 @@ class TabPallet(ttk.Frame):
             self.pattern_stats_frame,
             columns=columns,
             show="headings",
-            height=10,
+            height=14,
         )
         headings = {
             "pattern": "Wzór",
@@ -643,16 +644,6 @@ class TabPallet(ttk.Frame):
             wraplength=520,
         )
         detail_label.grid(row=1, column=0, columnspan=2, sticky="w", padx=6, pady=(6, 0))
-
-        self.pattern_warning_var = tk.StringVar(value="")
-        ttk.Label(
-            self.pattern_stats_frame,
-            textvariable=self.pattern_warning_var,
-            justify="left",
-            foreground="darkred",
-            font=("TkDefaultFont", 9, "bold"),
-            wraplength=520,
-        ).grid(row=2, column=0, columnspan=2, sticky="w", padx=6, pady=(4, 6))
 
         self.pattern_tree.bind("<<TreeviewSelect>>", self.on_pattern_select)
 
@@ -1768,7 +1759,7 @@ class TabPallet(ttk.Frame):
             self.ax_even,
         ]:
             return
-        if self._toolbar_busy():
+        if TabPallet._toolbar_busy(self):
             return
         if event.button == 3:
             self.on_right_click(event)
@@ -1816,7 +1807,7 @@ class TabPallet(ttk.Frame):
     def on_motion(self, event):
         if not self.drag_info or event.xdata is None or event.ydata is None:
             return
-        if self._toolbar_busy() or self.drag_button != 1:
+        if TabPallet._toolbar_busy(self) or getattr(self, "drag_button", 1) != 1:
             return
 
         if not self.drag_snapshot_saved:
@@ -1880,7 +1871,7 @@ class TabPallet(ttk.Frame):
     def on_release(self, event):
         if not self.drag_info:
             return
-        if self._toolbar_busy() or self.drag_button != 1:
+        if TabPallet._toolbar_busy(self) or getattr(self, "drag_button", 1) != 1:
             self.drag_info = None
             self.drag_button = None
             return
@@ -2400,8 +2391,6 @@ class TabPallet(ttk.Frame):
                     self.pattern_tree.delete(item)
             if hasattr(self, "pattern_detail_var"):
                 self.pattern_detail_var.set("")
-            if hasattr(self, "pattern_warning_var"):
-                self.pattern_warning_var.set("")
             return
 
         pallet_w = parse_dim(self.pallet_w_var)
@@ -2497,8 +2486,6 @@ class TabPallet(ttk.Frame):
         if not getattr(self, "pattern_scores", None):
             if hasattr(self, "pattern_detail_var"):
                 self.pattern_detail_var.set("")
-            if hasattr(self, "pattern_warning_var"):
-                self.pattern_warning_var.set("")
             return
 
         sorted_scores = sorted(
@@ -2523,30 +2510,20 @@ class TabPallet(ttk.Frame):
             )
             self.pattern_tree.insert("", "end", iid=name, values=values)
 
-        best_key = getattr(self, "best_layout_key", "")
-        if best_key and self.pattern_tree.exists(best_key):
-            self.pattern_tree.selection_set(best_key)
-            self.pattern_tree.see(best_key)
-        else:
-            first = self.pattern_tree.get_children()
-            if first:
-                self.pattern_tree.selection_set(first[0])
-        self.on_pattern_select()
-
-        warnings = []
-        for name, score in sorted_scores:
-            if score.instability_risk:
-                reason = ", ".join(score.warnings) if score.warnings else "ryzyko"
-                display = score.display_name or DISPLAY_NAME_OVERRIDES.get(
-                    name, name.replace("_", " ").capitalize()
-                )
-                warnings.append(f"{display}: {reason}")
-        if warnings and hasattr(self, "pattern_warning_var"):
-            self.pattern_warning_var.set(
-                "Uwaga na stabilność: " + "; ".join(warnings)
-            )
-        elif hasattr(self, "pattern_warning_var"):
-            self.pattern_warning_var.set("")
+        previous_flag = getattr(self, "_suspend_pattern_apply", False)
+        self._suspend_pattern_apply = True
+        try:
+            best_key = getattr(self, "best_layout_key", "")
+            if best_key and self.pattern_tree.exists(best_key):
+                self.pattern_tree.selection_set(best_key)
+                self.pattern_tree.see(best_key)
+            else:
+                first = self.pattern_tree.get_children()
+                if first:
+                    self.pattern_tree.selection_set(first[0])
+            self.on_pattern_select()
+        finally:
+            self._suspend_pattern_apply = previous_flag
 
     def on_pattern_select(self, event=None):
         if not hasattr(self, "pattern_tree") or not hasattr(
@@ -2559,6 +2536,7 @@ class TabPallet(ttk.Frame):
             self.pattern_detail_var.set("")
             return
 
+        apply_layout = not getattr(self, "_suspend_pattern_apply", False)
         key = selection[0]
         score = self.pattern_scores.get(key)
         if not score:
@@ -2568,7 +2546,8 @@ class TabPallet(ttk.Frame):
         display = score.display_name or DISPLAY_NAME_OVERRIDES.get(
             key, key.replace("_", " ").capitalize()
         )
-        self._apply_pattern_selection(display)
+        if apply_layout:
+            self._apply_pattern_selection(display)
         risk_text = (
             "Tak: " + ", ".join(score.warnings)
             if score.instability_risk and score.warnings
