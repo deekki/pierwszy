@@ -164,6 +164,11 @@ class TabPallet(ttk.Frame):
         self.pattern_display_map: Dict[str, str] = {}
         self.build_ui()
 
+    @staticmethod
+    def _option_width(options, padding: int = 2) -> int:
+        """Return the width of an OptionMenu sized to its content."""
+        return max((len(str(opt)) for opt in options), default=0) + padding
+
     def layers_linked(self) -> bool:
         """Return True if odd and even layers use the same layout algorithm."""
         try:
@@ -179,6 +184,7 @@ class TabPallet(ttk.Frame):
         inputs_panel.columnconfigure(0, weight=1)
         inputs_panel.rowconfigure(0, weight=1)
         inputs_panel.rowconfigure(1, weight=1)
+        inputs_panel.rowconfigure(2, weight=0, minsize=70)
         main_paned.add(inputs_panel, weight=2)
 
         inputs_grid = ttk.Frame(inputs_panel)
@@ -194,14 +200,16 @@ class TabPallet(ttk.Frame):
             row=0, column=0, padx=5, pady=4, sticky="w"
         )
         self.pallet_var = tk.StringVar(value=self.predefined_pallets[0]["name"])
+        pallet_options = [p["name"] for p in self.predefined_pallets]
         pallet_menu = ttk.OptionMenu(
             pallet_frame,
             self.pallet_var,
             self.predefined_pallets[0]["name"],
-            *[p["name"] for p in self.predefined_pallets],
+            *pallet_options,
             command=self.on_pallet_selected,
         )
-        pallet_menu.grid(row=0, column=1, padx=5, pady=4, sticky="ew")
+        pallet_menu.config(width=self._option_width(pallet_options))
+        pallet_menu.grid(row=0, column=1, padx=5, pady=4, sticky="w")
 
         self.pallet_w_var = tk.StringVar(value=str(self.predefined_pallets[0]["w"]))
         self.pallet_l_var = tk.StringVar(value=str(self.predefined_pallets[0]["l"]))
@@ -228,14 +236,16 @@ class TabPallet(ttk.Frame):
             row=0, column=0, padx=5, pady=4, sticky="w"
         )
         self.carton_var = tk.StringVar(value=list(self.predefined_cartons.keys())[0])
+        carton_options = list(self.predefined_cartons.keys())
         carton_menu = ttk.OptionMenu(
             carton_frame,
             self.carton_var,
             list(self.predefined_cartons.keys())[0],
-            *self.predefined_cartons.keys(),
+            *carton_options,
             command=self.on_carton_selected,
         )
-        carton_menu.grid(row=0, column=1, padx=5, pady=4, sticky="ew", columnspan=3)
+        carton_menu.config(width=self._option_width(carton_options))
+        carton_menu.grid(row=0, column=1, padx=5, pady=4, sticky="w", columnspan=3)
 
         self.box_w_var = tk.StringVar(
             value=str(
@@ -340,7 +350,7 @@ class TabPallet(ttk.Frame):
         weight_frame.grid(row=4, column=3, padx=5, pady=4, sticky="w")
 
         layers_frame = ttk.LabelFrame(inputs_panel, text="Ustawienia warstw")
-        layers_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=(0, 6))
+        layers_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=(0, 12))
         for col in range(6):
             layers_frame.columnconfigure(col, weight=1)
 
@@ -383,14 +393,16 @@ class TabPallet(ttk.Frame):
 
         ttk.Label(layers_frame, text="Tryb:").grid(row=1, column=2, padx=5, pady=4, sticky="w")
         self.center_mode_var = tk.StringVar(value="Cała warstwa")
-        ttk.OptionMenu(
+        center_mode_options = ["Cała warstwa", "Poszczególne obszary"]
+        center_mode_menu = ttk.OptionMenu(
             layers_frame,
             self.center_mode_var,
             "Cała warstwa",
-            "Cała warstwa",
-            "Poszczególne obszary",
+            *center_mode_options,
             command=self.compute_pallet,
-        ).grid(row=1, column=3, padx=5, pady=4, sticky="w")
+        )
+        center_mode_menu.config(width=self._option_width(center_mode_options))
+        center_mode_menu.grid(row=1, column=3, padx=5, pady=4, sticky="w")
 
         self.shift_even_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(
