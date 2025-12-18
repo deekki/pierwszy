@@ -179,7 +179,8 @@ class TabPallet(ttk.Frame):
 
         content_panel = ttk.Frame(main_paned)
         content_panel.columnconfigure(0, weight=1)
-        for i in range(5):
+        content_panel.columnconfigure(1, weight=1)
+        for i in range(4):
             content_panel.rowconfigure(i, weight=1 if i == 0 else 0)
         main_paned.add(content_panel, weight=4)
 
@@ -187,30 +188,30 @@ class TabPallet(ttk.Frame):
             content_panel, text="Ocena stabilności"
         )
         self.pattern_stats_frame.grid(
-            row=0, column=0, sticky="nsew", padx=5, pady=(0, 10)
+            row=0, column=0, columnspan=2, sticky="nsew", padx=5, pady=(0, 10)
         )
         self.pattern_stats_frame.columnconfigure(0, weight=1)
         self.pattern_stats_frame.rowconfigure(0, weight=1)
         self.pattern_stats_frame.rowconfigure(1, weight=0)
 
         self.summary_frame = ttk.LabelFrame(content_panel, text="Podsumowanie")
-        self.summary_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=(0, 10))
+        self.summary_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=(0, 10))
         for i in range(6):
             self.summary_frame.rowconfigure(i, weight=0)
         self.summary_frame.columnconfigure(1, weight=1)
 
         carton_frame = ttk.LabelFrame(content_panel, text="Parametry kartonu")
-        carton_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=(0, 10))
+        carton_frame.grid(row=1, column=1, sticky="nsew", padx=5, pady=(0, 10))
         for col in range(0, 4):
             carton_frame.columnconfigure(col, weight=1)
 
         layers_frame = ttk.LabelFrame(content_panel, text="Ustawienia warstw")
-        layers_frame.grid(row=3, column=0, sticky="ew", padx=5, pady=(0, 10))
+        layers_frame.grid(row=2, column=0, columnspan=2, sticky="ew", padx=5, pady=(0, 10))
         for col in range(6):
             layers_frame.columnconfigure(col, weight=1)
 
         actions_frame = ttk.LabelFrame(content_panel, text="Akcje i status")
-        actions_frame.grid(row=4, column=0, sticky="ew", padx=5, pady=(0, 5))
+        actions_frame.grid(row=3, column=0, columnspan=2, sticky="ew", padx=5, pady=(0, 5))
         actions_frame.columnconfigure(0, weight=1)
 
         self.pallet_var = tk.StringVar(value=self.predefined_pallets[0]["name"])
