@@ -8,10 +8,7 @@ from typing import List, Tuple, Dict, Optional
 
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import (
-    FigureCanvasTkAgg,
-    NavigationToolbar2Tk,
-)
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from packing_app.core import save_pattern, algorithms
 from packing_app.core.pattern_io import (
     pattern_path,
@@ -662,13 +659,6 @@ class TabPallet(ttk.Frame):
         xscroll.grid(row=1, column=0, columnspan=2, sticky="ew")
 
         self.pattern_detail_var = tk.StringVar(value="")
-        detail_label = ttk.Label(
-            self.pattern_stats_frame,
-            textvariable=self.pattern_detail_var,
-            justify="left",
-            wraplength=620,
-        )
-        detail_label.grid(row=2, column=0, columnspan=2, sticky="w", padx=6, pady=(6, 0))
 
         self.pattern_tree.bind("<<TreeviewSelect>>", self.on_pattern_select)
 
@@ -683,10 +673,6 @@ class TabPallet(ttk.Frame):
         self.canvas = FigureCanvasTkAgg(self.fig, master=chart_panel)
         canvas_widget = self.canvas.get_tk_widget()
         canvas_widget.grid(row=0, column=0, sticky="nsew", pady=(8, 0))
-        toolbar_frame = ttk.Frame(chart_panel)
-        toolbar_frame.grid(row=1, column=0, sticky="ew", pady=(6, 0))
-        self.toolbar = NavigationToolbar2Tk(self.canvas, toolbar_frame)
-        self.toolbar.update()
         self.canvas.draw()
 
         results_split.add(upper_panel, weight=3)
