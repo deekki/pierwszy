@@ -556,7 +556,7 @@ class TabPallet(ttk.Frame):
 
         self.summary_frame = ttk.LabelFrame(upper_panel, text="Podsumowanie")
         self.summary_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
-        for i in range(4):
+        for i in range(6):
             self.summary_frame.rowconfigure(i, weight=0)
         self.summary_frame.columnconfigure(1, weight=1)
 
@@ -589,12 +589,20 @@ class TabPallet(ttk.Frame):
         self.limit_label.grid(row=3, column=1, padx=6, pady=2, sticky="w")
 
         ttk.Label(self.summary_frame, text="Powierzchnie:").grid(
-            row=4, column=0, padx=6, pady=(2, 6), sticky="w"
+            row=4, column=0, padx=6, pady=2, sticky="w"
         )
         self.area_label = ttk.Label(
             self.summary_frame, text="", justify="left"
         )
-        self.area_label.grid(row=4, column=1, padx=6, pady=(2, 6), sticky="w")
+        self.area_label.grid(row=4, column=1, padx=6, pady=2, sticky="w")
+
+        ttk.Label(self.summary_frame, text="Luz przy krawędzi:").grid(
+            row=5, column=0, padx=6, pady=(2, 6), sticky="w"
+        )
+        self.clearance_label = ttk.Label(
+            self.summary_frame, text="", justify="left"
+        )
+        self.clearance_label.grid(row=5, column=1, padx=6, pady=(2, 6), sticky="w")
 
         self.pattern_stats_frame = ttk.LabelFrame(
             upper_panel, text="Ocena stabilności"
@@ -2421,6 +2429,7 @@ class TabPallet(ttk.Frame):
             self.mass_label.config(text="")
             self.limit_label.config(text="")
             self.area_label.config(text="")
+            self.clearance_label.config(text="")
             self.pattern_scores = {}
             self.best_layout_key = ""
             if hasattr(self, "pattern_tree"):
@@ -2514,7 +2523,66 @@ class TabPallet(ttk.Frame):
             )
         )
 
+        clearance_stats = self._edge_clearance_stats(pallet_w, pallet_l)
+        if clearance_stats:
+            long_min, long_max, short_min, short_max = clearance_stats
+
+            def fmt(item):
+                value, layer, carton_id = item
+                return f"{value:.1f} mm (warstwa {layer}, karton {carton_id})"
+
+            clearance_text = (
+                f"Dłuższy bok: najbliższy {fmt(long_min)}, najdalszy {fmt(long_max)}\n"
+                f"Krótszy bok: najbliższy {fmt(short_min)}, najdalszy {fmt(short_max)}"
+            )
+        else:
+            clearance_text = ""
+
+        self.clearance_label.config(text=clearance_text)
+
         self.update_pattern_stats()
+
+    def _edge_clearance_stats(self, pallet_w: float, pallet_l: float):
+        if not self.layers or pallet_w <= 0 or pallet_l <= 0:
+            return None
+
+        long_axis = "x" if pallet_w >= pallet_l else "y"
+        min_long = max_long = min_short = max_short = None
+
+        def update_stat(current, value, layer_idx, carton_id, comparator):
+            if current is None or comparator(value, current[0]):
+                return (value, layer_idx + 1, carton_id)
+            return current
+
+        for layer_idx, boxes in enumerate(self.layers):
+            transform = "Brak"
+            if layer_idx < len(self.transformations):
+                transform = self.transformations[layer_idx] or "Brak"
+
+            coords = TabPallet.apply_transformation(boxes, transform, pallet_w, pallet_l)
+            ids = (
+                self.carton_ids[layer_idx]
+                if layer_idx < len(self.carton_ids)
+                else list(range(1, len(coords) + 1))
+            )
+
+            for i, (x, y, w, h) in enumerate(coords):
+                carton_id = ids[i] if i < len(ids) else i + 1
+                clearance_x = min(x, pallet_w - (x + w))
+                clearance_y = min(y, pallet_l - (y + h))
+
+                long_clearance = clearance_x if long_axis == "x" else clearance_y
+                short_clearance = clearance_y if long_axis == "x" else clearance_x
+
+                min_long = update_stat(min_long, long_clearance, layer_idx, carton_id, lambda a, b: a < b)
+                max_long = update_stat(max_long, long_clearance, layer_idx, carton_id, lambda a, b: a > b)
+                min_short = update_stat(min_short, short_clearance, layer_idx, carton_id, lambda a, b: a < b)
+                max_short = update_stat(max_short, short_clearance, layer_idx, carton_id, lambda a, b: a > b)
+
+        if None in (min_long, max_long, min_short, max_short):
+            return None
+
+        return min_long, max_long, min_short, max_short
 
     def update_pattern_stats(self):
         if not hasattr(self, "pattern_tree"):
