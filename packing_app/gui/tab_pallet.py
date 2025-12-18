@@ -266,22 +266,22 @@ class TabPallet(ttk.Frame):
         ttk.Label(carton_frame, text="W (mm):").grid(
             row=1, column=0, padx=5, pady=4, sticky="w"
         )
-        entry_box_w = ttk.Entry(carton_frame, textvariable=self.box_w_var, width=10)
-        entry_box_w.grid(row=1, column=1, padx=5, pady=4, sticky="ew")
+        entry_box_w = ttk.Entry(carton_frame, textvariable=self.box_w_var, width=8)
+        entry_box_w.grid(row=1, column=1, padx=5, pady=4, sticky="w")
         entry_box_w.bind("<Return>", self.compute_pallet)
 
         ttk.Label(carton_frame, text="L (mm):").grid(
             row=1, column=2, padx=5, pady=4, sticky="w"
         )
-        entry_box_l = ttk.Entry(carton_frame, textvariable=self.box_l_var, width=10)
-        entry_box_l.grid(row=1, column=3, padx=5, pady=4, sticky="ew")
+        entry_box_l = ttk.Entry(carton_frame, textvariable=self.box_l_var, width=8)
+        entry_box_l.grid(row=1, column=3, padx=5, pady=4, sticky="w")
         entry_box_l.bind("<Return>", self.compute_pallet)
 
         ttk.Label(carton_frame, text="H (mm):").grid(
             row=2, column=0, padx=5, pady=4, sticky="w"
         )
-        entry_box_h = ttk.Entry(carton_frame, textvariable=self.box_h_var, width=10)
-        entry_box_h.grid(row=2, column=1, padx=5, pady=4, sticky="ew")
+        entry_box_h = ttk.Entry(carton_frame, textvariable=self.box_h_var, width=8)
+        entry_box_h.grid(row=2, column=1, padx=5, pady=4, sticky="w")
         entry_box_h.bind("<Return>", self.compute_pallet)
 
         ttk.Label(carton_frame, text="Grubość tektury (mm):").grid(
@@ -291,11 +291,11 @@ class TabPallet(ttk.Frame):
         entry_cardboard = ttk.Entry(
             carton_frame,
             textvariable=self.cardboard_thickness_var,
-            width=10,
+            width=8,
             validate="key",
             validatecommand=(self.register(self.validate_number), "%P"),
         )
-        entry_cardboard.grid(row=2, column=3, padx=5, pady=4, sticky="ew")
+        entry_cardboard.grid(row=2, column=3, padx=5, pady=4, sticky="w")
         entry_cardboard.bind("<Return>", self.compute_pallet)
 
         ttk.Label(carton_frame, text="Wymiary zewnętrzne (mm):").grid(
