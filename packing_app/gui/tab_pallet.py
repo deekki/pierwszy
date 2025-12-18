@@ -1544,12 +1544,18 @@ class TabPallet(ttk.Frame):
 
         best_key = ""
         best_pattern = []
-        best_metric = (-1, float("inf"))
+        best_metric = (-1, float("inf"), float("inf"))
+        layout_priority = {"row_by_row": -1}
         for name, pattern in patterns.items():
             penalty = scores[name].penalty if name in scores else float("inf")
-            metric = (len(pattern), penalty)
+            priority = layout_priority.get(name, 0)
+            metric = (len(pattern), penalty, priority)
             if metric[0] > best_metric[0] or (
-                metric[0] == best_metric[0] and metric[1] < best_metric[1]
+                metric[0] == best_metric[0]
+                and (
+                    metric[1] < best_metric[1]
+                    or (metric[1] == best_metric[1] and metric[2] < best_metric[2])
+                )
             ):
                 best_metric = metric
                 best_key = name
