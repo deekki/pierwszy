@@ -2525,15 +2525,16 @@ class TabPallet(ttk.Frame):
 
         clearance_stats = self._edge_clearance_stats(pallet_w, pallet_l)
         if clearance_stats:
-            long_min, long_max, short_min, short_max = clearance_stats
-
-            def fmt(item):
-                value, layer, carton_id = item
-                return f"{value:.1f} mm (warstwa {layer}, karton {carton_id})"
+            (long_value, long_layer, long_carton), (
+                short_value,
+                short_layer,
+                short_carton,
+            ) = clearance_stats
 
             clearance_text = (
-                f"Dłuższy bok: najbliższy {fmt(long_min)}, najdalszy {fmt(long_max)}\n"
-                f"Krótszy bok: najbliższy {fmt(short_min)}, najdalszy {fmt(short_max)}"
+                "Dłuższy bok: "
+                f"{long_value:.1f} mm (w {long_layer}, k {long_carton}) | "
+                f"Krótszy bok: {short_value:.1f} mm (w {short_layer}, k {short_carton})"
             )
         else:
             clearance_text = ""
@@ -2547,7 +2548,7 @@ class TabPallet(ttk.Frame):
             return None
 
         long_axis = "x" if pallet_w >= pallet_l else "y"
-        min_long = max_long = min_short = max_short = None
+        min_long = min_short = None
 
         def update_stat(current, value, layer_idx, carton_id, comparator):
             if current is None or comparator(value, current[0]):
@@ -2575,14 +2576,14 @@ class TabPallet(ttk.Frame):
                 short_clearance = clearance_y if long_axis == "x" else clearance_x
 
                 min_long = update_stat(min_long, long_clearance, layer_idx, carton_id, lambda a, b: a < b)
-                max_long = update_stat(max_long, long_clearance, layer_idx, carton_id, lambda a, b: a > b)
-                min_short = update_stat(min_short, short_clearance, layer_idx, carton_id, lambda a, b: a < b)
-                max_short = update_stat(max_short, short_clearance, layer_idx, carton_id, lambda a, b: a > b)
+                min_short = update_stat(
+                    min_short, short_clearance, layer_idx, carton_id, lambda a, b: a < b
+                )
 
-        if None in (min_long, max_long, min_short, max_short):
+        if None in (min_long, min_short):
             return None
 
-        return min_long, max_long, min_short, max_short
+        return min_long, min_short
 
     def update_pattern_stats(self):
         if not hasattr(self, "pattern_tree"):
@@ -2707,6 +2708,7 @@ class TabPallet(ttk.Frame):
             self.even_layout_var.set(display_name)
 
         self.update_layers(force=True)
+        self.update_summary()
 
     def adjust_spacing(self, delta: float) -> None:
         """Increase or decrease carton spacing by ``delta`` millimeters."""
