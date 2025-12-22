@@ -1,7 +1,13 @@
+import os
+import sys
 import tkinter as tk
 from tkinter import ttk
 
 APP_VERSION = "0.0.103"  # Increment this version string by 1 for each change.
+
+src_path = os.path.join(os.path.dirname(__file__), "src")
+if os.path.isdir(src_path):
+    sys.path.insert(0, src_path)
 
 
 def open_layer_packing(root):

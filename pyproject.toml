@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pierwszy"
+version = "0.1.0"
+requires-python = ">=3.10"
+
+[tool.ruff]
+target-version = "py310"
+ignore = ["F401"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-vv"]
+pythonpath = ["src"]
+
+[tool.setuptools]
+include-package-data = true
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+packing_app = ["data/*.xml"]
