@@ -3,24 +3,25 @@ from tkinter import ttk, messagebox, filedialog, simpledialog
 import matplotlib
 import json
 import math
-from dataclasses import dataclass, field
 from typing import List, Tuple, Dict, Optional
 
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from packing_app.core import save_pattern, algorithms
+from packing_app.core import save_pattern
 from packing_app.core.pattern_io import (
     pattern_path,
     _ensure_dir,
     PATTERN_DIR,
 )
-from palletizer_core import (
-    Carton,
-    Pallet,
-    PatternSelector,
-    PatternScore,
-    EvenOddSequencer,
+from palletizer_core import Carton, Pallet, PatternScore
+from palletizer_core.engine import (
+    DISPLAY_NAME_OVERRIDES,
+    LayerLayout,
+    LayoutComputation,
+    PalletInputs,
+    build_layouts,
+    group_cartons,
 )
 from core.utils import (
     load_cartons,
@@ -39,63 +40,6 @@ def parse_dim(var: tk.StringVar) -> float:
     except Exception:
         messagebox.showwarning("Błąd", "Wprowadzono niepoprawną wartość. Użyto 0.")
         return 0.0
-
-
-def apply_spacing(pattern, spacing):
-    """Center boxes within spaced slots."""
-    adjusted = []
-    for x, y, w, h in pattern:
-        new_w = w - spacing
-        new_h = h - spacing
-        adjusted.append((x + spacing / 2, y + spacing / 2, new_w, new_h))
-    return adjusted
-
-
-LayerLayout = List[Tuple[float, float, float, float]]
-
-
-DISPLAY_NAME_OVERRIDES = {
-    "column": "Column (W x L)",
-    "column_rotated": "Column (L x W)",
-    "row_by_row": "Row by row",
-}
-
-
-@dataclass
-class PalletInputs:
-    pallet_w: float
-    pallet_l: float
-    pallet_h: float
-    box_w: float
-    box_l: float
-    box_h: float
-    thickness: float
-    spacing: float
-    slip_count: int
-    num_layers: int
-    max_stack: float
-    include_pallet_height: bool
-
-    @property
-    def box_w_ext(self) -> float:
-        return self.box_w + 2 * self.thickness
-
-    @property
-    def box_l_ext(self) -> float:
-        return self.box_l + 2 * self.thickness
-
-
-@dataclass
-class LayoutComputation:
-    layouts: List[Tuple[int, LayerLayout, str]]
-    layout_map: Dict[str, int]
-    best_layout_name: str
-    best_even: LayerLayout
-    best_odd: LayerLayout
-    best_layout_key: str = ""
-    best_count_layout_name: str = ""
-    scores: Dict[str, PatternScore] = field(default_factory=dict)
-    display_map: Dict[str, str] = field(default_factory=dict)
 
 
 class TabPallet(ttk.Frame):
@@ -1281,43 +1225,13 @@ class TabPallet(ttk.Frame):
             )
         return new_positions
 
-    def group_cartons(self, positions):
-        """Group cartons that touch or overlap using AABB collision detection."""
-
-        def collide(a, b):
-            ax, ay, aw, ah = a
-            bx, by, bw, bh = b
-            return not (
-                ax + aw <= bx or bx + bw <= ax or ay + ah <= by or by + bh <= ay
-            )
-
-        groups = []
-        used = set()
-        for i in range(len(positions)):
-            if i in used:
-                continue
-            stack = [i]
-            used.add(i)
-            current_group = []
-            while stack:
-                idx = stack.pop()
-                current_group.append(positions[idx])
-                for j in range(len(positions)):
-                    if j in used:
-                        continue
-                    if collide(positions[idx], positions[j]):
-                        used.add(j)
-                        stack.append(j)
-            groups.append(current_group)
-        return groups
-
     def detect_collisions(self, positions, pallet_w, pallet_l):
         """Return indices of cartons that overlap or lie outside the pallet."""
 
         index_map = {id(pos): idx for idx, pos in enumerate(positions)}
         collisions = set()
 
-        for group in self.group_cartons(positions):
+        for group in group_cartons(positions):
             if len(group) > 1:
                 for pos in group:
                     collisions.add(index_map[id(pos)])
@@ -1327,43 +1241,6 @@ class TabPallet(ttk.Frame):
                 collisions.add(idx)
 
         return collisions
-
-    def center_layout(self, positions, pallet_w, pallet_l):
-        if not positions or not self.center_var.get():
-            return positions
-        if self.center_mode_var.get() == "Cała warstwa":
-            x_min = min(x for x, y, w, h in positions)
-            x_max = max(x + w for x, y, w, h in positions)
-            y_min = min(y for x, y, w, h in positions)
-            y_max = max(y + h for x, y, w, h in positions)
-            offset_x = (pallet_w - (x_max - x_min)) / 2 - x_min
-            offset_y = (pallet_l - (y_max - y_min)) / 2 - y_min
-            return [(x + offset_x, y + offset_y, w, h) for x, y, w, h in positions]
-        else:
-            groups = self.group_cartons(positions)
-            centered_positions = []
-            for group in groups:
-                x_min = min(x for x, y, w, h in group)
-                x_max = max(x + w for x, y, w, h in group)
-                y_min = min(y for x, y, w, h in group)
-                y_max = max(y + h for x, y, w, h in group)
-                offset_x = (pallet_w - (x_max - x_min)) / 2 - x_min
-                offset_y = (pallet_l - (y_max - y_min)) / 2 - y_min
-                centered_positions.extend(
-                    [(x + offset_x, y + offset_y, w, h) for x, y, w, h in group]
-                )
-
-            # If centering individual groups makes them collide, fall back to
-            # centering the entire layer instead of merging the groups.
-            if len(self.group_cartons(centered_positions)) != len(groups):
-                x_min = min(x for x, y, w, h in positions)
-                x_max = max(x + w for x, y, w, h in positions)
-                y_min = min(y for x, y, w, h in positions)
-                y_max = max(y + h for x, y, w, h in positions)
-                offset_x = (pallet_w - (x_max - x_min)) / 2 - x_min
-                offset_y = (pallet_l - (y_max - y_min)) / 2 - y_min
-                return [(x + offset_x, y + offset_y, w, h) for x, y, w, h in positions]
-            return centered_positions
 
     def snap_position(self, x, y, w, h, pallet_w, pallet_l, boxes, tol=10):
         """Snap coordinates to pallet edges or nearby cartons."""
@@ -1484,85 +1361,18 @@ class TabPallet(ttk.Frame):
 
     def _build_layouts(self, inputs: PalletInputs) -> LayoutComputation:
         """Generate layout options and best even/odd layers for the pallet."""
-
-        pallet = Pallet(inputs.pallet_w, inputs.pallet_l, inputs.pallet_h)
-        calc_carton = Carton(
-            inputs.box_w_ext + inputs.spacing,
-            inputs.box_l_ext + inputs.spacing,
-            inputs.box_h,
+        result = build_layouts(
+            inputs,
+            maximize_mixed=self.maximize_mixed.get(),
+            center_enabled=self.center_var.get(),
+            center_mode=self.center_mode_var.get(),
+            shift_even=self.shift_even_var.get(),
+            row_by_row_customizer=self._customize_row_by_row_pattern,
         )
-        selector = PatternSelector(calc_carton, pallet)
-        patterns = selector.generate_all(maximize_mixed=self.maximize_mixed.get())
-
-        if "row_by_row" in patterns:
-            custom_pattern, _, _ = self._customize_row_by_row_pattern(
-                calc_carton, pallet, patterns.get("row_by_row")
-            )
-            patterns["row_by_row"] = custom_pattern if custom_pattern is not None else []
-        else:
-            self._set_row_by_row_counts(0, 0)
-
-        scores: Dict[str, PatternScore] = {}
-        layout_entries: List[Tuple[int, LayerLayout, str]] = []
-        display_map: Dict[str, str] = {}
-        for name, pattern in patterns.items():
-            score = selector.score(pattern)
-            score.name = name
-            score.display_name = DISPLAY_NAME_OVERRIDES.get(
-                name, name.replace("_", " ").capitalize()
-            )
-            scores[name] = score
-            display_map[name] = score.display_name
-
-        for name, pattern in patterns.items():
-            adjusted = apply_spacing(pattern, inputs.spacing)
-            centered = self.center_layout(adjusted, inputs.pallet_w, inputs.pallet_l)
-            display = scores[name].display_name
-            layout_entries.append((len(centered), centered, display))
-
-        best_key = ""
-        best_pattern = []
-        best_metric = (-1, float("inf"))
-        for name, pattern in patterns.items():
-            penalty = scores[name].penalty if name in scores else float("inf")
-            metric = (len(pattern), penalty)
-            if metric[0] > best_metric[0] or (
-                metric[0] == best_metric[0] and metric[1] < best_metric[1]
-            ):
-                best_metric = metric
-                best_key = name
-                best_pattern = pattern
-
-        seq = EvenOddSequencer(best_pattern, calc_carton, pallet)
-        even_base, odd_shifted = seq.best_shift()
-        even_centered = self.center_layout(even_base, inputs.pallet_w, inputs.pallet_l)
-        odd_centered = self.center_layout(odd_shifted, inputs.pallet_w, inputs.pallet_l)
-        if self.shift_even_var.get():
-            best_even = apply_spacing(odd_centered, inputs.spacing)
-            best_odd = apply_spacing(even_centered, inputs.spacing)
-        else:
-            best_even = apply_spacing(even_centered, inputs.spacing)
-            best_odd = apply_spacing(odd_centered, inputs.spacing)
-
-        layout_map = {name: idx for idx, (_, __, name) in enumerate(layout_entries)}
-        best_layout_name = DISPLAY_NAME_OVERRIDES.get(
-            best_key, best_key.replace("_", " ").capitalize()
+        self._set_row_by_row_counts(
+            result.row_by_row_vertical, result.row_by_row_horizontal
         )
-        best_count_layout_name = DISPLAY_NAME_OVERRIDES.get(
-            best_key, best_key.replace("_", " ").capitalize()
-        )
-
-        return LayoutComputation(
-            layouts=layout_entries,
-            layout_map=layout_map,
-            best_layout_name=best_layout_name,
-            best_even=best_even,
-            best_odd=best_odd,
-            best_layout_key=best_key,
-            best_count_layout_name=best_count_layout_name,
-            scores=scores,
-            display_map=display_map,
-        )
+        return result
 
     def _finalize_results(self, inputs: PalletInputs, result: LayoutComputation) -> None:
         """Persist computed layouts and refresh dependent UI elements."""
@@ -2424,8 +2234,6 @@ class TabPallet(ttk.Frame):
         box_l = parse_dim(self.box_l_var)
         box_h = parse_dim(self.box_h_var)
         thickness = parse_dim(self.cardboard_thickness_var)
-        slip_count = int(parse_dim(self.slip_count_var))
-
         num_layers = getattr(self, "num_layers", int(parse_dim(self.num_layers_var)))
         box_h_ext = box_h + 2 * thickness
         cartons_per_odd = len(self.layers[0]) if self.layers else 0
@@ -2437,7 +2245,6 @@ class TabPallet(ttk.Frame):
             for i in range(1, num_layers + 1)
         )
         total_products = total_cartons * self._get_products_per_carton()
-        num_slip = getattr(self, "slip_count", slip_count)
         stack_height = num_layers * box_h_ext
         if self.include_pallet_height_var.get():
             stack_height += pallet_h
@@ -2618,9 +2425,9 @@ class TabPallet(ttk.Frame):
                 self.pattern_tree.see(target_key)
             self.on_pattern_select()
         finally:
-            restore_flag = lambda prev=previous_flag: setattr(
-                self, "_suspend_pattern_apply", prev
-            )
+            def restore_flag(prev=previous_flag):
+                setattr(self, "_suspend_pattern_apply", prev)
+
             if hasattr(self, "after"):
                 self.after_idle(restore_flag)
             else:

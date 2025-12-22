@@ -1,10 +1,7 @@
 import types
 from packing_app.gui import tab_pallet
-from packing_app.gui.tab_pallet import (
-    TabPallet,
-    PalletInputs,
-    LayoutComputation,
-)
+from packing_app.gui.tab_pallet import TabPallet
+from palletizer_core.engine import LayoutComputation, PalletInputs
 
 
 class DummyVar:
