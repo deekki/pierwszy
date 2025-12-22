@@ -2,18 +2,22 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import lru_cache
+from pathlib import Path
 from typing import Dict, List, Tuple
 
+import logging
 import math
-
 import os
+import sys
 
 try:  # pragma: no cover - exercised via tests when yaml is available
     import yaml  # type: ignore
 except ModuleNotFoundError:  # pragma: no cover - handled in load_weights
     yaml = None  # type: ignore
 
-from packing_app.core import algorithms
+from palletizer_core import algorithms
+
+logger = logging.getLogger(__name__)
 
 from .metrics import (
     compute_edge_buffer_metrics,
@@ -59,17 +63,40 @@ def _fallback_parse_settings(stream) -> Dict[str, float]:
     return parsed
 
 
+def resolve_settings_yaml_path() -> Path | None:
+    env_path = os.getenv("PALLETIZER_SETTINGS_YAML")
+    if env_path:
+        candidate = Path(env_path)
+        if candidate.is_file():
+            return candidate
+
+    argv_path = Path(sys.argv[0]) if sys.argv[0] else None
+    if argv_path and argv_path.is_file():
+        base_dir = argv_path.parent
+    else:
+        base_dir = Path.cwd()
+    base_candidate = base_dir / "settings.yaml"
+    if base_candidate.is_file():
+        return base_candidate
+
+    repo_candidate = Path(__file__).resolve().parents[2] / "settings.yaml"
+    if repo_candidate.is_file():
+        return repo_candidate
+    return None
+
+
 @lru_cache(maxsize=None)
 def load_weights() -> Dict[str, float]:
     """Load scoring weights from ``settings.yaml`` when available."""
 
-    settings_path = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)), "settings.yaml"
-    )
+    settings_path = resolve_settings_yaml_path()
     data: Dict[str, float] = {}
-    if os.path.exists(settings_path):
+    if settings_path is None:
+        logger.info("settings.yaml not found, using DEFAULT_WEIGHTS")
+    else:
+        logger.info("Using settings.yaml from: %s", settings_path)
         try:
-            with open(settings_path, "r", encoding="utf-8") as f:
+            with settings_path.open("r", encoding="utf-8") as f:
                 if yaml is not None:
                     loaded = yaml.safe_load(f) or {}
                     if isinstance(loaded, dict):

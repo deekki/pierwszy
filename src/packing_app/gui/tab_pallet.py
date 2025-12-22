@@ -8,10 +8,18 @@ from typing import List, Tuple, Dict, Optional
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from palletizer_core.pattern_format import (
+    apply_pattern_data as apply_pattern_data_core,
+    gather_pattern_data as gather_pattern_data_core,
+)
 from palletizer_core.pattern_io import (
     ensure_pattern_dir,
     get_pattern_dir,
     save_pattern,
+)
+from palletizer_core.transformations import (
+    apply_transformation as apply_transformation_core,
+    inverse_transformation as inverse_transformation_core,
 )
 from packing_app.gui.pallet_state_apply import apply_layout_result_to_tab_state
 from palletizer_core import Carton, Pallet, PatternScore
@@ -1187,46 +1195,12 @@ class TabPallet(ttk.Frame):
 
     @staticmethod
     def apply_transformation(positions, transform, pallet_w, pallet_l):
-        new_positions = []
-        for x, y, w, h in positions:
-            if transform == "Brak":
-                new_positions.append((x, y, w, h))
-            elif transform == "Odbicie wzdłuż dłuższego boku":
-                if pallet_w >= pallet_l:
-                    new_x = pallet_w - x - w
-                    new_y = y
-                else:
-                    new_x = x
-                    new_y = pallet_l - y - h
-                new_positions.append((new_x, new_y, w, h))
-            elif transform == "Odbicie wzdłuż krótszego boku":
-                if pallet_w < pallet_l:
-                    new_x = pallet_w - x - w
-                    new_y = y
-                else:
-                    new_x = x
-                    new_y = pallet_l - y - h
-                new_positions.append((new_x, new_y, w, h))
-            elif transform == "Obrót 180°":
-                new_x = pallet_w - x - w
-                new_y = pallet_l - y - h
-                new_positions.append((new_x, new_y, w, h))
-        return new_positions
+        return apply_transformation_core(positions, transform, pallet_w, pallet_l)
 
     @staticmethod
     def inverse_transformation(positions, transform, pallet_w, pallet_l):
         """Reverse the transformation applied to the positions."""
-        new_positions = []
-        for x, y, w, h in positions:
-            new_positions.extend(
-                TabPallet.apply_transformation(
-                    [(x, y, w, h)],
-                    transform,
-                    pallet_w,
-                    pallet_l,
-                )
-            )
-        return new_positions
+        return inverse_transformation_core(positions, transform, pallet_w, pallet_l)
 
     def detect_collisions(self, positions, pallet_w, pallet_l):
         """Return indices of cartons that overlap or lie outside the pallet."""
@@ -2502,49 +2476,11 @@ class TabPallet(ttk.Frame):
 
     def gather_pattern_data(self, name: str = "") -> dict:
         """Collect current pallet layout as a JSON-serialisable dict."""
-        pallet_w = parse_dim(self.pallet_w_var)
-        pallet_l = parse_dim(self.pallet_l_var)
-        pallet_h = parse_dim(self.pallet_h_var)
-        box_w = parse_dim(self.box_w_var)
-        box_l = parse_dim(self.box_l_var)
-        box_h = parse_dim(self.box_h_var)
-        num_layers = getattr(self, "num_layers", int(parse_dim(self.num_layers_var)))
-        data = {
-            "name": name,
-            "dimensions": {"width": pallet_w, "length": pallet_l, "height": pallet_h},
-            "productDimensions": {"width": box_w, "length": box_l, "height": box_h},
-            "layers": self.layers[:num_layers],
-        }
-        return data
+        return gather_pattern_data_core(self, name=name, parse_dim=parse_dim)
 
     def apply_pattern_data(self, data: dict) -> None:
         """Load pallet layout from a dictionary."""
-        dims = data.get("dimensions", {})
-        self.pallet_w_var.set(str(dims.get("width", "")))
-        self.pallet_l_var.set(str(dims.get("length", "")))
-        self.pallet_h_var.set(str(dims.get("height", "")))
-        prod = data.get("productDimensions", {})
-        self.box_w_var.set(str(prod.get("width", "")))
-        self.box_l_var.set(str(prod.get("length", "")))
-        self.box_h_var.set(str(prod.get("height", "")))
-        layers = data.get("layers", [])
-        if layers:
-            self.layers = [list(layer) for layer in layers]
-            self.carton_ids = [list(range(1, len(layer) + 1)) for layer in self.layers]
-            self.num_layers = len(self.layers)
-            setter = getattr(self, "_set_layer_field", None)
-            if setter is not None and hasattr(self, "num_layers_var"):
-                setter(self.num_layers_var, self.num_layers)
-            elif hasattr(self, "num_layers_var") and hasattr(
-                self.num_layers_var, "set"
-            ):
-                self.num_layers_var.set(str(self.num_layers))
-            self.layer_patterns = ["" for _ in self.layers]
-            self.transformations = ["Brak" for _ in self.layers]
-            if hasattr(self, "undo_stack"):
-                self.undo_stack.clear()
-            self.draw_pallet()
-            self.update_summary()
+        apply_pattern_data_core(self, data)
 
     def _modifier_active(self, event, mask: int) -> bool:
         gui_event = getattr(event, "guiEvent", None)

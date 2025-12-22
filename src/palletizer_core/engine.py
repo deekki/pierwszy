@@ -73,7 +73,7 @@ def group_cartons(positions: LayerLayout) -> List[LayerLayout]:
     def collide(a: Tuple[float, float, float, float], b: Tuple[float, float, float, float]) -> bool:
         ax, ay, aw, ah = a
         bx, by, bw, bh = b
-        return not (ax + aw <= bx or bx + bw <= ax or ay + ah <= by or ay + bh <= ay)
+        return not (ax + aw <= bx or bx + bw <= ax or ay + ah <= by or by + bh <= ay)
 
     groups = []
     used = set()

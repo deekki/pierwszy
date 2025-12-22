@@ -102,12 +102,29 @@ def test_load_weights_without_yaml(tmp_path, monkeypatch):
 
     selector.load_weights.cache_clear()
     monkeypatch.setattr(selector, "yaml", None, raising=False)
-    monkeypatch.setattr(selector.os.path, "join", lambda *args: str(settings_path))
+    monkeypatch.setattr(selector, "resolve_settings_yaml_path", lambda: settings_path)
 
     weights = selector.load_weights()
 
     assert weights["layer_eff"] == pytest.approx(2.5)
     assert weights["stability"] == pytest.approx(3.5)
     assert weights["cube_eff"] == pytest.approx(selector.DEFAULT_WEIGHTS["cube_eff"])
+
+    selector.load_weights.cache_clear()
+
+
+def test_load_weights_uses_env_yaml(tmp_path, monkeypatch):
+    settings_path = tmp_path / "settings.yaml"
+    settings_path.write_text("layer_eff: 4.0\ncube_eff: 2.0\n", encoding="utf-8")
+
+    selector.load_weights.cache_clear()
+    monkeypatch.setenv("PALLETIZER_SETTINGS_YAML", str(settings_path))
+    monkeypatch.setattr(selector, "yaml", None, raising=False)
+
+    weights = selector.load_weights()
+
+    assert weights["layer_eff"] == pytest.approx(4.0)
+    assert weights["cube_eff"] == pytest.approx(2.0)
+    assert weights["stability"] == pytest.approx(selector.DEFAULT_WEIGHTS["stability"])
 
     selector.load_weights.cache_clear()
