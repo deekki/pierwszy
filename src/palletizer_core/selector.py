@@ -211,6 +211,7 @@ class PatternSelector:
         maximize_mixed: bool = False,
         extended_library: bool = False,
         dynamic_variants: bool = False,
+        deep_search: bool = False,
     ) -> Dict[str, Pattern]:
         """Return raw patterns keyed by algorithm name.
 
@@ -283,6 +284,19 @@ class PatternSelector:
             patterns.update(generate_block3(self.carton, self.pallet))
             patterns.update(generate_block4(self.carton, self.pallet))
             patterns.update(generate_hybrid(self.carton, self.pallet))
+
+        if deep_search:
+            strip_layouts = algorithms.generate_strip_layouts(
+                pallet_w, pallet_l, box_w, box_l, max_variants=20
+            )
+            for idx, layout in enumerate(strip_layouts, start=1):
+                patterns[f"strip_dp_{idx}"] = layout
+
+            guillotine_layouts = algorithms.generate_guillotine_layouts(
+                pallet_w, pallet_l, box_w, box_l, max_variants=30
+            )
+            for idx, layout in enumerate(guillotine_layouts, start=1):
+                patterns[f"guillotine_{idx}"] = layout
 
         return patterns
 

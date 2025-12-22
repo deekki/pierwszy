@@ -24,7 +24,7 @@ def test_build_layouts_baseline_matches_previous_results():
         shift_even=False,
     )
 
-    assert result.best_layout_name == "Interlock"
+    assert result.best_layout_name == "Mixed"
     assert len(result.layouts) == 7
 
     inputs_alt = PalletInputs(

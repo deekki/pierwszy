@@ -13,7 +13,10 @@ class SanityPolicy:
     min_stack_height_boxes: int = 2
     min_column_count: int = 3
     single_column_ratio: float = 0.6
+    min_row_count: int = 3
+    single_row_ratio: float = 0.6
     max_islands: int = 2
+    min_area_ratio: float = 0.6
     eps: float = 1e-6
     touch_eps: float = 1e-6
 
@@ -52,6 +55,21 @@ def is_single_carton_column(
     counts = [len(col) for col in columns.values()]
     single_cols = sum(1 for c in counts if c < min_stack_height_boxes)
     return single_cols / max(len(counts), 1) >= 0.6
+
+
+def is_single_carton_row(
+    layout: LayerLayout,
+    min_stack_width_boxes: int = 2,
+    eps: float = 1e-6,
+) -> bool:
+    if not layout:
+        return False
+    rows = layout_rows_y(layout, eps=eps)
+    if len(rows) < 2:
+        return False
+    counts = [len(row) for row in rows.values()]
+    single_rows = sum(1 for c in counts if c < min_stack_width_boxes)
+    return single_rows / max(len(counts), 1) >= 0.6
 
 
 def _touches(
@@ -108,6 +126,14 @@ def sanity_flags(
         eps=policy.eps,
     ):
         flags.add("single_carton_column")
+
+    rows = layout_rows_y(layout, eps=policy.eps)
+    if len(rows) >= policy.min_row_count and is_single_carton_row(
+        layout,
+        min_stack_width_boxes=policy.min_stack_height_boxes,
+        eps=policy.eps,
+    ):
+        flags.add("single_carton_row")
 
     islands = connected_components(layout, touch_eps=policy.touch_eps)
     if islands > policy.max_islands:
