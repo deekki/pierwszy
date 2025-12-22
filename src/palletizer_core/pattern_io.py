@@ -9,13 +9,7 @@ def get_pattern_dir() -> str:
     env_dir = os.getenv("PALLETIZER_PATTERN_DIR")
     if env_dir:
         return os.path.abspath(os.path.expanduser(env_dir))
-    default_dir = os.path.join(
-        os.path.dirname(__file__),
-        "..",
-        "packing_app",
-        "data",
-        "pallet_patterns",
-    )
+    default_dir = os.path.join(os.getcwd(), "data", "pallet_patterns")
     return os.path.abspath(default_dir)
 
 
