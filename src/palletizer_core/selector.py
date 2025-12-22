@@ -26,6 +26,13 @@ from .metrics import (
     compute_orientation_mix,
 )
 from .models import Carton, Pallet
+from .pattern_families import (
+    generate_block2,
+    generate_block3,
+    generate_block4,
+    generate_hybrid,
+)
+from .signature import layout_signature
 
 # Pattern is list of rectangles (x, y, w, l)
 Pattern = List[Tuple[float, float, float, float]]
@@ -199,7 +206,9 @@ class PatternSelector:
             pattern, default_orientation=self.carton.width >= self.carton.length
         )
 
-    def generate_all(self, *, maximize_mixed: bool = False) -> Dict[str, Pattern]:
+    def generate_all(
+        self, *, maximize_mixed: bool = False, extended_library: bool = False
+    ) -> Dict[str, Pattern]:
         """Return raw patterns keyed by algorithm name.
 
         Parameters
@@ -262,6 +271,22 @@ class PatternSelector:
             pallet_w, pallet_l, box_w, box_l
         )
         patterns["dynamic"] = dynamic
+
+        if extended_library:
+            patterns.update(generate_block2(self.carton, self.pallet))
+            patterns.update(generate_block3(self.carton, self.pallet))
+            patterns.update(generate_block4(self.carton, self.pallet))
+            patterns.update(generate_hybrid(self.carton, self.pallet))
+
+            deduped: Dict[str, Pattern] = {}
+            signatures = set()
+            for name, pattern in patterns.items():
+                signature = layout_signature(pattern)
+                if signature in signatures:
+                    continue
+                signatures.add(signature)
+                deduped[name] = pattern
+            return deduped
 
         return patterns
 

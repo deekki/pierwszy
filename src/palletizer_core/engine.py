@@ -307,6 +307,11 @@ def build_layouts(
     row_by_row_customizer: Optional[
         Callable[[Carton, Pallet, LayerLayout | None], tuple[LayerLayout | None, int, int]]
     ] = None,
+    *,
+    extended_library: bool = False,
+    allow_offsets: bool = False,
+    min_support: float = 0.80,
+    assume_full_support: bool = False,
 ) -> LayoutComputation:
     pallet = Pallet(inputs.pallet_w, inputs.pallet_l, inputs.pallet_h)
     calc_carton = Carton(
@@ -315,7 +320,9 @@ def build_layouts(
         inputs.box_h,
     )
     selector = PatternSelector(calc_carton, pallet)
-    patterns = selector.generate_all(maximize_mixed=maximize_mixed)
+    patterns = selector.generate_all(
+        maximize_mixed=maximize_mixed, extended_library=extended_library
+    )
 
     row_by_row_vertical = 0
     row_by_row_horizontal = 0
@@ -366,7 +373,14 @@ def build_layouts(
             best_key = name
             best_pattern = pattern
 
-    seq = EvenOddSequencer(best_pattern, calc_carton, pallet)
+    seq = EvenOddSequencer(
+        best_pattern,
+        calc_carton,
+        pallet,
+        allow_offsets=allow_offsets,
+        min_support=min_support,
+        assume_full_support=assume_full_support,
+    )
     even_base, odd_shifted = seq.best_shift()
     even_centered = center_layout(
         even_base, inputs.pallet_w, inputs.pallet_l, center_enabled, center_mode

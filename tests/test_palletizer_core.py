@@ -128,3 +128,16 @@ def test_load_weights_uses_env_yaml(tmp_path, monkeypatch):
     assert weights["stability"] == pytest.approx(selector.DEFAULT_WEIGHTS["stability"])
 
     selector.load_weights.cache_clear()
+
+
+def test_generate_all_extended_library_adds_block_patterns():
+    carton = Carton(width=200, length=150)
+    pallet = Pallet(width=1200, length=800)
+    selector = PatternSelector(carton, pallet)
+
+    patterns = selector.generate_all(extended_library=True)
+
+    assert any(name.startswith("block2") for name in patterns)
+    assert any(name.startswith("block3") for name in patterns)
+    assert any(name.startswith("block4") for name in patterns)
+    assert any(name.startswith("hybrid") for name in patterns)

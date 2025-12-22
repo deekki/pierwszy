@@ -8,6 +8,7 @@ from .metrics import (
     compute_orientation_mix,
 )
 from .models import Carton, Pallet
+from .support import min_support_fraction as layer_min_support
 
 EPS = 1e-6
 
@@ -18,10 +19,22 @@ Pattern = List[Tuple[float, float, float, float]]
 class EvenOddSequencer:
     """Decide the relative offset / rotation for odd layers."""
 
-    def __init__(self, pattern: Pattern, carton: Carton, pallet: Pallet) -> None:
+    def __init__(
+        self,
+        pattern: Pattern,
+        carton: Carton,
+        pallet: Pallet,
+        *,
+        allow_offsets: bool = False,
+        min_support: float = 0.80,
+        assume_full_support: bool = False,
+    ) -> None:
         self.pattern = pattern
         self.carton = carton
         self.pallet = pallet
+        self.allow_offsets = allow_offsets
+        self.min_support = min_support
+        self.assume_full_support = assume_full_support
 
     def _shift_pattern(self, pattern: Pattern, dx: float, dy: float) -> Pattern:
         return [(x + dx, y + dy, width, length) for x, y, width, length in pattern]
@@ -146,6 +159,24 @@ class EvenOddSequencer:
 
         dx_options = list(self._generate_offsets(max_left, max_right, self.carton.width))
         dy_options = list(self._generate_offsets(max_down, max_up, self.carton.length))
+        if self.allow_offsets:
+            half_width = round(self.carton.width / 2.0, 4) if self.carton.width > 0 else 0.0
+            half_length = (
+                round(self.carton.length / 2.0, 4) if self.carton.length > 0 else 0.0
+            )
+            if half_width > EPS:
+                if half_width <= max_right + EPS:
+                    dx_options.append(half_width)
+                if half_width <= max_left + EPS:
+                    dx_options.append(-half_width)
+            if half_length > EPS:
+                if half_length <= max_up + EPS:
+                    dy_options.append(half_length)
+                if half_length <= max_down + EPS:
+                    dy_options.append(-half_length)
+
+        dx_options = list(dict.fromkeys(dx_options))
+        dy_options = list(dict.fromkeys(dy_options))
 
         candidates: List[Pattern] = [even]
         rotated = self._rotate_pattern(self.pattern)
@@ -160,6 +191,10 @@ class EvenOddSequencer:
                     candidate = self._shift_pattern(base_pattern, dx, dy)
                     if not self._is_valid(candidate):
                         continue
+                    if self.allow_offsets and not self.assume_full_support:
+                        support = layer_min_support(candidate, even)
+                        if support < self.min_support:
+                            continue
                     score = self._score_candidate(candidate, dx, dy)
                     if score > best_score + EPS:
                         best_score = score

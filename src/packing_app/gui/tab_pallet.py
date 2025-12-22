@@ -383,6 +383,54 @@ class TabPallet(ttk.Frame):
             command=self.compute_pallet,
         ).grid(row=2, column=5, padx=5, pady=4, sticky="w")
 
+        self.extended_library_var = tk.BooleanVar(value=False)
+        self.allow_offsets_var = tk.BooleanVar(value=False)
+        self.min_support_var = tk.StringVar(value="0.80")
+        self.assume_full_support_var = tk.BooleanVar(value=False)
+        self.generated_patterns_var = tk.StringVar(value="Generated patterns: 0")
+
+        advanced_frame = ttk.LabelFrame(layers_frame, text="Zaawansowane")
+        advanced_frame.grid(
+            row=5, column=0, columnspan=6, padx=5, pady=6, sticky="we"
+        )
+        ttk.Checkbutton(
+            advanced_frame,
+            text="Extended library patterns",
+            variable=self.extended_library_var,
+            command=self.compute_pallet,
+        ).grid(row=0, column=0, padx=5, pady=4, sticky="w")
+        ttk.Checkbutton(
+            advanced_frame,
+            text="Allow offsets (brick) with support check",
+            variable=self.allow_offsets_var,
+            command=self.compute_pallet,
+        ).grid(row=0, column=1, padx=5, pady=4, sticky="w")
+        ttk.Label(advanced_frame, text="Min support fraction:").grid(
+            row=0, column=2, padx=5, pady=4, sticky="e"
+        )
+        min_support_entry = ttk.Entry(
+            advanced_frame,
+            textvariable=self.min_support_var,
+            width=6,
+            validate="key",
+            validatecommand=(self.register(self.validate_number), "%P"),
+        )
+        min_support_entry.grid(row=0, column=3, padx=5, pady=4, sticky="w")
+        min_support_entry.bind("<Return>", self.compute_pallet)
+        min_support_entry.bind("<FocusOut>", self.compute_pallet)
+        ttk.Label(advanced_frame, text="(0.0–1.0)").grid(
+            row=0, column=4, padx=4, pady=4, sticky="w"
+        )
+        ttk.Checkbutton(
+            advanced_frame,
+            text="Assume full support with tie-sheet",
+            variable=self.assume_full_support_var,
+            command=self.compute_pallet,
+        ).grid(row=1, column=0, padx=5, pady=4, sticky="w")
+        ttk.Label(advanced_frame, textvariable=self.generated_patterns_var).grid(
+            row=1, column=1, padx=5, pady=4, sticky="w"
+        )
+
         ttk.Label(layers_frame, text="Liczba przekładek:").grid(
             row=3, column=0, padx=5, pady=4, sticky="w"
         )
@@ -1341,6 +1389,11 @@ class TabPallet(ttk.Frame):
 
     def _build_layouts(self, inputs: PalletInputs) -> LayoutComputation:
         """Generate layout options and best even/odd layers for the pallet."""
+        try:
+            min_support = parse_float(self.min_support_var.get())
+        except Exception:
+            min_support = 0.80
+        min_support = max(0.0, min(1.0, min_support))
         result = build_layouts(
             inputs,
             maximize_mixed=self.maximize_mixed.get(),
@@ -1348,6 +1401,10 @@ class TabPallet(ttk.Frame):
             center_mode=self.center_mode_var.get(),
             shift_even=self.shift_even_var.get(),
             row_by_row_customizer=self._customize_row_by_row_pattern,
+            extended_library=self.extended_library_var.get(),
+            allow_offsets=self.allow_offsets_var.get(),
+            min_support=min_support,
+            assume_full_support=self.assume_full_support_var.get(),
         )
         self._set_row_by_row_counts(
             result.row_by_row_vertical, result.row_by_row_horizontal
@@ -1358,6 +1415,7 @@ class TabPallet(ttk.Frame):
         """Persist computed layouts and refresh dependent UI elements."""
 
         apply_layout_result_to_tab_state(self, inputs, result)
+        self.generated_patterns_var.set(f"Generated patterns: {len(result.layouts)}")
 
     def draw_pallet(self):
         pallet_w = parse_dim(self.pallet_w_var)
