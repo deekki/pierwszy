@@ -3,7 +3,7 @@ from tkinter import ttk
 
 from .base_editor import BaseListEditor
 
-from core.utils import load_auxiliary_materials, save_auxiliary_materials
+from packing_app.data.repository import load_auxiliary_materials, save_auxiliary_materials
 
 
 class TabAuxiliaryMaterials(BaseListEditor):

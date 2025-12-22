@@ -2,9 +2,7 @@ import os
 import xml.etree.ElementTree as ET
 from functools import lru_cache
 
-DATA_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)), 'packing_app', 'data'
-)
+DATA_DIR = os.path.join(os.path.dirname(__file__))
 
 
 def _load_xml(path: str) -> ET.Element:
@@ -268,4 +266,3 @@ def save_slip_sheets(weights: list) -> None:
     tree = ET.ElementTree(root)
     tree.write(os.path.join(DATA_DIR, 'slip_sheets.xml'), encoding='utf-8', xml_declaration=True)
     load_slip_sheets.cache_clear()
-

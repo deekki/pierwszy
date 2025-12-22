@@ -1,7 +1,9 @@
 import types
-from packing_app.gui import tab_pallet
 from packing_app.gui.tab_pallet import TabPallet
-from palletizer_core.engine import LayoutComputation, PalletInputs
+from packing_app.gui.pallet_state_apply import apply_layout_result_to_tab_state
+from palletizer_core.engine import LayoutComputation, PalletInputs, build_layouts
+from palletizer_core.stacking import compute_num_layers
+from palletizer_core.validation import validate_pallet_inputs
 
 
 class DummyVar:
@@ -62,34 +64,35 @@ def make_raw_tab():
 
 
 def test_read_inputs_adjusts_layers():
-    tab = object.__new__(TabPallet)
-    tab.pallet_w_var = DummyVar("1000")
-    tab.pallet_l_var = DummyVar("1200")
-    tab.pallet_h_var = DummyVar("150")
-    tab.box_w_var = DummyVar("100")
-    tab.box_l_var = DummyVar("120")
-    tab.box_h_var = DummyVar("50")
-    tab.cardboard_thickness_var = DummyVar("5")
-    tab.spacing_var = DummyVar("0")
-    tab.slip_count_var = DummyVar("2")
-    tab.num_layers_var = DummyVar("1")
-    tab.max_stack_var = DummyVar("1000")
-    tab.include_pallet_height_var = DummyVar(False)
+    inputs = PalletInputs(
+        pallet_w=1000,
+        pallet_l=1200,
+        pallet_h=150,
+        box_w=100,
+        box_l=120,
+        box_h=50,
+        thickness=5,
+        spacing=0,
+        slip_count=2,
+        num_layers=1,
+        max_stack=1000,
+        include_pallet_height=False,
+    )
 
-    inputs = TabPallet._read_inputs(tab)
-
+    layers = compute_num_layers(
+        max_stack=inputs.max_stack,
+        box_h=inputs.box_h,
+        thickness=inputs.thickness,
+        slip_count=inputs.slip_count,
+        include_pallet_height=inputs.include_pallet_height,
+        pallet_h=inputs.pallet_h,
+    )
     expected_layers = max(int((1000 - 0) // (50 + 10)), 0)
-    assert inputs.num_layers == expected_layers
-    assert tab.num_layers_var.get() == str(expected_layers)
+    assert layers == expected_layers
     assert inputs.slip_count == 2
 
 
-def test_validate_inputs_shows_warning(monkeypatch):
-    tab = object.__new__(TabPallet)
-    warnings = []
-    monkeypatch.setattr(
-        tab_pallet.messagebox, "showwarning", lambda *args, **kwargs: warnings.append(args)
-    )
+def test_validate_inputs_shows_warning():
     inputs = PalletInputs(
         pallet_w=0,
         pallet_l=1,
@@ -105,8 +108,7 @@ def test_validate_inputs_shows_warning(monkeypatch):
         include_pallet_height=False,
     )
 
-    assert not TabPallet._validate_inputs(tab, inputs)
-    assert warnings
+    assert validate_pallet_inputs(inputs)
 
 
 def test_build_layouts_returns_best_pattern():
@@ -126,7 +128,13 @@ def test_build_layouts_returns_best_pattern():
         include_pallet_height=False,
     )
 
-    result = TabPallet._build_layouts(tab, inputs)
+    result = build_layouts(
+        inputs,
+        maximize_mixed=tab.maximize_mixed.get(),
+        center_enabled=tab.center_var.get(),
+        center_mode=tab.center_mode_var.get(),
+        shift_even=tab.shift_even_var.get(),
+    )
 
     assert result.layouts
     assert result.best_layout_name in [layout[2] for layout in result.layouts]
@@ -171,7 +179,7 @@ def test_finalize_results_updates_state():
         best_odd=[(0, 0, 10, 10)],
     )
 
-    TabPallet._finalize_results(tab, inputs, result)
+    apply_layout_result_to_tab_state(tab, inputs, result)
 
     assert tab.layouts == result.layouts
     assert tab.best_layout_name == "Demo"

@@ -4,6 +4,7 @@ from .engine import LayoutComputation, PalletInputs, build_layouts
 from .models import Carton, Pallet
 from .selector import PatternSelector, PatternScore
 from .sequencer import EvenOddSequencer
+from .stacking import compute_max_stack, compute_num_layers
 
 __all__ = [
     "Carton",
@@ -14,4 +15,6 @@ __all__ = [
     "PatternSelector",
     "PatternScore",
     "EvenOddSequencer",
+    "compute_max_stack",
+    "compute_num_layers",
 ]
