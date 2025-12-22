@@ -29,7 +29,7 @@ def test_row_by_row_selected_by_default():
     )
 
     assert any(name == "Row by row" for _, __, name in result.layouts)
-    assert result.best_layout_name == "Column (W x L)"
+    assert result.best_layout_name == "Row by row"
 
 
 def test_center_layout_keeps_groups_separate():

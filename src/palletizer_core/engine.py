@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Tuple
 
 from .models import Carton, Pallet
-from .sanity import DEFAULT_SANITY_POLICY, is_sane
+from .sanity import DEFAULT_SANITY_POLICY, connected_components, is_sane
 from .signature import layout_signature
 from .units import MM
 from .selector import PatternScore, PatternSelector
@@ -314,6 +314,7 @@ def build_layouts(
     *,
     extended_library: bool = False,
     dynamic_variants: bool = False,
+    deep_search: bool = False,
     filter_sanity: bool = False,
     result_limit: int | None = None,
     allow_offsets: bool = False,
@@ -331,6 +332,7 @@ def build_layouts(
         maximize_mixed=maximize_mixed,
         extended_library=extended_library,
         dynamic_variants=dynamic_variants or extended_library,
+        deep_search=deep_search,
     )
 
     row_by_row_vertical = 0
@@ -368,6 +370,13 @@ def build_layouts(
             adjusted, inputs.pallet_w, inputs.pallet_l, center_enabled, center_mode
         )
         display = scores[name].display_name
+        area_ratio = (
+            sum(w * l for _, _, w, l in centered) / (inputs.pallet_w * inputs.pallet_l)
+            if inputs.pallet_w > 0 and inputs.pallet_l > 0
+            else 0.0
+        )
+        islands = connected_components(centered, touch_eps=DEFAULT_SANITY_POLICY.touch_eps)
+        signature = layout_signature(centered)
         entries.append(
             {
                 "name": name,
@@ -376,6 +385,9 @@ def build_layouts(
                 "display": display,
                 "count": len(centered),
                 "score": scores[name],
+                "area_ratio": area_ratio,
+                "islands": islands,
+                "signature": signature,
             }
         )
 
@@ -383,35 +395,42 @@ def build_layouts(
         (entry["count"], entry["layout"], entry["display"]) for entry in entries
     ]
 
-    def _entry_metric(entry: Dict[str, object]) -> Tuple[int, float]:
+    def _entry_metric(entry: Dict[str, object]) -> Tuple[float, ...]:
         score = entry["score"]
-        return (entry["count"], score.penalty)
+        return (
+            float(entry["count"]),
+            float(entry["area_ratio"]),
+            float(score.support_fraction),
+            float(score.min_support),
+            -float(score.com_offset),
+            float(score.min_edge_clearance),
+            -float(entry["islands"]),
+            entry["signature"],
+            str(entry["display"]),
+        )
 
     best_raw_entry = None
     if entries:
-        best_raw_entry = max(
-            entries,
-            key=lambda entry: (_entry_metric(entry)[0], -_entry_metric(entry)[1]),
-        )
+        best_raw_entry = max(entries, key=_entry_metric)
 
-    apply_dedupe = bool(extended_library or dynamic_variants or filter_sanity)
+    apply_dedupe = bool(
+        extended_library or dynamic_variants or filter_sanity or deep_search
+    )
     if apply_dedupe:
         signature_map: Dict[tuple, Dict[str, object]] = {}
         for entry in entries:
-            signature = layout_signature(entry["layout"])
+            signature = entry["signature"]
             existing = signature_map.get(signature)
             if existing is None:
                 signature_map[signature] = entry
                 continue
-            if _entry_metric(entry)[0] > _entry_metric(existing)[0]:
-                signature_map[signature] = entry
-            elif _entry_metric(entry)[0] == _entry_metric(existing)[0] and _entry_metric(entry)[1] < _entry_metric(existing)[1]:
+            if _entry_metric(entry) > _entry_metric(existing):
                 signature_map[signature] = entry
 
         deduped_entries: List[Dict[str, object]] = []
         seen_signatures = set()
         for entry in entries:
-            signature = layout_signature(entry["layout"])
+            signature = entry["signature"]
             if signature in seen_signatures:
                 continue
             if signature_map.get(signature) is entry:
@@ -427,20 +446,30 @@ def build_layouts(
             for entry in deduped_entries
             if is_sane(entry["layout"], calc_carton, pallet, DEFAULT_SANITY_POLICY)
         ]
+        if filtered_entries:
+            best_area = max(entry["area_ratio"] for entry in filtered_entries)
+            min_area = DEFAULT_SANITY_POLICY.min_area_ratio
+            if best_area >= min_area:
+                filtered_entries = [
+                    entry
+                    for entry in filtered_entries
+                    if entry["area_ratio"] >= min_area
+                ]
         if not filtered_entries and best_raw_entry is not None:
             filtered_entries = [best_raw_entry]
 
     apply_ranking = bool(
-        filter_sanity or result_limit or extended_library or dynamic_variants
+        filter_sanity
+        or result_limit
+        or extended_library
+        or dynamic_variants
+        or deep_search
     )
     if apply_ranking:
         filtered_entries = sorted(
             filtered_entries,
-            key=lambda entry: (
-                -int(entry["count"]),
-                float(entry["score"].penalty),
-                str(entry["display"]),
-            ),
+            key=_entry_metric,
+            reverse=True,
         )
 
     if result_limit is not None and result_limit > 0:
@@ -453,10 +482,7 @@ def build_layouts(
 
     best_entry = None
     if filtered_entries:
-        best_entry = max(
-            filtered_entries,
-            key=lambda entry: (_entry_metric(entry)[0], -_entry_metric(entry)[1]),
-        )
+        best_entry = max(filtered_entries, key=_entry_metric)
     if best_entry is None:
         best_entry = best_raw_entry
 

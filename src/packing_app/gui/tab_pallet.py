@@ -21,7 +21,7 @@ from palletizer_core.transformations import (
     apply_transformation as apply_transformation_core,
     inverse_transformation as inverse_transformation_core,
 )
-from packing_app.gui.editor_state import EditorState
+from packing_app.gui.editor_controller import EditorController
 from packing_app.gui.pallet_state_apply import apply_layout_result_to_tab_state
 from palletizer_core import Carton, Pallet, PatternScore
 from palletizer_core.engine import (
@@ -43,6 +43,24 @@ from packing_app.data.repository import (
     load_materials,
     load_slip_sheets,
 )
+
+
+def apply_pattern_selection_after_restore(tab, previous_flag: bool, target_key: str) -> bool:
+    setattr(tab, "_suspend_pattern_apply", previous_flag)
+    if not target_key:
+        return False
+    tree = getattr(tab, "pattern_tree", None)
+    if tree is None:
+        return False
+    selection = tree.selection()
+    if selection and selection[0] == target_key:
+        tab.on_pattern_select()
+        return True
+    return False
+
+
+def filter_selection_for_layer(selected_indices, layer_idx: int):
+    return {(layer, idx) for layer, idx in selected_indices if layer == layer_idx}
 
 
 def parse_dim(var: tk.StringVar) -> float:
@@ -94,7 +112,7 @@ class TabPallet(ttk.Frame):
         self.show_numbers_var = tk.BooleanVar(value=True)
         self.patches = []
         self.selected_indices = set()
-        self.editor_state = EditorState()
+        self.editor_controller = EditorController()
         self.drag_offset = (0, 0)
         self.drag_info = None
         self.drag_button = None
@@ -387,11 +405,12 @@ class TabPallet(ttk.Frame):
 
         self.extended_library_var = tk.BooleanVar(value=False)
         self.dynamic_variants_var = tk.BooleanVar(value=False)
-        self.filter_sanity_var = tk.BooleanVar(value=False)
+        self.deep_search_var = tk.BooleanVar(value=False)
+        self.filter_sanity_var = tk.BooleanVar(value=True)
         self.allow_offsets_var = tk.BooleanVar(value=False)
         self.min_support_var = tk.StringVar(value="0.80")
         self.assume_full_support_var = tk.BooleanVar(value=False)
-        self.result_limit_var = tk.StringVar(value="0")
+        self.result_limit_var = tk.StringVar(value="30")
         self.generated_patterns_var = tk.StringVar(value="Patterns: raw=0, shown=0")
 
         advanced_frame = ttk.LabelFrame(layers_frame, text="Zaawansowane")
@@ -416,6 +435,12 @@ class TabPallet(ttk.Frame):
             variable=self.filter_sanity_var,
             command=self.compute_pallet,
         ).grid(row=0, column=2, padx=5, pady=4, sticky="w")
+        ttk.Checkbutton(
+            advanced_frame,
+            text="Deep search",
+            variable=self.deep_search_var,
+            command=self.compute_pallet,
+        ).grid(row=0, column=3, padx=5, pady=4, sticky="w")
         ttk.Checkbutton(
             advanced_frame,
             text="Allow offsets (brick) with support check",
@@ -682,6 +707,9 @@ class TabPallet(ttk.Frame):
         self.pattern_detail_var = tk.StringVar(value="")
 
         self.pattern_tree.bind("<<TreeviewSelect>>", self.on_pattern_select)
+        self.pattern_tree.bind(
+            "<ButtonRelease-1>", self.on_pattern_click_apply, add="+"
+        )
 
         chart_panel = ttk.Frame(main_paned)
         chart_panel.columnconfigure(0, weight=1)
@@ -734,6 +762,26 @@ class TabPallet(ttk.Frame):
                 return str(value)
             return f"{float(value):.2f}".rstrip("0").rstrip(".")
         return str(value)
+
+    def _sync_selection_from_controller(self) -> None:
+        self.selected_indices = self.editor_controller.selected_pairs()
+
+    def _set_selection_pairs(self, selection_pairs) -> None:
+        self.editor_controller.set_selection_from_pairs(set(selection_pairs))
+        self.selected_indices = set(selection_pairs)
+
+    def _clear_selection(self) -> None:
+        self.editor_controller.clear_all()
+        self.selected_indices.clear()
+
+    def _selection_for_active_layer(self) -> set[tuple[int, int]]:
+        active_layer = self.editor_controller.active_layer
+        if active_layer is None:
+            return set()
+        return {
+            (active_layer, idx)
+            for idx in self.editor_controller.selection_for_layer(active_layer)
+        }
 
     def _update_pallet_dimensions_label(self, *_):
         values = []
@@ -1207,7 +1255,8 @@ class TabPallet(ttk.Frame):
             self.carton_ids = [list() for _ in range(num_layers)]
             self.layer_patterns = ["" for _ in range(num_layers)]
             self.transformations = ["" for _ in range(num_layers)]
-        self.selected_indices.clear()
+        self._clear_selection()
+        self.editor_controller.active_layer = 0
         self.drag_info = None
         if hasattr(self, "undo_stack"):
             self.undo_stack.clear()
@@ -1329,7 +1378,7 @@ class TabPallet(ttk.Frame):
         The row-by-row pattern is selected as the default layout whenever it is
         available. Other patterns are still generated for manual selection.
         """
-        self.selected_indices.clear()
+        self._clear_selection()
         self.drag_info = None
         if hasattr(self, "status_var"):
             self.status_var.set("Obliczanie...")
@@ -1439,6 +1488,7 @@ class TabPallet(ttk.Frame):
             row_by_row_customizer=self._customize_row_by_row_pattern,
             extended_library=self.extended_library_var.get(),
             dynamic_variants=self.dynamic_variants_var.get(),
+            deep_search=self.deep_search_var.get(),
             filter_sanity=self.filter_sanity_var.get(),
             result_limit=result_limit,
             allow_offsets=self.allow_offsets_var.get(),
@@ -1584,6 +1634,7 @@ class TabPallet(ttk.Frame):
     def sort_layers(self):
         """Sort cartons within each layer for consistent numbering."""
         new_sel = set()
+        current_selection = self.editor_controller.selected_pairs()
         for layer_idx, layer in enumerate(self.layers):
             order = sorted(range(len(layer)), key=lambda i: (layer[i][1], layer[i][0]))
             if order != list(range(len(layer))):
@@ -1592,12 +1643,12 @@ class TabPallet(ttk.Frame):
                 mapping = {old_idx: new_idx for new_idx, old_idx in enumerate(order)}
             else:
                 mapping = {i: i for i in range(len(layer))}
-            for l_idx, idx in self.selected_indices:
+            for l_idx, idx in current_selection:
                 if l_idx == layer_idx:
                     new_sel.add((l_idx, mapping.get(idx, idx)))
                 else:
                     new_sel.add((l_idx, idx))
-        self.selected_indices = new_sel
+        self._set_selection_pairs(new_sel)
 
     def renumber_layer(self, layer_idx):
         """Assign sequential carton numbers to the chosen layer."""
@@ -1627,6 +1678,8 @@ class TabPallet(ttk.Frame):
             self.key_cid = self.canvas.mpl_connect(
                 "key_press_event", self.on_key_press
             )
+            if self.editor_controller.active_layer is None:
+                self.editor_controller.active_layer = 0
         else:
             for cid in [self.press_cid, self.motion_cid, self.release_cid]:
                 if cid is not None:
@@ -1635,8 +1688,8 @@ class TabPallet(ttk.Frame):
             if self.key_cid is not None:
                 self.canvas.mpl_disconnect(self.key_cid)
             self.key_cid = None
-            self.selected_indices.clear()
-            self.editor_state = EditorState()
+            self._clear_selection()
+            self.editor_controller = EditorController()
             self.drag_info = None
             self.drag_button = None
             self.drag_select_origin = None
@@ -1679,28 +1732,20 @@ class TabPallet(ttk.Frame):
 
         ctrl = self._ctrl_active(event)
         shift = self._shift_active(event)
-        current_layer_selection = {
-            idx for layer, idx in self.selected_indices if layer == layer_idx
-        }
-        self.editor_state.selected = set(current_layer_selection)
-        result = self.editor_state.on_press(
-            hit_index, event.button, ctrl, shift, event.xdata, event.ydata
+        result = self.editor_controller.on_press(
+            layer_idx,
+            hit_index,
+            event.button,
+            ctrl,
+            shift,
+            event.xdata,
+            event.ydata,
         )
-        if result.get("clear_all"):
-            self.selected_indices.clear()
-        else:
-            self.selected_indices = {
-                (layer, idx)
-                for layer, idx in self.selected_indices
-                if layer != layer_idx
-            }
-            for idx in result.get("selected", set()):
-                self.selected_indices.add((layer_idx, idx))
+        self._sync_selection_from_controller()
 
         self.drag_snapshot_saved = False
         if event.button == 3:
             self.on_right_click(event)
-        self.highlight_selection()
         self.highlight_selection()
 
     def on_motion(self, event):
@@ -1708,8 +1753,14 @@ class TabPallet(ttk.Frame):
             return
         if TabPallet._toolbar_busy(self):
             return
-        result = self.editor_state.on_motion(event.xdata, event.ydata)
-        if not result or not self.editor_state.is_dragging:
+        result = self.editor_controller.on_motion(event.xdata, event.ydata)
+        if not result or not self.editor_controller.is_dragging:
+            return
+        active_layer = self.editor_controller.active_layer
+        if active_layer is None:
+            return
+        selection = filter_selection_for_layer(self.selected_indices, active_layer)
+        if not selection:
             return
 
         pallet_w = parse_dim(self.pallet_w_var)
@@ -1721,7 +1772,7 @@ class TabPallet(ttk.Frame):
 
         dx, dy = result["delta"]
         layers_to_check = set()
-        for layer_idx, idx in list(self.selected_indices):
+        for layer_idx, idx in list(selection):
             if layer_idx >= len(self.layers) or idx >= len(self.layers[layer_idx]):
                 continue
             for patch, j in self.patches[layer_idx]:
@@ -1793,6 +1844,7 @@ class TabPallet(ttk.Frame):
             pallet_w = parse_dim(self.pallet_w_var)
             pallet_l = parse_dim(self.pallet_l_var)
             for layer_idx, idx, patch, *_ in items:
+                selection = filter_selection_for_layer(self.selected_indices, layer_idx)
                 new_x, new_y = patch.get_xy()
                 x, y, w, h = self.layers[layer_idx][idx]
                 orig_x, orig_y, _, _ = self.inverse_transformation(
@@ -1804,7 +1856,7 @@ class TabPallet(ttk.Frame):
                 other_boxes = [
                     b
                     for j, b in enumerate(self.layers[layer_idx])
-                    if j != idx or (layer_idx, j) not in self.selected_indices
+                    if j != idx or (layer_idx, j) not in selection
                 ]
                 snap_x, snap_y = self.snap_position(
                     orig_x, orig_y, w, h, pallet_w, pallet_l, other_boxes
@@ -1825,10 +1877,10 @@ class TabPallet(ttk.Frame):
             return
         if event.xdata is None or event.ydata is None:
             return
-        editor_state = getattr(self, "editor_state", None)
-        if editor_state is None:
+        editor_controller = getattr(self, "editor_controller", None)
+        if editor_controller is None:
             return
-        result = editor_state.on_release(event.button, event.xdata, event.ydata)
+        result = editor_controller.on_release(event.button, event.xdata, event.ydata)
         if not result.get("was_dragging"):
             self.drag_snapshot_saved = False
             return
@@ -1836,7 +1888,8 @@ class TabPallet(ttk.Frame):
         pallet_w = parse_dim(self.pallet_w_var)
         pallet_l = parse_dim(self.pallet_l_var)
 
-        for layer_idx, idx in list(self.selected_indices):
+        selection = self._selection_for_active_layer()
+        for layer_idx, idx in list(selection):
             if layer_idx >= len(self.layers) or idx >= len(self.layers[layer_idx]):
                 continue
             patch = next((p for p, j in self.patches[layer_idx] if j == idx), None)
@@ -1853,7 +1906,7 @@ class TabPallet(ttk.Frame):
             other_boxes = [
                 b
                 for j, b in enumerate(self.layers[layer_idx])
-                if j != idx or (layer_idx, j) not in self.selected_indices
+                if j != idx or (layer_idx, j) not in selection
             ]
             snap_x, snap_y = self.snap_position(
                 orig_x, orig_y, w, h, pallet_w, pallet_l, other_boxes
@@ -1884,7 +1937,6 @@ class TabPallet(ttk.Frame):
             w = parse_dim(self.box_w_var) + 2 * thickness
             h = parse_dim(self.box_l_var) + 2 * thickness
         self.layers[layer_idx].append((pos[0], pos[1], w, h))
-        self.carton_ids[layer_idx].append(len(self.carton_ids[layer_idx]) + 1)
         next_id = max(self.carton_ids[layer_idx], default=0) + 1
         self.carton_ids[layer_idx].append(next_id)
         other_layer = 1 - layer_idx
@@ -1894,7 +1946,6 @@ class TabPallet(ttk.Frame):
             and self.layers_linked()
         ):
             self.layers[other_layer].append((pos[0], pos[1], w, h))
-            self.carton_ids[other_layer].append(len(self.carton_ids[other_layer]) + 1)
             next_id_other = max(self.carton_ids[other_layer], default=0) + 1
             self.carton_ids[other_layer].append(next_id_other)
         getattr(self, "sort_layers", lambda: None)()
@@ -1909,13 +1960,14 @@ class TabPallet(ttk.Frame):
 
     def delete_selected_carton(self):
         """Delete all currently selected cartons."""
-        if not self.selected_indices:
+        selection = self._selection_for_active_layer()
+        if not selection:
             return
 
         TabPallet._record_state(self)
         affected = set()
         for layer_idx, idx in sorted(
-            self.selected_indices, key=lambda t: (t[0], -t[1])
+            selection, key=lambda t: (t[0], -t[1])
         ):
             if layer_idx >= len(self.layers) or idx >= len(self.layers[layer_idx]):
                 continue
@@ -1936,7 +1988,7 @@ class TabPallet(ttk.Frame):
         for idx in affected:
             self.renumber_layer(idx)
 
-        self.selected_indices.clear()
+        self._clear_selection()
         self.drag_info = None
         getattr(self, "sort_layers", lambda: None)()
         self.draw_pallet()
@@ -1945,11 +1997,12 @@ class TabPallet(ttk.Frame):
 
     def rotate_selected_carton(self):
         """Rotate all selected cartons by 90° around their centers."""
-        if not self.selected_indices:
+        selection = self._selection_for_active_layer()
+        if not selection:
             return
 
         TabPallet._record_state(self)
-        for layer_idx, idx in list(self.selected_indices):
+        for layer_idx, idx in list(selection):
             if layer_idx >= len(self.layers) or idx >= len(self.layers[layer_idx]):
                 continue
             x, y, w, h = self.layers[layer_idx][idx]
@@ -2048,11 +2101,12 @@ class TabPallet(ttk.Frame):
                     self.layers[other_layer][i] = self.layers[layer_idx][i]
 
     def distribute_selected_edges(self):
-        if not self.selected_indices:
+        selection = self._selection_for_active_layer()
+        if not selection:
             return
 
-        layer_idx = next(iter(self.selected_indices))[0]
-        indices = [i for layer, i in self.selected_indices if layer == layer_idx]
+        layer_idx = next(iter(selection))[0]
+        indices = [i for layer, i in selection if layer == layer_idx]
         if not indices:
             return
 
@@ -2079,11 +2133,12 @@ class TabPallet(ttk.Frame):
         self.highlight_selection()
 
     def auto_space_selected(self):
-        if not self.selected_indices:
+        selection = self._selection_for_active_layer()
+        if not selection:
             return
 
-        layer_idx = next(iter(self.selected_indices))[0]
-        indices = [i for layer, i in self.selected_indices if layer == layer_idx]
+        layer_idx = next(iter(selection))[0]
+        indices = [i for layer, i in selection if layer == layer_idx]
         if not indices:
             return
 
@@ -2137,11 +2192,12 @@ class TabPallet(ttk.Frame):
         self.highlight_selection()
 
     def distribute_selected_between(self):
-        if not self.selected_indices:
+        selection = self._selection_for_active_layer()
+        if not selection:
             return
 
-        layer_idx = next(iter(self.selected_indices))[0]
-        indices = [i for layer, i in self.selected_indices if layer == layer_idx]
+        layer_idx = next(iter(selection))[0]
+        indices = [i for layer, i in selection if layer == layer_idx]
         if not indices:
             return
 
@@ -2194,11 +2250,12 @@ class TabPallet(ttk.Frame):
         self.update_summary()
 
     def distribute_selected_long_side(self):
-        if not self.selected_indices:
+        selection = self._selection_for_active_layer()
+        if not selection:
             return
 
-        layer_idx = next(iter(self.selected_indices))[0]
-        indices = [i for layer, i in self.selected_indices if layer == layer_idx]
+        layer_idx = next(iter(selection))[0]
+        indices = [i for layer, i in selection if layer == layer_idx]
         if not indices:
             return
 
@@ -2218,11 +2275,12 @@ class TabPallet(ttk.Frame):
         self.highlight_selection()
 
     def center_selected_cartons(self):
-        if not self.selected_indices:
+        selection = self._selection_for_active_layer()
+        if not selection:
             return
 
-        layer_idx = next(iter(self.selected_indices))[0]
-        indices = [i for layer, i in self.selected_indices if layer == layer_idx]
+        layer_idx = next(iter(selection))[0]
+        indices = [i for layer, i in selection if layer == layer_idx]
         if not indices:
             return
 
@@ -2312,7 +2370,7 @@ class TabPallet(ttk.Frame):
                 command=self.center_selected_cartons,
             )
 
-        state = "normal" if self.selected_indices else "disabled"
+        state = "normal" if self._selection_for_active_layer() else "disabled"
         last_index = self.context_menu.index("end") or 0
         for i in range(1, last_index + 1):
             self.context_menu.entryconfigure(i, state=state)
@@ -2517,10 +2575,10 @@ class TabPallet(ttk.Frame):
             self.pattern_tree.insert("", "end", iid=name, values=values)
 
         previous_flag = getattr(self, "_suspend_pattern_apply", False)
+        target_key = ""
         self._suspend_pattern_apply = True
         try:
             best_key = getattr(self, "best_layout_key", "")
-            target_key = ""
             if previous_selection:
                 prev = previous_selection[0]
                 if self.pattern_tree.exists(prev):
@@ -2534,15 +2592,14 @@ class TabPallet(ttk.Frame):
             if target_key:
                 self.pattern_tree.selection_set(target_key)
                 self.pattern_tree.see(target_key)
-            self.on_pattern_select()
         finally:
-            def restore_flag(prev=previous_flag):
-                setattr(self, "_suspend_pattern_apply", prev)
+            def restore_and_apply(prev=previous_flag, target=target_key):
+                apply_pattern_selection_after_restore(self, prev, target)
 
             if hasattr(self, "after"):
-                self.after_idle(restore_flag)
+                self.after_idle(restore_and_apply)
             else:
-                restore_flag()
+                restore_and_apply()
 
     def on_pattern_select(self, event=None):
         if not hasattr(self, "pattern_tree") or not hasattr(
@@ -2589,6 +2646,18 @@ class TabPallet(ttk.Frame):
             f"Ryzyko utraty stabilności: {risk_text}."
         )
         self.pattern_detail_var.set(detail_text)
+
+    def on_pattern_click_apply(self, event):
+        if getattr(self, "_suspend_pattern_apply", False):
+            return
+        if not hasattr(self, "pattern_tree"):
+            return
+        row_id = self.pattern_tree.identify_row(event.y)
+        if not row_id:
+            return
+        selection = self.pattern_tree.selection()
+        if selection and selection[0] == row_id:
+            self.on_pattern_select()
 
     def _apply_pattern_selection(self, display_name: str) -> None:
         """Update layout selection and redraw charts for the chosen pattern."""
@@ -2674,7 +2743,7 @@ class TabPallet(ttk.Frame):
         state = self.undo_stack.pop()
         self.layers = [list(layer) for layer in state["layers"]]
         self.carton_ids = [list(ids) for ids in state["carton_ids"]]
-        self.selected_indices = set(state.get("selected", set()))
+        self._set_selection_pairs(state.get("selected", set()))
         self.drag_info = None
         self.drag_select_origin = None
         self.drag_snapshot_saved = False

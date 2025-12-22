@@ -4,6 +4,7 @@ import pytest
 pytest.importorskip("tkinter")
 
 from packing_app.gui.tab_pallet import TabPallet
+from packing_app.gui.editor_controller import EditorController
 from palletizer_core.stacking import compute_max_stack, compute_num_layers
 
 class DummyPatch:
@@ -49,6 +50,28 @@ def make_dummy():
     d.even_layout_var = var('A')
     d.layers_linked = lambda: d.odd_layout_var.get() == d.even_layout_var.get()
     d.selected_indices = set()
+    d.editor_controller = EditorController()
+    def clear_selection():
+        d.editor_controller.clear_all()
+        d.selected_indices.clear()
+
+    def set_selection_pairs(pairs):
+        d.editor_controller.set_selection_from_pairs(set(pairs))
+        d.selected_indices = set(pairs)
+        if pairs:
+            d.editor_controller.active_layer = next(iter(pairs))[0]
+
+    def selection_for_active_layer():
+        active = d.editor_controller.active_layer
+        if active is None and d.selected_indices:
+            active = next(iter(d.selected_indices))[0]
+        if active is None:
+            return set()
+        return {(layer, idx) for layer, idx in d.selected_indices if layer == active}
+
+    d._clear_selection = clear_selection
+    d._set_selection_pairs = set_selection_pairs
+    d._selection_for_active_layer = selection_for_active_layer
     d.drag_info = None
     d.highlight_selection = lambda: None
     d.renumber_layer = lambda idx: d.carton_ids.__setitem__(idx, list(range(1, len(d.layers[idx]) + 1)))
@@ -59,7 +82,7 @@ def make_dummy():
 def test_on_release_syncs_layers():
     dummy = make_dummy()
     dummy.drag_info = (0, 0, DummyPatch(5, 5))
-    dummy.selected_indices = {(0, 0)}
+    dummy._set_selection_pairs({(0, 0)})
     TabPallet.on_release(dummy, None)
     assert dummy.layers[0][0][:2] == (5, 5)
     assert dummy.layers[1][0][:2] == (5, 5)
@@ -71,7 +94,7 @@ def test_insert_and_delete_sync():
     assert len(dummy.layers[1]) == 2
     assert dummy.layers[0][-1][:2] == (10, 10)
     assert dummy.layers[1][-1][:2] == (10, 10)
-    dummy.selected_indices = {(0, 0)}
+    dummy._set_selection_pairs({(0, 0)})
     TabPallet.delete_selected_carton(dummy)
     assert len(dummy.layers[0]) == 1
     assert len(dummy.layers[1]) == 1
@@ -80,22 +103,30 @@ def test_renumber_after_insert_and_delete():
     dummy = make_dummy()
     TabPallet.insert_carton(dummy, 0, (5,5))
     assert dummy.carton_ids[0] == [1,2]
-    dummy.selected_indices = {(0,0)}
+    dummy._set_selection_pairs({(0, 0)})
     TabPallet.delete_selected_carton(dummy)
     assert dummy.carton_ids[0] == [1]
+
+
+def test_insert_carton_assigns_sequential_ids():
+    dummy = make_dummy()
+    TabPallet.insert_carton(dummy, 0, (5, 5))
+    TabPallet.insert_carton(dummy, 0, (10, 10))
+    TabPallet.insert_carton(dummy, 0, (15, 15))
+    assert dummy.carton_ids[0] == [1, 2, 3, 4]
 
 def test_no_cross_sync_when_patterns_differ():
     dummy = make_dummy()
     dummy.layer_patterns = ["A", "B"]
     dummy.drag_info = (0, 0, DummyPatch(2, 2))
-    dummy.selected_indices = {(0, 0)}
+    dummy._set_selection_pairs({(0, 0)})
     TabPallet.on_release(dummy, None)
     assert dummy.layers[0][0][:2] == (2, 2)
     assert dummy.layers[1][0][:2] == (0, 0)
     TabPallet.insert_carton(dummy, 0, (5, 5))
     assert len(dummy.layers[0]) == 2
     assert len(dummy.layers[1]) == 1
-    dummy.selected_indices = {(0, 0)}
+    dummy._set_selection_pairs({(0, 0)})
     TabPallet.delete_selected_carton(dummy)
     assert len(dummy.layers[0]) == 1
     assert len(dummy.layers[1]) == 1
@@ -104,7 +135,7 @@ def test_multi_rotate_delete():
     dummy = make_dummy()
     dummy.layers = [[(0, 0, 10, 20), (20, 0, 10, 20)], [(0, 0, 10, 20), (20, 0, 10, 20)]]
     dummy.carton_ids = [[1,2],[1,2]]
-    dummy.selected_indices = {(0, 0), (0, 1)}
+    dummy._set_selection_pairs({(0, 0), (0, 1)})
     TabPallet.rotate_selected_carton(dummy)
     for layer in dummy.layers:
         for x, y, w, h in layer:
@@ -116,7 +147,7 @@ def test_distribution_commands():
     dummy = make_dummy()
     dummy.layers = [[(0,0,10,10),(40,0,10,10),(80,0,10,10)], [(0,0,10,10),(40,0,10,10),(80,0,10,10)]]
     dummy.carton_ids = [list(range(1,4)), list(range(1,4))]
-    dummy.selected_indices = {(0,0),(0,1),(0,2)}
+    dummy._set_selection_pairs({(0, 0), (0, 1), (0, 2)})
     TabPallet.distribute_selected_edges(dummy)
     xs = [pos[0] for pos in dummy.layers[0]]
     assert xs == pytest.approx([17.5,45.0,72.5])
@@ -124,7 +155,7 @@ def test_distribution_commands():
     dummy = make_dummy()
     dummy.layers = [[(0,0,10,10),(10,0,10,10),(40,0,10,10),(80,0,10,10)], [(0,0,10,10),(10,0,10,10),(40,0,10,10),(80,0,10,10)]]
     dummy.carton_ids = [list(range(1,5)), list(range(1,5))]
-    dummy.selected_indices = {(0,1),(0,2)}
+    dummy._set_selection_pairs({(0, 1), (0, 2)})
     TabPallet.distribute_selected_between(dummy)
     xs = [dummy.layers[0][1][0], dummy.layers[0][2][0]]
     assert xs == pytest.approx([26.6666666667,53.3333333333])
@@ -133,7 +164,7 @@ def test_auto_distribution_respects_boundaries():
     dummy = make_dummy()
     dummy.layers = [[(0,0,60,10),(40,0,60,10)], [(0,0,60,10),(40,0,60,10)]]
     dummy.carton_ids = [[1,2],[1,2]]
-    dummy.selected_indices = {(0,0),(0,1)}
+    dummy._set_selection_pairs({(0, 0), (0, 1)})
     before = [pos[0] for pos in dummy.layers[0]]
     TabPallet.distribute_selected_edges(dummy)
     after = [pos[0] for pos in dummy.layers[0]]
@@ -151,7 +182,7 @@ def test_multi_drag_moves_all_selected():
     p1 = DummyPatch(5,5)
     p2 = DummyPatch(25,5)
     dummy.drag_info = [(0,0,p1,0,0),(0,1,p2,20,0)]
-    dummy.selected_indices = {(0,0),(0,1)}
+    dummy._set_selection_pairs({(0, 0), (0, 1)})
     TabPallet.on_release(dummy, None)
     assert dummy.layers[0][0][:2] == (5,5)
     assert dummy.layers[0][1][:2] == (25,5)
@@ -162,7 +193,7 @@ def test_sync_with_same_algo_different_transforms():
     dummy = make_dummy()
     dummy.transformations = ["Brak", "Odbicie wzdłuż dłuższego boku"]
     dummy.drag_info = (0, 0, DummyPatch(3, 3))
-    dummy.selected_indices = {(0, 0)}
+    dummy._set_selection_pairs({(0, 0)})
     TabPallet.on_release(dummy, None)
     assert dummy.layers[1][0][:2] == (3, 3)
 
@@ -171,7 +202,7 @@ def test_no_sync_when_algorithms_differ():
     dummy.transformations = ["Brak", "Odbicie wzdłuż dłuższego boku"]
     dummy.even_layout_var.set('B')
     dummy.drag_info = (0, 0, DummyPatch(4, 4))
-    dummy.selected_indices = {(0, 0)}
+    dummy._set_selection_pairs({(0, 0)})
     TabPallet.on_release(dummy, None)
     assert dummy.layers[1][0][:2] == (0, 0)
 
