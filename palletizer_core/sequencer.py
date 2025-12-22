@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Iterable, List, Tuple
 
-EPS = 1e-6
-
 from .models import Carton, Pallet
+
+EPS = 1e-6
 
 # Pattern is list of rectangles (x, y, w, l)
 Pattern = List[Tuple[float, float, float, float]]
@@ -86,8 +86,8 @@ class EvenOddSequencer:
 
         contact = 0.0
         perimeter = 0.0
-        for x, y, w, l in candidate:
-            perimeter += 2.0 * (w + l)
+        for x, y, w, length in candidate:
+            perimeter += 2.0 * (w + length)
         for i, (x1, y1, w1, l1) in enumerate(candidate):
             for x2, y2, w2, l2 in candidate[i + 1 :]:
                 if abs((x1 + w1) - x2) < EPS or abs((x2 + w2) - x1) < EPS:
@@ -100,17 +100,22 @@ class EvenOddSequencer:
 
         edge_buffer = 0.0
         norm = max(1.0, min(self.carton.width, self.carton.length))
-        for x, y, w, l in candidate:
+        for x, y, w, length in candidate:
             clearance = min(
                 x,
                 y,
                 self.pallet.width - (x + w),
-                self.pallet.length - (y + l),
+                self.pallet.length - (y + length),
             )
             edge_buffer += max(0.0, min(1.0, clearance / norm))
         edge_buffer /= len(candidate)
 
-        mix_ratio = sum(1 for _, _, w, l in candidate if (w >= l) != (self.carton.width >= self.carton.length)) / len(candidate)
+        mix_ratio = sum(
+            1
+            for _, _, w, length in candidate
+            if (w >= length)
+            != (self.carton.width >= self.carton.length)
+        ) / len(candidate)
 
         return (
             0.4 * interlock
