@@ -342,3 +342,46 @@ def pack_rectangles_dynamic(width, height, wprod, lprod, margin=0):
     positions = [(x, y, w, h) for (_, x, y, w, h, _) in packer.rect_list()]
 
     return len(positions), positions
+
+
+def pack_rectangles_dynamic_variants(carton, pallet):
+    """Generate deterministic dynamic variants using rectpack strategies."""
+    width = pallet.width
+    height = pallet.length
+    wprod = carton.width
+    lprod = carton.length
+
+    variants = {}
+    _, base = pack_rectangles_dynamic(width, height, wprod, lprod)
+    variants["dynamic_default"] = base
+    if abs(wprod - lprod) > 1e-6:
+        _, rotated = pack_rectangles_dynamic(width, height, lprod, wprod)
+        variants["dynamic_rotated"] = rotated
+
+    try:
+        from rectpack import newPacker
+        from rectpack import SORT_AREA, SORT_LSIDE, SORT_PERI, SORT_SSIDE
+    except ImportError:
+        return variants
+
+    sort_algos = {
+        "dynamic_area": SORT_AREA,
+        "dynamic_perimeter": SORT_PERI,
+        "dynamic_short_side": SORT_SSIDE,
+        "dynamic_long_side": SORT_LSIDE,
+    }
+    for name, sort_algo in sort_algos.items():
+        packer = newPacker(rotation=True, sort_algo=sort_algo)
+        eff_w = width
+        eff_h = height
+        if eff_w <= 0 or eff_h <= 0:
+            continue
+        estimate = int((eff_w * eff_h) // (wprod * lprod)) + 5
+        for i in range(estimate):
+            packer.add_rect(wprod, lprod, i)
+        packer.add_bin(eff_w, eff_h)
+        packer.pack()
+        positions = [(x, y, w, h) for (_, x, y, w, h, _) in packer.rect_list()]
+        variants[name] = positions
+
+    return variants

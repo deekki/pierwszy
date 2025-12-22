@@ -32,7 +32,6 @@ from .pattern_families import (
     generate_block4,
     generate_hybrid,
 )
-from .signature import layout_signature
 
 # Pattern is list of rectangles (x, y, w, l)
 Pattern = List[Tuple[float, float, float, float]]
@@ -207,7 +206,11 @@ class PatternSelector:
         )
 
     def generate_all(
-        self, *, maximize_mixed: bool = False, extended_library: bool = False
+        self,
+        *,
+        maximize_mixed: bool = False,
+        extended_library: bool = False,
+        dynamic_variants: bool = False,
     ) -> Dict[str, Pattern]:
         """Return raw patterns keyed by algorithm name.
 
@@ -272,21 +275,14 @@ class PatternSelector:
         )
         patterns["dynamic"] = dynamic
 
+        if dynamic_variants or extended_library:
+            patterns.update(algorithms.pack_rectangles_dynamic_variants(self.carton, self.pallet))
+
         if extended_library:
             patterns.update(generate_block2(self.carton, self.pallet))
             patterns.update(generate_block3(self.carton, self.pallet))
             patterns.update(generate_block4(self.carton, self.pallet))
             patterns.update(generate_hybrid(self.carton, self.pallet))
-
-            deduped: Dict[str, Pattern] = {}
-            signatures = set()
-            for name, pattern in patterns.items():
-                signature = layout_signature(pattern)
-                if signature in signatures:
-                    continue
-                signatures.add(signature)
-                deduped[name] = pattern
-            return deduped
 
         return patterns
 
