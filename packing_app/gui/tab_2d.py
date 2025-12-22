@@ -1,8 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import math
-import matplotlib
-matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from packing_app.core.algorithms import (
@@ -14,7 +12,7 @@ from packing_app.core.algorithms import (
     pack_hex_top_down,
     pack_hex_bottom_up,
 )
-from core.utils import load_cartons
+from packing_app.data.repository import load_cartons
 
 class TabPacking2D(ttk.Frame):
     def __init__(self, parent):

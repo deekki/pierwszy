@@ -1,15 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
 
-from packing_app.gui.tab_2d import TabPacking2D
-from packing_app.gui.tab_3d import TabBox3D
-from packing_app.gui.tab_pallet import TabPallet
-from packing_app.gui.tab_cartons import TabCartons
-from packing_app.gui.tab_direct_packaging import TabDirectPackaging
-from packing_app.gui.tab_indirect_packaging import TabIndirectPackaging
-from packing_app.gui.tab_auxiliary import TabAuxiliaryMaterials
-from pack_layer import pack_layer
-
 APP_VERSION = "0.0.103"  # Increment this version string by 1 for each change.
 
 
@@ -35,6 +26,8 @@ def open_layer_packing(root):
     ttk.Entry(window, textvariable=box_l, width=10).grid(row=3, column=1, pady=2)
 
     def run():
+        from pack_layer import pack_layer
+
         try:
             pw = int(float(pallet_w.get()))
             pl = int(float(pallet_l.get()))
@@ -48,6 +41,17 @@ def open_layer_packing(root):
 
 
 def main():
+    import matplotlib
+
+    matplotlib.use("TkAgg")
+    from packing_app.gui.tab_2d import TabPacking2D
+    from packing_app.gui.tab_3d import TabBox3D
+    from packing_app.gui.tab_pallet import TabPallet
+    from packing_app.gui.tab_cartons import TabCartons
+    from packing_app.gui.tab_direct_packaging import TabDirectPackaging
+    from packing_app.gui.tab_indirect_packaging import TabIndirectPackaging
+    from packing_app.gui.tab_auxiliary import TabAuxiliaryMaterials
+
     root = tk.Tk()
     root.title(f"INŻYNIER 2.0 v{APP_VERSION}")
     # Default window size adjusted for 1920x1080 displays
@@ -87,4 +91,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

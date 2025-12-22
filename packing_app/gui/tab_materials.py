@@ -3,7 +3,7 @@ from tkinter import ttk
 
 from .base_editor import BaseListEditor
 
-from core.utils import load_packaging_materials, save_packaging_materials
+from packing_app.data.repository import load_packaging_materials, save_packaging_materials
 
 
 class TabMaterials(BaseListEditor):

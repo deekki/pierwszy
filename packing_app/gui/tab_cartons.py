@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from core.utils import load_cartons_list, save_cartons
+from packing_app.data.repository import load_cartons_list, save_cartons
 
 
 class TabCartons(ttk.Frame):

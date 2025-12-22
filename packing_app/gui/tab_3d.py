@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from packing_app.core.algorithms import random_box_optimizer_3d
-from core.utils import load_cartons
+from packing_app.data.repository import load_cartons
 
 class TabBox3D(ttk.Frame):
     def __init__(self, parent):

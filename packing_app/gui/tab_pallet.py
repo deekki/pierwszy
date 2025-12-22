@@ -5,7 +5,6 @@ import json
 import math
 from typing import List, Tuple, Dict, Optional
 
-matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from packing_app.core import save_pattern
@@ -14,6 +13,7 @@ from packing_app.core.pattern_io import (
     _ensure_dir,
     PATTERN_DIR,
 )
+from packing_app.gui.pallet_state_apply import apply_layout_result_to_tab_state
 from palletizer_core import Carton, Pallet, PatternScore
 from palletizer_core.engine import (
     DISPLAY_NAME_OVERRIDES,
@@ -23,7 +23,9 @@ from palletizer_core.engine import (
     build_layouts,
     group_cartons,
 )
-from core.utils import (
+from palletizer_core.stacking import compute_max_stack, compute_num_layers
+from palletizer_core.validation import validate_pallet_inputs
+from packing_app.data.repository import (
     load_cartons,
     load_pallets,
     load_cartons_with_weights,
@@ -1314,12 +1316,18 @@ class TabPallet(ttk.Frame):
         )
 
         layer_height = inputs.box_h + 2 * inputs.thickness
-        include_height = inputs.pallet_h if inputs.include_pallet_height else 0
         if layer_height > 0:
             sync_source = getattr(self, "_layer_sync_source", "height")
             setter = getattr(self, "_set_layer_field", None)
             if sync_source == "layers":
-                stack_height = inputs.num_layers * layer_height + include_height
+                stack_height = compute_max_stack(
+                    inputs.num_layers,
+                    inputs.box_h,
+                    inputs.thickness,
+                    inputs.slip_count,
+                    inputs.include_pallet_height,
+                    inputs.pallet_h,
+                )
                 if stack_height > 0:
                     inputs.max_stack = stack_height
                     if setter is not None:
@@ -1330,8 +1338,14 @@ class TabPallet(ttk.Frame):
                         self.max_stack_var.set(str(stack_height))
             else:
                 if inputs.max_stack > 0:
-                    available = max(inputs.max_stack - include_height, 0)
-                    inputs.num_layers = max(int(available // layer_height), 0)
+                    inputs.num_layers = compute_num_layers(
+                        inputs.max_stack,
+                        inputs.box_h,
+                        inputs.thickness,
+                        inputs.slip_count,
+                        inputs.include_pallet_height,
+                        inputs.pallet_h,
+                    )
                     if setter is not None:
                         setter(self.num_layers_var, inputs.num_layers)
                     elif hasattr(self, "num_layers_var") and hasattr(
@@ -1344,18 +1358,9 @@ class TabPallet(ttk.Frame):
     def _validate_inputs(self, inputs: PalletInputs) -> bool:
         """Ensure all critical dimensions are positive before computing."""
 
-        if (
-            inputs.pallet_w == 0
-            or inputs.pallet_l == 0
-            or inputs.pallet_h == 0
-            or inputs.box_w == 0
-            or inputs.box_l == 0
-            or inputs.box_h == 0
-            or inputs.num_layers <= 0
-        ):
-            messagebox.showwarning(
-                "Błąd", "Wszystkie wymiary i liczba warstw muszą być większe od 0."
-            )
+        errors = validate_pallet_inputs(inputs)
+        if errors:
+            messagebox.showwarning("Błąd", errors[0])
             return False
         return True
 
@@ -1377,22 +1382,7 @@ class TabPallet(ttk.Frame):
     def _finalize_results(self, inputs: PalletInputs, result: LayoutComputation) -> None:
         """Persist computed layouts and refresh dependent UI elements."""
 
-        self.layouts = result.layouts
-        self.layout_map = result.layout_map
-        self.best_layout_name = (
-            result.best_count_layout_name or result.best_layout_name
-        )
-        self.best_layout_key = result.best_layout_key
-        self.pattern_scores = result.scores
-        self.pattern_display_map = result.display_map
-        self.best_even = result.best_even
-        self.best_odd = result.best_odd
-        self.update_transform_frame()
-        self.num_layers = inputs.num_layers
-        self.slip_count = inputs.slip_count
-        self.update_layers()
-        getattr(self, "sort_layers", lambda: None)()
-        self.update_summary()
+        apply_layout_result_to_tab_state(self, inputs, result)
 
     def draw_pallet(self):
         pallet_w = parse_dim(self.pallet_w_var)

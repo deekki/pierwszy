@@ -3,7 +3,7 @@ from tkinter import ttk
 
 from .base_editor import BaseListEditor
 
-from core.utils import load_direct_packaging, save_direct_packaging
+from packing_app.data.repository import load_direct_packaging, save_direct_packaging
 
 
 class TabDirectPackaging(BaseListEditor):
