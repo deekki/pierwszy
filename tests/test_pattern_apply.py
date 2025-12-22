@@ -1,7 +1,7 @@
 import types
-from packing_app.gui.tab_pallet import TabPallet
 from packing_app.gui.pallet_state_apply import apply_layout_result_to_tab_state
 from palletizer_core.engine import LayoutComputation, PalletInputs, build_layouts
+from palletizer_core.pattern_format import apply_pattern_data, gather_pattern_data
 from palletizer_core.stacking import compute_num_layers
 from palletizer_core.validation import validate_pallet_inputs
 
@@ -37,16 +37,16 @@ def dummy_tab():
 
 def test_gather_and_apply_roundtrip(monkeypatch):
     tab = dummy_tab()
-    data = TabPallet.gather_pattern_data(tab, 'demo')
+    data = gather_pattern_data(tab, "demo")
     assert data['name'] == 'demo'
     new = dummy_tab()
-    TabPallet.apply_pattern_data(new, data)
+    apply_pattern_data(new, data)
     assert new.layers == tab.layers
     assert new.num_layers == 1
 
 
 def make_raw_tab():
-    tab = object.__new__(TabPallet)
+    tab = types.SimpleNamespace()
     tab.center_var = DummyVar(False)
     tab.center_mode_var = DummyVar("Cała warstwa")
     tab.shift_even_var = DummyVar(False)
