@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from typing import Iterable, List, Tuple
 
+from .metrics import (
+    compute_edge_buffer_score,
+    compute_edge_contact_fraction,
+    compute_orientation_mix,
+)
 from .models import Carton, Pallet
 
 EPS = 1e-6
@@ -84,38 +89,18 @@ class EvenOddSequencer:
             interlock += min(1.0, abs(dy) / self.carton.length)
         interlock /= 2.0
 
-        contact = 0.0
-        perimeter = 0.0
-        for x, y, w, length in candidate:
-            perimeter += 2.0 * (w + length)
-        for i, (x1, y1, w1, l1) in enumerate(candidate):
-            for x2, y2, w2, l2 in candidate[i + 1 :]:
-                if abs((x1 + w1) - x2) < EPS or abs((x2 + w2) - x1) < EPS:
-                    overlap = max(0.0, min(y1 + l1, y2 + l2) - max(y1, y2))
-                    contact += overlap
-                if abs((y1 + l1) - y2) < EPS or abs((y2 + l2) - y1) < EPS:
-                    overlap = max(0.0, min(x1 + w1, x2 + w2) - max(x1, x2))
-                    contact += overlap
-        contact_fraction = contact / perimeter if perimeter > EPS else 0.0
+        contact_fraction = compute_edge_contact_fraction(
+            candidate, eps=EPS, clamp=False
+        )
 
-        edge_buffer = 0.0
         norm = max(1.0, min(self.carton.width, self.carton.length))
-        for x, y, w, length in candidate:
-            clearance = min(
-                x,
-                y,
-                self.pallet.width - (x + w),
-                self.pallet.length - (y + length),
-            )
-            edge_buffer += max(0.0, min(1.0, clearance / norm))
-        edge_buffer /= len(candidate)
+        edge_buffer = compute_edge_buffer_score(
+            candidate, self.pallet.width, self.pallet.length, norm
+        )
 
-        mix_ratio = sum(
-            1
-            for _, _, w, length in candidate
-            if (w >= length)
-            != (self.carton.width >= self.carton.length)
-        ) / len(candidate)
+        mix_ratio = compute_orientation_mix(
+            candidate, default_orientation=self.carton.width >= self.carton.length
+        )
 
         return (
             0.4 * interlock

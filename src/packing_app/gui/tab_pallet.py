@@ -1,3 +1,4 @@
+import os
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, simpledialog
 import matplotlib
@@ -7,11 +8,10 @@ from typing import List, Tuple, Dict, Optional
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from packing_app.core import save_pattern
-from packing_app.core.pattern_io import (
-    pattern_path,
-    _ensure_dir,
-    PATTERN_DIR,
+from palletizer_core.pattern_io import (
+    ensure_pattern_dir,
+    get_pattern_dir,
+    save_pattern,
 )
 from packing_app.gui.pallet_state_apply import apply_layout_result_to_tab_state
 from palletizer_core import Carton, Pallet, PatternScore
@@ -23,6 +23,7 @@ from palletizer_core.engine import (
     build_layouts,
     group_cartons,
 )
+from palletizer_core.units import parse_float
 from palletizer_core.stacking import compute_max_stack, compute_num_layers
 from palletizer_core.validation import validate_pallet_inputs
 from packing_app.data.repository import (
@@ -37,7 +38,7 @@ from packing_app.data.repository import (
 
 def parse_dim(var: tk.StringVar) -> float:
     try:
-        val = float(var.get().replace(",", "."))
+        val = parse_float(var.get())
         return max(0, val)
     except Exception:
         messagebox.showwarning("Błąd", "Wprowadzono niepoprawną wartość. Użyto 0.")
@@ -2615,16 +2616,16 @@ class TabPallet(ttk.Frame):
         data = self.gather_pattern_data(name)
         try:
             save_pattern(name, data)
-            path = pattern_path(name)
+            path = os.path.join(get_pattern_dir(), f"{name}.json")
             messagebox.showinfo("Sukces", f"Zapisano wzór '{name}' w {path}")
         except Exception as exc:
             messagebox.showerror("Błąd zapisu", str(exc))
 
     def load_pattern_dialog(self):
-        _ensure_dir()
+        ensure_pattern_dir()
         path = filedialog.askopenfilename(
             title="Wczytaj wzór",
-            initialdir=PATTERN_DIR,
+            initialdir=get_pattern_dir(),
             filetypes=[("JSON", "*.json")],
         )
         if not path:

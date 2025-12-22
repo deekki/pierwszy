@@ -15,6 +15,12 @@ except ModuleNotFoundError:  # pragma: no cover - handled in load_weights
 
 from packing_app.core import algorithms
 
+from .metrics import (
+    compute_edge_buffer_metrics,
+    compute_edge_buffer_score,
+    compute_edge_contact_fraction,
+    compute_orientation_mix,
+)
 from .models import Carton, Pallet
 
 # Pattern is list of rectangles (x, y, w, l)
@@ -146,61 +152,25 @@ class PatternSelector:
         box_l = self.carton.length + self.padding * 2
         return pallet_w, pallet_l, box_w, box_l
 
-    @staticmethod
-    def _edge_contact_fraction(pattern: Pattern) -> float:
-        if not pattern:
-            return 0.0
-        perimeter = 0.0
-        contact = 0.0
-        n = len(pattern)
-        for x, y, w, length in pattern:
-            perimeter += 2.0 * (w + length)
-        for i in range(n):
-            x1, y1, w1, l1 = pattern[i]
-            for j in range(i + 1, n):
-                x2, y2, w2, l2 = pattern[j]
-                if abs((x1 + w1) - x2) < 1e-6 or abs((x2 + w2) - x1) < 1e-6:
-                    overlap = max(0.0, min(y1 + l1, y2 + l2) - max(y1, y2))
-                    contact += overlap
-                if abs((y1 + l1) - y2) < 1e-6 or abs((y2 + l2) - y1) < 1e-6:
-                    overlap = max(0.0, min(x1 + w1, x2 + w2) - max(x1, x2))
-                    contact += overlap
-        if perimeter <= 1e-9:
-            return 0.0
-        return max(0.0, min(1.0, contact / perimeter))
+    def _edge_contact_fraction(self, pattern: Pattern) -> float:
+        return compute_edge_contact_fraction(pattern)
 
     def _edge_buffer_metrics(self, pattern: Pattern) -> Tuple[float, float]:
-        if not pattern:
-            return 0.0, 0.0
         norm = max(1e-6, min(self.carton.width, self.carton.length) / 2.0)
-        acc = 0.0
-        min_clearance = float("inf")
-        for x, y, w, length in pattern:
-            clearance = min(
-                x,
-                y,
-                self.pallet.width - (x + w),
-                self.pallet.length - (y + length),
-            )
-            min_clearance = min(min_clearance, clearance)
-            acc += max(0.0, min(1.0, clearance / norm))
-        if math.isinf(min_clearance):
-            min_clearance = 0.0
-        return acc / len(pattern), min_clearance
+        return compute_edge_buffer_metrics(
+            pattern, self.pallet.width, self.pallet.length, norm
+        )
 
     def _edge_buffer_score(self, pattern: Pattern) -> float:
-        buffer_score, _ = self._edge_buffer_metrics(pattern)
-        return buffer_score
+        norm = max(1e-6, min(self.carton.width, self.carton.length) / 2.0)
+        return compute_edge_buffer_score(
+            pattern, self.pallet.width, self.pallet.length, norm
+        )
 
     def _orientation_mix(self, pattern: Pattern) -> float:
-        if not pattern:
-            return 0.0
-        default_orientation = self.carton.width >= self.carton.length
-        rotated = 0
-        for _, _, w, length in pattern:
-            if (w >= length) != default_orientation:
-                rotated += 1
-        return rotated / len(pattern)
+        return compute_orientation_mix(
+            pattern, default_orientation=self.carton.width >= self.carton.length
+        )
 
     def generate_all(self, *, maximize_mixed: bool = False) -> Dict[str, Pattern]:
         """Return raw patterns keyed by algorithm name.
