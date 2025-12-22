@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Tuple
 
 from .models import Carton, Pallet
+from .units import MM
 from .selector import PatternScore, PatternSelector
 from .sequencer import EvenOddSequencer
 
@@ -29,17 +30,17 @@ def apply_spacing(pattern: LayerLayout, spacing: float) -> LayerLayout:
 
 @dataclass
 class PalletInputs:
-    pallet_w: float
-    pallet_l: float
-    pallet_h: float
-    box_w: float
-    box_l: float
-    box_h: float
-    thickness: float
-    spacing: float
+    pallet_w: MM
+    pallet_l: MM
+    pallet_h: MM
+    box_w: MM
+    box_l: MM
+    box_h: MM
+    thickness: MM
+    spacing: MM
     slip_count: int
     num_layers: int
-    max_stack: float
+    max_stack: MM
     include_pallet_height: bool
 
     @property
