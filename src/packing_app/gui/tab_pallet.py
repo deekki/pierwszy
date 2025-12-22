@@ -21,6 +21,7 @@ from palletizer_core.transformations import (
     apply_transformation as apply_transformation_core,
     inverse_transformation as inverse_transformation_core,
 )
+from packing_app.gui.editor_state import EditorState
 from packing_app.gui.pallet_state_apply import apply_layout_result_to_tab_state
 from palletizer_core import Carton, Pallet, PatternScore
 from palletizer_core.engine import (
@@ -93,6 +94,7 @@ class TabPallet(ttk.Frame):
         self.show_numbers_var = tk.BooleanVar(value=True)
         self.patches = []
         self.selected_indices = set()
+        self.editor_state = EditorState()
         self.drag_offset = (0, 0)
         self.drag_info = None
         self.drag_button = None
@@ -384,10 +386,13 @@ class TabPallet(ttk.Frame):
         ).grid(row=2, column=5, padx=5, pady=4, sticky="w")
 
         self.extended_library_var = tk.BooleanVar(value=False)
+        self.dynamic_variants_var = tk.BooleanVar(value=False)
+        self.filter_sanity_var = tk.BooleanVar(value=False)
         self.allow_offsets_var = tk.BooleanVar(value=False)
         self.min_support_var = tk.StringVar(value="0.80")
         self.assume_full_support_var = tk.BooleanVar(value=False)
-        self.generated_patterns_var = tk.StringVar(value="Generated patterns: 0")
+        self.result_limit_var = tk.StringVar(value="0")
+        self.generated_patterns_var = tk.StringVar(value="Patterns: raw=0, shown=0")
 
         advanced_frame = ttk.LabelFrame(layers_frame, text="Zaawansowane")
         advanced_frame.grid(
@@ -401,12 +406,24 @@ class TabPallet(ttk.Frame):
         ).grid(row=0, column=0, padx=5, pady=4, sticky="w")
         ttk.Checkbutton(
             advanced_frame,
+            text="Dynamic variants",
+            variable=self.dynamic_variants_var,
+            command=self.compute_pallet,
+        ).grid(row=0, column=1, padx=5, pady=4, sticky="w")
+        ttk.Checkbutton(
+            advanced_frame,
+            text="Filter nonsense layouts",
+            variable=self.filter_sanity_var,
+            command=self.compute_pallet,
+        ).grid(row=0, column=2, padx=5, pady=4, sticky="w")
+        ttk.Checkbutton(
+            advanced_frame,
             text="Allow offsets (brick) with support check",
             variable=self.allow_offsets_var,
             command=self.compute_pallet,
-        ).grid(row=0, column=1, padx=5, pady=4, sticky="w")
+        ).grid(row=1, column=0, padx=5, pady=4, sticky="w")
         ttk.Label(advanced_frame, text="Min support fraction:").grid(
-            row=0, column=2, padx=5, pady=4, sticky="e"
+            row=1, column=1, padx=5, pady=4, sticky="e"
         )
         min_support_entry = ttk.Entry(
             advanced_frame,
@@ -415,20 +432,33 @@ class TabPallet(ttk.Frame):
             validate="key",
             validatecommand=(self.register(self.validate_number), "%P"),
         )
-        min_support_entry.grid(row=0, column=3, padx=5, pady=4, sticky="w")
+        min_support_entry.grid(row=1, column=2, padx=5, pady=4, sticky="w")
         min_support_entry.bind("<Return>", self.compute_pallet)
         min_support_entry.bind("<FocusOut>", self.compute_pallet)
         ttk.Label(advanced_frame, text="(0.0–1.0)").grid(
-            row=0, column=4, padx=4, pady=4, sticky="w"
+            row=1, column=3, padx=4, pady=4, sticky="w"
         )
+        ttk.Label(advanced_frame, text="Result limit:").grid(
+            row=1, column=4, padx=5, pady=4, sticky="e"
+        )
+        result_limit_entry = ttk.Entry(
+            advanced_frame,
+            textvariable=self.result_limit_var,
+            width=6,
+            validate="key",
+            validatecommand=(self.register(self.validate_number), "%P"),
+        )
+        result_limit_entry.grid(row=1, column=5, padx=5, pady=4, sticky="w")
+        result_limit_entry.bind("<Return>", self.compute_pallet)
+        result_limit_entry.bind("<FocusOut>", self.compute_pallet)
         ttk.Checkbutton(
             advanced_frame,
             text="Assume full support with tie-sheet",
             variable=self.assume_full_support_var,
             command=self.compute_pallet,
-        ).grid(row=1, column=0, padx=5, pady=4, sticky="w")
+        ).grid(row=2, column=0, padx=5, pady=4, sticky="w")
         ttk.Label(advanced_frame, textvariable=self.generated_patterns_var).grid(
-            row=1, column=1, padx=5, pady=4, sticky="w"
+            row=2, column=1, padx=5, pady=4, sticky="w"
         )
 
         ttk.Label(layers_frame, text="Liczba przekładek:").grid(
@@ -1394,6 +1424,12 @@ class TabPallet(ttk.Frame):
         except Exception:
             min_support = 0.80
         min_support = max(0.0, min(1.0, min_support))
+        try:
+            result_limit = int(parse_float(self.result_limit_var.get()))
+        except Exception:
+            result_limit = 0
+        if result_limit <= 0:
+            result_limit = None
         result = build_layouts(
             inputs,
             maximize_mixed=self.maximize_mixed.get(),
@@ -1402,6 +1438,9 @@ class TabPallet(ttk.Frame):
             shift_even=self.shift_even_var.get(),
             row_by_row_customizer=self._customize_row_by_row_pattern,
             extended_library=self.extended_library_var.get(),
+            dynamic_variants=self.dynamic_variants_var.get(),
+            filter_sanity=self.filter_sanity_var.get(),
+            result_limit=result_limit,
             allow_offsets=self.allow_offsets_var.get(),
             min_support=min_support,
             assume_full_support=self.assume_full_support_var.get(),
@@ -1415,7 +1454,11 @@ class TabPallet(ttk.Frame):
         """Persist computed layouts and refresh dependent UI elements."""
 
         apply_layout_result_to_tab_state(self, inputs, result)
-        self.generated_patterns_var.set(f"Generated patterns: {len(result.layouts)}")
+        raw_count = len(result.raw_layout_entries or result.layouts)
+        shown_count = len(result.filtered_layout_entries or result.layouts)
+        self.generated_patterns_var.set(
+            f"Patterns: raw={raw_count}, shown={shown_count}"
+        )
 
     def draw_pallet(self):
         pallet_w = parse_dim(self.pallet_w_var)
@@ -1593,6 +1636,7 @@ class TabPallet(ttk.Frame):
                 self.canvas.mpl_disconnect(self.key_cid)
             self.key_cid = None
             self.selected_indices.clear()
+            self.editor_state = EditorState()
             self.drag_info = None
             self.drag_button = None
             self.drag_select_origin = None
@@ -1617,98 +1661,111 @@ class TabPallet(ttk.Frame):
             return
         if TabPallet._toolbar_busy(self):
             return
-        if event.button == 3:
-            self.on_right_click(event)
+        if event.button not in (1, 3):
             return
-        if event.button != 1:
-            return
-        self.drag_button = None
         layer_idx = 0 if event.inaxes is self.ax_odd else 1
         if event.xdata is not None and event.ydata is not None:
             self.context_layer = layer_idx
             self.context_pos = (event.xdata, event.ydata)
+        if event.xdata is None or event.ydata is None:
+            return
+
+        hit_index = None
         for patch, idx in self.patches[layer_idx]:
             contains, _ = patch.contains(event)
             if contains:
-                if self._shift_active(event):
-                    if (layer_idx, idx) in self.selected_indices:
-                        self.selected_indices.remove((layer_idx, idx))
-                    else:
-                        self.selected_indices.add((layer_idx, idx))
-                    self.drag_info = None
-                    self.drag_button = None
-                    self.drag_snapshot_saved = False
-                else:
-                    if (layer_idx, idx) not in self.selected_indices:
-                        self.selected_indices = {(layer_idx, idx)}
-                    drag_items = []
-                    for l_idx, i_idx in self.selected_indices:
-                        for p, j in self.patches[l_idx]:
-                            if j == i_idx:
-                                x, y = p.get_xy()
-                                drag_items.append(
-                                    (l_idx, i_idx, p, x - event.xdata, y - event.ydata)
-                                )
-                                break
-                    self.drag_info = drag_items
-                    self.drag_button = event.button
-                    self.drag_snapshot_saved = False
+                hit_index = idx
                 break
+
+        ctrl = self._ctrl_active(event)
+        shift = self._shift_active(event)
+        current_layer_selection = {
+            idx for layer, idx in self.selected_indices if layer == layer_idx
+        }
+        self.editor_state.selected = set(current_layer_selection)
+        result = self.editor_state.on_press(
+            hit_index, event.button, ctrl, shift, event.xdata, event.ydata
+        )
+        if result.get("clear_all"):
+            self.selected_indices.clear()
         else:
-            if self._shift_active(event):
-                self.selected_indices.clear()
-                self.drag_select_origin = (event.xdata, event.ydata)
+            self.selected_indices = {
+                (layer, idx)
+                for layer, idx in self.selected_indices
+                if layer != layer_idx
+            }
+            for idx in result.get("selected", set()):
+                self.selected_indices.add((layer_idx, idx))
+
+        self.drag_snapshot_saved = False
+        if event.button == 3:
+            self.on_right_click(event)
+        self.highlight_selection()
         self.highlight_selection()
 
     def on_motion(self, event):
-        if not self.drag_info or event.xdata is None or event.ydata is None:
+        if event.xdata is None or event.ydata is None:
             return
-        if TabPallet._toolbar_busy(self) or getattr(self, "drag_button", 1) != 1:
+        if TabPallet._toolbar_busy(self):
             return
+        result = self.editor_state.on_motion(event.xdata, event.ydata)
+        if not result or not self.editor_state.is_dragging:
+            return
+
+        pallet_w = parse_dim(self.pallet_w_var)
+        pallet_l = parse_dim(self.pallet_l_var)
 
         if not self.drag_snapshot_saved:
             TabPallet._record_state(self)
             self.drag_snapshot_saved = True
 
-        pallet_w = parse_dim(self.pallet_w_var)
-        pallet_l = parse_dim(self.pallet_l_var)
+        dx, dy = result["delta"]
+        layers_to_check = set()
+        for layer_idx, idx in list(self.selected_indices):
+            if layer_idx >= len(self.layers) or idx >= len(self.layers[layer_idx]):
+                continue
+            for patch, j in self.patches[layer_idx]:
+                if j != idx:
+                    continue
+                new_x = patch.get_x() + dx
+                new_y = patch.get_y() + dy
+                patch.set_xy((new_x, new_y))
+                x, y, w, h = self.layers[layer_idx][idx]
+                orig_x, orig_y, _, _ = self.inverse_transformation(
+                    [(new_x, new_y, w, h)],
+                    self.transformations[layer_idx],
+                    pallet_w,
+                    pallet_l,
+                )[0]
+                self.layers[layer_idx][idx] = (orig_x, orig_y, w, h)
+                layers_to_check.add(layer_idx)
+                if self.layers_linked():
+                    other_layer = 1 - layer_idx
+                    if (
+                        other_layer < len(self.layers)
+                        and idx < len(self.layers[other_layer])
+                        and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
+                    ):
+                        self.layers[other_layer][idx] = (orig_x, orig_y, w, h)
+                        layers_to_check.add(other_layer)
+                        for p, j2 in self.patches[other_layer]:
+                            if j2 == idx:
+                                tx, ty, tw, th = self.apply_transformation(
+                                    [(orig_x, orig_y, w, h)],
+                                    self.transformations[other_layer],
+                                    pallet_w,
+                                    pallet_l,
+                                )[0]
+                                p.set_xy((tx, ty))
+                                p.set_width(tw)
+                                p.set_height(th)
+                                break
+                break
 
-        for layer_idx, idx, patch, dx, dy in self.drag_info:
-            new_x = event.xdata + dx
-            new_y = event.ydata + dy
-            patch.set_xy((new_x, new_y))
-            x, y, w, h = self.layers[layer_idx][idx]
-            orig_x, orig_y, _, _ = self.inverse_transformation(
-                [(new_x, new_y, w, h)],
-                self.transformations[layer_idx],
-                pallet_w,
-                pallet_l,
-            )[0]
-            self.layers[layer_idx][idx] = (orig_x, orig_y, w, h)
-            if self.layers_linked():
-                other_layer = 1 - layer_idx
-                if (
-                    other_layer < len(self.layers)
-                    and idx < len(self.layers[other_layer])
-                    and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
-                ):
-                    self.layers[other_layer][idx] = (orig_x, orig_y, w, h)
-                    for p, j in self.patches[other_layer]:
-                        if j == idx:
-                            tx, ty, tw, th = self.apply_transformation(
-                                [(orig_x, orig_y, w, h)],
-                                self.transformations[other_layer],
-                                pallet_w,
-                                pallet_l,
-                            )[0]
-                            p.set_xy((tx, ty))
-                            p.set_width(tw)
-                            p.set_height(th)
-                            break
-
-        layers_to_check = {item[0] for item in self.drag_info}
         if self.layers_linked():
-            layers_to_check |= {1 - idx for idx in layers_to_check if 1 - idx < len(self.layers)}
+            layers_to_check |= {
+                1 - idx for idx in layers_to_check if 1 - idx < len(self.layers)
+            }
         for layer_idx in layers_to_check:
             coords = self.apply_transformation(
                 list(self.layers[layer_idx]),
@@ -1725,19 +1782,66 @@ class TabPallet(ttk.Frame):
         self.canvas.draw_idle()
 
     def on_release(self, event):
-        if not self.drag_info:
+        if TabPallet._toolbar_busy(self):
             return
-        if TabPallet._toolbar_busy(self) or getattr(self, "drag_button", 1) != 1:
-            self.drag_info = None
-            self.drag_button = None
+        if event is None:
+            items = []
+            if self.drag_info is not None:
+                items = self.drag_info if isinstance(self.drag_info, list) else [self.drag_info]
+            if not items:
+                return
+            pallet_w = parse_dim(self.pallet_w_var)
+            pallet_l = parse_dim(self.pallet_l_var)
+            for layer_idx, idx, patch, *_ in items:
+                new_x, new_y = patch.get_xy()
+                x, y, w, h = self.layers[layer_idx][idx]
+                orig_x, orig_y, _, _ = self.inverse_transformation(
+                    [(new_x, new_y, w, h)],
+                    self.transformations[layer_idx],
+                    pallet_w,
+                    pallet_l,
+                )[0]
+                other_boxes = [
+                    b
+                    for j, b in enumerate(self.layers[layer_idx])
+                    if j != idx or (layer_idx, j) not in self.selected_indices
+                ]
+                snap_x, snap_y = self.snap_position(
+                    orig_x, orig_y, w, h, pallet_w, pallet_l, other_boxes
+                )
+                self.layers[layer_idx][idx] = (snap_x, snap_y, w, h)
+                other_layer = 1 - layer_idx
+                if (
+                    other_layer < len(self.layers)
+                    and idx < len(self.layers[other_layer])
+                    and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
+                    and self.layers_linked()
+                ):
+                    self.layers[other_layer][idx] = (snap_x, snap_y, w, h)
+            getattr(self, "sort_layers", lambda: None)()
+            self.draw_pallet()
+            self.update_summary()
+            self.highlight_selection()
+            return
+        if event.xdata is None or event.ydata is None:
+            return
+        editor_state = getattr(self, "editor_state", None)
+        if editor_state is None:
+            return
+        result = editor_state.on_release(event.button, event.xdata, event.ydata)
+        if not result.get("was_dragging"):
+            self.drag_snapshot_saved = False
             return
 
         pallet_w = parse_dim(self.pallet_w_var)
         pallet_l = parse_dim(self.pallet_l_var)
 
-        items = self.drag_info if isinstance(self.drag_info, list) else [self.drag_info]
-
-        for layer_idx, idx, patch, *_ in items:
+        for layer_idx, idx in list(self.selected_indices):
+            if layer_idx >= len(self.layers) or idx >= len(self.layers[layer_idx]):
+                continue
+            patch = next((p for p, j in self.patches[layer_idx] if j == idx), None)
+            if patch is None:
+                continue
             new_x, new_y = patch.get_xy()
             x, y, w, h = self.layers[layer_idx][idx]
             orig_x, orig_y, _, _ = self.inverse_transformation(
@@ -1764,9 +1868,7 @@ class TabPallet(ttk.Frame):
             ):
                 self.layers[other_layer][idx] = (snap_x, snap_y, w, h)
 
-        self.drag_info = None
         self.drag_snapshot_saved = False
-        self.drag_button = None
         getattr(self, "sort_layers", lambda: None)()
         self.draw_pallet()
         self.update_summary()
@@ -2178,20 +2280,6 @@ class TabPallet(ttk.Frame):
         self.context_layer = 0 if event.inaxes is self.ax_odd else 1
         if event.xdata is not None and event.ydata is not None:
             self.context_pos = (event.xdata, event.ydata)
-
-        # Automatically select the carton under the cursor unless it is already
-        # part of the current selection. This allows context menu actions to be
-        # applied to multiple cartons when right-clicking on any of them.
-        found = False
-        for patch, idx in self.patches[self.context_layer]:
-            contains, _ = patch.contains(event)
-            if contains:
-                if (self.context_layer, idx) not in self.selected_indices:
-                    self.selected_indices = {(self.context_layer, idx)}
-                found = True
-                break
-        if not found:
-            self.selected_indices.clear()
 
         if self.context_menu is None:
             self.context_menu = tk.Menu(self, tearoff=0)

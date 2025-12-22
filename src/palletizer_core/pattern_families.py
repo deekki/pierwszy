@@ -7,7 +7,7 @@ from .models import Carton, Pallet
 
 LayerLayout = List[Tuple[float, float, float, float]]
 
-MAX_VARIANTS = 10
+MAX_VARIANTS = 50
 
 
 def _fill_block(
@@ -227,7 +227,7 @@ def generate_hybrid(carton: Carton, pallet: Pallet) -> Dict[str, LayerLayout]:
     box_w, box_l = carton.width, carton.length
     pallet_w, pallet_l = pallet.width, pallet.length
 
-    ratios = [0.6, 0.7]
+    ratios = [0.6, 0.7, 0.5, 0.4, 0.3]
     for ratio in ratios:
         if len(patterns) >= MAX_VARIANTS:
             break

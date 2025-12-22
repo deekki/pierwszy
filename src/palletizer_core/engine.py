@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Tuple
 
 from .models import Carton, Pallet
+from .sanity import DEFAULT_SANITY_POLICY, is_sane
+from .signature import layout_signature
 from .units import MM
 from .selector import PatternScore, PatternSelector
 from .sequencer import EvenOddSequencer
@@ -65,6 +67,8 @@ class LayoutComputation:
     display_map: Dict[str, str] = field(default_factory=dict)
     row_by_row_vertical: int = 0
     row_by_row_horizontal: int = 0
+    raw_layout_entries: List[Tuple[int, LayerLayout, str]] = field(default_factory=list)
+    filtered_layout_entries: List[Tuple[int, LayerLayout, str]] = field(default_factory=list)
 
 
 def group_cartons(positions: LayerLayout) -> List[LayerLayout]:
@@ -309,6 +313,9 @@ def build_layouts(
     ] = None,
     *,
     extended_library: bool = False,
+    dynamic_variants: bool = False,
+    filter_sanity: bool = False,
+    result_limit: int | None = None,
     allow_offsets: bool = False,
     min_support: float = 0.80,
     assume_full_support: bool = False,
@@ -321,7 +328,9 @@ def build_layouts(
     )
     selector = PatternSelector(calc_carton, pallet)
     patterns = selector.generate_all(
-        maximize_mixed=maximize_mixed, extended_library=extended_library
+        maximize_mixed=maximize_mixed,
+        extended_library=extended_library,
+        dynamic_variants=dynamic_variants or extended_library,
     )
 
     row_by_row_vertical = 0
@@ -341,8 +350,9 @@ def build_layouts(
         row_by_row_horizontal = 0
 
     scores: Dict[str, PatternScore] = {}
-    layout_entries: List[Tuple[int, LayerLayout, str]] = []
     display_map: Dict[str, str] = {}
+    entries: List[Dict[str, object]] = []
+
     for name, pattern in patterns.items():
         score = selector.score(pattern)
         score.name = name
@@ -358,20 +368,100 @@ def build_layouts(
             adjusted, inputs.pallet_w, inputs.pallet_l, center_enabled, center_mode
         )
         display = scores[name].display_name
-        layout_entries.append((len(centered), centered, display))
+        entries.append(
+            {
+                "name": name,
+                "pattern": pattern,
+                "layout": centered,
+                "display": display,
+                "count": len(centered),
+                "score": scores[name],
+            }
+        )
 
-    best_key = ""
-    best_pattern: LayerLayout = []
-    best_metric = (-1, float("inf"))
-    for name, pattern in patterns.items():
-        penalty = scores[name].penalty if name in scores else float("inf")
-        metric = (len(pattern), penalty)
-        if metric[0] > best_metric[0] or (
-            metric[0] == best_metric[0] and metric[1] < best_metric[1]
-        ):
-            best_metric = metric
-            best_key = name
-            best_pattern = pattern
+    raw_layout_entries = [
+        (entry["count"], entry["layout"], entry["display"]) for entry in entries
+    ]
+
+    def _entry_metric(entry: Dict[str, object]) -> Tuple[int, float]:
+        score = entry["score"]
+        return (entry["count"], score.penalty)
+
+    best_raw_entry = None
+    if entries:
+        best_raw_entry = max(
+            entries,
+            key=lambda entry: (_entry_metric(entry)[0], -_entry_metric(entry)[1]),
+        )
+
+    apply_dedupe = bool(extended_library or dynamic_variants or filter_sanity)
+    if apply_dedupe:
+        signature_map: Dict[tuple, Dict[str, object]] = {}
+        for entry in entries:
+            signature = layout_signature(entry["layout"])
+            existing = signature_map.get(signature)
+            if existing is None:
+                signature_map[signature] = entry
+                continue
+            if _entry_metric(entry)[0] > _entry_metric(existing)[0]:
+                signature_map[signature] = entry
+            elif _entry_metric(entry)[0] == _entry_metric(existing)[0] and _entry_metric(entry)[1] < _entry_metric(existing)[1]:
+                signature_map[signature] = entry
+
+        deduped_entries: List[Dict[str, object]] = []
+        seen_signatures = set()
+        for entry in entries:
+            signature = layout_signature(entry["layout"])
+            if signature in seen_signatures:
+                continue
+            if signature_map.get(signature) is entry:
+                deduped_entries.append(entry)
+                seen_signatures.add(signature)
+    else:
+        deduped_entries = list(entries)
+
+    filtered_entries = deduped_entries
+    if filter_sanity:
+        filtered_entries = [
+            entry
+            for entry in deduped_entries
+            if is_sane(entry["layout"], calc_carton, pallet, DEFAULT_SANITY_POLICY)
+        ]
+        if not filtered_entries and best_raw_entry is not None:
+            filtered_entries = [best_raw_entry]
+
+    apply_ranking = bool(
+        filter_sanity or result_limit or extended_library or dynamic_variants
+    )
+    if apply_ranking:
+        filtered_entries = sorted(
+            filtered_entries,
+            key=lambda entry: (
+                -int(entry["count"]),
+                float(entry["score"].penalty),
+                str(entry["display"]),
+            ),
+        )
+
+    if result_limit is not None and result_limit > 0:
+        filtered_entries = filtered_entries[:result_limit]
+
+    layout_entries = [
+        (entry["count"], entry["layout"], entry["display"])
+        for entry in filtered_entries
+    ]
+
+    best_entry = None
+    if filtered_entries:
+        best_entry = max(
+            filtered_entries,
+            key=lambda entry: (_entry_metric(entry)[0], -_entry_metric(entry)[1]),
+        )
+    if best_entry is None:
+        best_entry = best_raw_entry
+
+    best_key = best_entry["name"] if best_entry else ""
+    best_pattern: LayerLayout = best_entry["pattern"] if best_entry else []
 
     seq = EvenOddSequencer(
         best_pattern,
@@ -415,4 +505,6 @@ def build_layouts(
         display_map=display_map,
         row_by_row_vertical=row_by_row_vertical,
         row_by_row_horizontal=row_by_row_horizontal,
+        raw_layout_entries=raw_layout_entries,
+        filtered_layout_entries=layout_entries,
     )
