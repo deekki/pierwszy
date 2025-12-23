@@ -16,9 +16,6 @@ except ModuleNotFoundError:  # pragma: no cover - handled in load_weights
     yaml = None  # type: ignore
 
 from palletizer_core import algorithms
-
-logger = logging.getLogger(__name__)
-
 from .metrics import (
     compute_edge_buffer_metrics,
     compute_edge_buffer_score,
@@ -32,6 +29,8 @@ from .pattern_families import (
     generate_block4,
     generate_hybrid,
 )
+
+logger = logging.getLogger(__name__)
 
 # Pattern is list of rectangles (x, y, w, l)
 Pattern = List[Tuple[float, float, float, float]]

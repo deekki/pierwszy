@@ -21,7 +21,7 @@ def _grid_layout_int(
 
 def _layout_score(layout: List[Tuple[int, int, int, int]]) -> Tuple[int, int]:
     count = len(layout)
-    area = sum(w * l for _, _, w, l in layout)
+    area = sum(w * length for _, _, w, length in layout)
     return count, area
 
 
@@ -80,10 +80,12 @@ def generate_guillotine_layouts(
             for cut in cut_positions(rect_w):
                 left = pack(cut, rect_l, depth - 1)[:per_split_limit]
                 right = pack(rect_w - cut, rect_l, depth - 1)[:per_split_limit]
-                for l in left:
-                    for r in right:
-                        combined = list(l)
-                        combined.extend((x + cut, y, w, lgt) for x, y, w, lgt in r)
+                for left_layout in left:
+                    for right_layout in right:
+                        combined = list(left_layout)
+                        combined.extend(
+                            (x + cut, y, w, lgt) for x, y, w, lgt in right_layout
+                        )
                         layouts.append(combined)
 
             for cut in cut_positions(rect_l):
@@ -113,7 +115,8 @@ def generate_guillotine_layouts(
     seen = set()
     for layout in int_layouts:
         float_layout = [
-            (x / scale, y / scale, w / scale, l / scale) for x, y, w, l in layout
+            (x / scale, y / scale, w / scale, length / scale)
+            for x, y, w, length in layout
         ]
         signature = layout_signature(float_layout)
         if signature in seen:

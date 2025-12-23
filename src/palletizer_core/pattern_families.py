@@ -45,7 +45,7 @@ def _fill_interlock(
         return []
     if not layers:
         return []
-    return [(x + x0, y + y0, w, l) for x, y, w, l in layers[0]]
+    return [(x + x0, y + y0, w, length) for x, y, w, length in layers[0]]
 
 
 def generate_block2(carton: Carton, pallet: Pallet) -> Dict[str, LayerLayout]:

@@ -6,8 +6,8 @@ LayerLayout = List[Tuple[float, float, float, float]]
 
 
 def rect_area(rect: Tuple[float, float, float, float]) -> float:
-    _, _, w, l = rect
-    return max(0.0, w) * max(0.0, l)
+    _, _, w, length = rect
+    return max(0.0, w) * max(0.0, length)
 
 
 def rect_intersection_area(

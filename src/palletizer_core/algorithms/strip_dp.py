@@ -115,7 +115,7 @@ def generate_strip_layouts(
     layouts = _strip_variants(pallet_w, pallet_l, box_w, box_l, max_variants)
     swapped = _strip_variants(pallet_l, pallet_w, box_l, box_w, max_variants)
     for layout in swapped:
-        layouts.append([(y, x, l, w) for x, y, w, l in layout])
+        layouts.append([(y, x, length, w) for x, y, w, length in layout])
 
     deduped: List[LayerLayout] = []
     seen = set()
