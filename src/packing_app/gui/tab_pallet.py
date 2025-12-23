@@ -127,6 +127,11 @@ class TabPallet(ttk.Frame):
         self._layer_sync_source = "height"
         self._suspend_layer_sync = False
         self._suspend_pattern_apply = False
+        self._pattern_apply_after_id = None
+        self._pending_pattern_key = None
+        self._pending_pattern_force = False
+        self._current_applied_pattern_key = None
+        self._pattern_apply_in_progress = False
         self._compute_queue: queue.Queue = queue.Queue()
         self._compute_job_id = 0
         self._compute_polling = False
@@ -1653,6 +1658,11 @@ class TabPallet(ttk.Frame):
             f"Patterns: raw={raw_count}, shown={shown_count}"
         )
         self.update_pattern_stats()
+        selection = self.pattern_tree.selection() if hasattr(self, "pattern_tree") else ()
+        if selection:
+            self._request_apply_pattern_key(
+                selection[0], force=True, reason="FinalizeSync"
+            )
 
     def draw_pallet(self):
         pallet_w = parse_dim(self.pallet_w_var)
@@ -2698,40 +2708,41 @@ class TabPallet(ttk.Frame):
         if not hasattr(self, "pattern_tree"):
             return
 
-        previous_selection = self.pattern_tree.selection()
-        for item in self.pattern_tree.get_children():
-            self.pattern_tree.delete(item)
-
-        if not getattr(self, "pattern_scores", None):
-            if hasattr(self, "pattern_detail_var"):
-                self.pattern_detail_var.set("")
-            return
-
-        sorted_scores = sorted(
-            self.pattern_scores.items(), key=lambda item: item[1].penalty
-        )
-        for name, score in sorted_scores:
-            display = self._pattern_display_name(name, score)
-            values = (
-                display,
-                str(score.carton_count),
-                f"{score.stability * 100:.1f}",
-                f"{score.layer_eff * 100:.1f}",
-                f"{score.cube_eff * 100:.1f}",
-                f"{score.support_fraction * 100:.1f}",
-                f"{score.min_support * 100:.1f}",
-                f"{score.edge_contact * 100:.1f}",
-                f"{score.min_edge_clearance:.1f}",
-                str(score.grip_changes),
-                "Tak" if score.instability_risk else "Nie",
-            )
-            self.pattern_tree.insert("", "end", iid=name, values=values)
-
         previous_flag = getattr(self, "_suspend_pattern_apply", False)
         target_key = ""
         self._suspend_pattern_apply = True
         try:
+            previous_selection = self.pattern_tree.selection()
+            for item in self.pattern_tree.get_children():
+                self.pattern_tree.delete(item)
+
+            if not getattr(self, "pattern_scores", None):
+                if hasattr(self, "pattern_detail_var"):
+                    self.pattern_detail_var.set("")
+                return
+
+            sorted_scores = sorted(
+                self.pattern_scores.items(), key=lambda item: item[1].penalty
+            )
+            for name, score in sorted_scores:
+                display = self._pattern_display_name(name, score)
+                values = (
+                    display,
+                    str(score.carton_count),
+                    f"{score.stability * 100:.1f}",
+                    f"{score.layer_eff * 100:.1f}",
+                    f"{score.cube_eff * 100:.1f}",
+                    f"{score.support_fraction * 100:.1f}",
+                    f"{score.min_support * 100:.1f}",
+                    f"{score.edge_contact * 100:.1f}",
+                    f"{score.min_edge_clearance:.1f}",
+                    str(score.grip_changes),
+                    "Tak" if score.instability_risk else "Nie",
+                )
+                self.pattern_tree.insert("", "end", iid=name, values=values)
+
             best_key = getattr(self, "best_layout_key", "")
+            target_key = ""
             if previous_selection:
                 prev = previous_selection[0]
                 if self.pattern_tree.exists(prev):
@@ -2748,6 +2759,53 @@ class TabPallet(ttk.Frame):
                 self._update_pattern_detail_only(target_key)
         finally:
             self._suspend_pattern_apply = previous_flag
+        if target_key and target_key != self._current_applied_pattern_key:
+            self._request_apply_pattern_key(
+                target_key, force=False, reason="PostRebuild"
+            )
+
+    def _request_apply_pattern_key(
+        self, key: str, *, force: bool, reason: str = ""
+    ) -> None:
+        if not key:
+            return
+        self._pending_pattern_key = key
+        self._pending_pattern_force = self._pending_pattern_force or force
+        if getattr(self, "_suspend_pattern_apply", False):
+            return
+        if self._pattern_apply_after_id is not None:
+            self.after_cancel(self._pattern_apply_after_id)
+        self._pattern_apply_after_id = self.after_idle(self._flush_apply_pattern_key)
+        if reason:
+            self._debug_log_call(f"apply_pattern_request:{reason}")
+
+    def _flush_apply_pattern_key(self) -> None:
+        self._pattern_apply_after_id = None
+        if self._pattern_apply_in_progress:
+            return
+        if getattr(self, "_suspend_pattern_apply", False):
+            return
+        key = self._pending_pattern_key
+        force = self._pending_pattern_force
+        self._pending_pattern_key = None
+        self._pending_pattern_force = False
+        if key is None:
+            return
+        if not self.pattern_scores or key not in self.pattern_scores:
+            return
+        if not self.pattern_display_map or key not in self.pattern_display_map:
+            return
+        display = self._update_pattern_detail_only(key)
+        if not display:
+            return
+        if (not force) and key == self._current_applied_pattern_key:
+            return
+        self._pattern_apply_in_progress = True
+        try:
+            self._apply_pattern_selection(display)
+            self._current_applied_pattern_key = key
+        finally:
+            self._pattern_apply_in_progress = False
 
     def on_pattern_select(self, event=None):
         if not hasattr(self, "pattern_tree") or not hasattr(
@@ -2761,9 +2819,12 @@ class TabPallet(ttk.Frame):
             return
 
         key = selection[0]
-        display = self._update_pattern_detail_only(key)
-        if display and event is not None and not getattr(self, "_suspend_pattern_apply", False):
-            self._apply_pattern_selection(display)
+        self._update_pattern_detail_only(key)
+        if getattr(self, "_suspend_pattern_apply", False):
+            return
+        self._request_apply_pattern_key(
+            key, force=False, reason="TreeviewSelect"
+        )
 
     def on_pattern_click_apply(self, event):
         if getattr(self, "_suspend_pattern_apply", False):
@@ -2774,8 +2835,10 @@ class TabPallet(ttk.Frame):
         if not row_id:
             return
         selection = self.pattern_tree.selection()
-        if selection and selection[0] == row_id:
-            self.on_pattern_select(event)
+        if not selection or selection[0] != row_id:
+            self.pattern_tree.selection_set(row_id)
+        self._update_pattern_detail_only(row_id)
+        self._request_apply_pattern_key(row_id, force=True, reason="MouseClick")
 
     def _pattern_display_name(self, key: str, score: PatternScore) -> str:
         return score.display_name or DISPLAY_NAME_OVERRIDES.get(
