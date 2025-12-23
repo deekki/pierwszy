@@ -1,10 +1,14 @@
+import json
+import logging
+import math
 import os
+import queue
+import threading
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, simpledialog
-import matplotlib
-import json
-import math
 from typing import List, Tuple, Dict, Optional
+
+import matplotlib
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -43,6 +47,9 @@ from packing_app.data.repository import (
     load_materials,
     load_slip_sheets,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 def apply_pattern_selection_after_restore(tab, previous_flag: bool, target_key: str) -> bool:
@@ -120,6 +127,16 @@ class TabPallet(ttk.Frame):
         self._layer_sync_source = "height"
         self._suspend_layer_sync = False
         self._suspend_pattern_apply = False
+        self._compute_queue: queue.Queue = queue.Queue()
+        self._compute_job_id = 0
+        self._compute_polling = False
+        self._redraw_pending = False
+        self._redraw_timer = None
+        self._debug_call_counts = {
+            "update_summary": 0,
+            "update_pattern_stats": 0,
+            "on_pattern_select": 0,
+        }
         self.drag_snapshot_saved = False
         self.press_cid = None
         self.motion_cid = None
@@ -763,6 +780,13 @@ class TabPallet(ttk.Frame):
             return f"{float(value):.2f}".rstrip("0").rstrip(".")
         return str(value)
 
+    def _debug_log_call(self, name: str) -> None:
+        if not logger.isEnabledFor(logging.DEBUG):
+            return
+        count = self._debug_call_counts.get(name, 0) + 1
+        self._debug_call_counts[name] = count
+        logger.debug("TabPallet.%s called %d times", name, count)
+
     def _sync_selection_from_controller(self) -> None:
         self.selected_indices = self.editor_controller.selected_pairs()
 
@@ -1016,15 +1040,31 @@ class TabPallet(ttk.Frame):
         pallet: Pallet,
         pattern: LayerLayout | None,
     ) -> Tuple[LayerLayout | None, int, int]:
+        custom_pattern, used_vertical, used_horizontal = self._compute_row_by_row_pattern(
+            carton,
+            pallet,
+            pattern,
+            self._row_by_row_user_modified,
+            self.row_by_row_vertical_var.get(),
+            self.row_by_row_horizontal_var.get(),
+        )
+        self._set_row_by_row_counts(used_vertical, used_horizontal)
+        return custom_pattern, used_vertical, used_horizontal
+
+    def _compute_row_by_row_pattern(
+        self,
+        carton: Carton,
+        pallet: Pallet,
+        pattern: LayerLayout | None,
+        user_modified: bool,
+        requested_vertical: int,
+        requested_horizontal: int,
+    ) -> Tuple[LayerLayout | None, int, int]:
         if not pattern:
-            self._set_row_by_row_counts(0, 0)
             return pattern, 0, 0
 
         base_vertical, base_horizontal = self._count_row_by_row_rows(carton, pattern)
-        if self._row_by_row_user_modified:
-            requested_vertical = self.row_by_row_vertical_var.get()
-            requested_horizontal = self.row_by_row_horizontal_var.get()
-        else:
+        if not user_modified:
             requested_vertical = base_vertical
             requested_horizontal = base_horizontal
 
@@ -1041,7 +1081,6 @@ class TabPallet(ttk.Frame):
         used_vertical, used_horizontal = self._count_row_by_row_rows(
             carton, custom_pattern
         )
-        self._set_row_by_row_counts(used_vertical, used_horizontal)
         return custom_pattern, used_vertical, used_horizontal
 
     def _prepare_row_by_row_inputs(self) -> Optional[Tuple[Carton, Pallet]]:
@@ -1380,24 +1419,92 @@ class TabPallet(ttk.Frame):
         """
         self._clear_selection()
         self.drag_info = None
+        self._set_compute_status("Obliczanie...", disable_button=True)
+
+        inputs = self._read_inputs()
+        if not self._validate_inputs(inputs):
+            self._set_compute_status("", disable_button=False)
+            return
+
+        options = self._read_compute_options()
+        row_by_row_user_modified = options.pop("row_by_row_user_modified")
+        row_by_row_vertical = options.pop("row_by_row_vertical")
+        row_by_row_horizontal = options.pop("row_by_row_horizontal")
+        job_id = self._next_compute_job_id()
+
+        def row_by_row_customizer(carton: Carton, pallet: Pallet, pattern: LayerLayout | None):
+            return self._compute_row_by_row_pattern(
+                carton,
+                pallet,
+                pattern,
+                row_by_row_user_modified,
+                row_by_row_vertical,
+                row_by_row_horizontal,
+            )
+
+        thread = threading.Thread(
+            target=self._run_compute_job,
+            args=(job_id, inputs, options, row_by_row_customizer),
+            daemon=True,
+        )
+        thread.start()
+        self._poll_compute_results()
+
+    def _set_compute_status(self, text: str, disable_button: bool) -> None:
         if hasattr(self, "status_var"):
-            self.status_var.set("Obliczanie...")
+            self.status_var.set(text)
             self.status_label.update_idletasks()
         if hasattr(self, "compute_btn"):
-            self.compute_btn.state(["disabled"])
-
-        try:
-            inputs = self._read_inputs()
-            if not self._validate_inputs(inputs):
-                return
-
-            layouts = self._build_layouts(inputs)
-            self._finalize_results(inputs, layouts)
-        finally:
-            if hasattr(self, "status_var"):
-                self.status_var.set("")
-            if hasattr(self, "compute_btn"):
+            if disable_button:
+                self.compute_btn.state(["disabled"])
+            else:
                 self.compute_btn.state(["!disabled"])
+
+    def _next_compute_job_id(self) -> int:
+        self._compute_job_id += 1
+        return self._compute_job_id
+
+    def _run_compute_job(
+        self,
+        job_id: int,
+        inputs: PalletInputs,
+        options: dict,
+        row_by_row_customizer,
+    ) -> None:
+        try:
+            result = self._build_layouts(inputs, row_by_row_customizer=row_by_row_customizer, **options)
+        except Exception as exc:
+            logger.exception("Failed to compute layouts")
+            self._compute_queue.put(("error", job_id, exc))
+            return
+        self._compute_queue.put(("result", job_id, inputs, result))
+
+    def _poll_compute_results(self) -> None:
+        self._compute_polling = True
+        try:
+            while True:
+                message = self._compute_queue.get_nowait()
+                if not message:
+                    break
+                kind, job_id, *payload = message
+                if job_id != self._compute_job_id:
+                    continue
+                self._compute_polling = False
+                if kind == "error":
+                    exc = payload[0]
+                    messagebox.showerror("Błąd obliczeń", str(exc))
+                    self._set_compute_status("", disable_button=False)
+                    return
+                if kind == "result":
+                    inputs, result = payload
+                    self._finalize_results(inputs, result)
+                    self._set_compute_status("", disable_button=False)
+                    return
+        except queue.Empty:
+            pass
+
+        if self._compute_polling:
+            self.after(50, self._poll_compute_results)
 
     def _read_inputs(self) -> PalletInputs:
         """Collect and normalize numeric values from the UI widgets."""
@@ -1466,7 +1573,7 @@ class TabPallet(ttk.Frame):
             return False
         return True
 
-    def _build_layouts(self, inputs: PalletInputs) -> LayoutComputation:
+    def _read_compute_options(self) -> dict:
         """Generate layout options and best even/odd layers for the pallet."""
         try:
             min_support = parse_float(self.min_support_var.get())
@@ -1479,36 +1586,73 @@ class TabPallet(ttk.Frame):
             result_limit = 0
         if result_limit <= 0:
             result_limit = None
-        result = build_layouts(
+
+        return {
+            "maximize_mixed": self.maximize_mixed.get(),
+            "center_enabled": self.center_var.get(),
+            "center_mode": self.center_mode_var.get(),
+            "shift_even": self.shift_even_var.get(),
+            "extended_library": self.extended_library_var.get(),
+            "dynamic_variants": self.dynamic_variants_var.get(),
+            "deep_search": self.deep_search_var.get(),
+            "filter_sanity": self.filter_sanity_var.get(),
+            "result_limit": result_limit,
+            "allow_offsets": self.allow_offsets_var.get(),
+            "min_support": min_support,
+            "assume_full_support": self.assume_full_support_var.get(),
+            "row_by_row_user_modified": self._row_by_row_user_modified,
+            "row_by_row_vertical": self.row_by_row_vertical_var.get(),
+            "row_by_row_horizontal": self.row_by_row_horizontal_var.get(),
+        }
+
+    def _build_layouts(
+        self,
+        inputs: PalletInputs,
+        *,
+        maximize_mixed: bool,
+        center_enabled: bool,
+        center_mode: str,
+        shift_even: bool,
+        row_by_row_customizer,
+        extended_library: bool,
+        dynamic_variants: bool,
+        deep_search: bool,
+        filter_sanity: bool,
+        result_limit: int | None,
+        allow_offsets: bool,
+        min_support: float,
+        assume_full_support: bool,
+    ) -> LayoutComputation:
+        return build_layouts(
             inputs,
-            maximize_mixed=self.maximize_mixed.get(),
-            center_enabled=self.center_var.get(),
-            center_mode=self.center_mode_var.get(),
-            shift_even=self.shift_even_var.get(),
-            row_by_row_customizer=self._customize_row_by_row_pattern,
-            extended_library=self.extended_library_var.get(),
-            dynamic_variants=self.dynamic_variants_var.get(),
-            deep_search=self.deep_search_var.get(),
-            filter_sanity=self.filter_sanity_var.get(),
+            maximize_mixed=maximize_mixed,
+            center_enabled=center_enabled,
+            center_mode=center_mode,
+            shift_even=shift_even,
+            row_by_row_customizer=row_by_row_customizer,
+            extended_library=extended_library,
+            dynamic_variants=dynamic_variants,
+            deep_search=deep_search,
+            filter_sanity=filter_sanity,
             result_limit=result_limit,
-            allow_offsets=self.allow_offsets_var.get(),
+            allow_offsets=allow_offsets,
             min_support=min_support,
-            assume_full_support=self.assume_full_support_var.get(),
+            assume_full_support=assume_full_support,
         )
-        self._set_row_by_row_counts(
-            result.row_by_row_vertical, result.row_by_row_horizontal
-        )
-        return result
 
     def _finalize_results(self, inputs: PalletInputs, result: LayoutComputation) -> None:
         """Persist computed layouts and refresh dependent UI elements."""
 
         apply_layout_result_to_tab_state(self, inputs, result)
+        self._set_row_by_row_counts(
+            result.row_by_row_vertical, result.row_by_row_horizontal
+        )
         raw_count = len(result.raw_layout_entries or result.layouts)
         shown_count = len(result.filtered_layout_entries or result.layouts)
         self.generated_patterns_var.set(
             f"Patterns: raw={raw_count}, shown={shown_count}"
         )
+        self.update_pattern_stats()
 
     def draw_pallet(self):
         pallet_w = parse_dim(self.pallet_w_var)
@@ -1748,6 +1892,17 @@ class TabPallet(ttk.Frame):
             self.on_right_click(event)
         self.highlight_selection()
 
+    def _request_redraw(self) -> None:
+        self._redraw_pending = True
+        if self._redraw_timer is None:
+            self._redraw_timer = self.after(16, self._flush_redraw)
+
+    def _flush_redraw(self) -> None:
+        self._redraw_timer = None
+        if self._redraw_pending:
+            self.canvas.draw_idle()
+            self._redraw_pending = False
+
     def on_motion(self, event):
         if event.xdata is None or event.ydata is None:
             return
@@ -1830,7 +1985,7 @@ class TabPallet(ttk.Frame):
                 color = "red" if i in collision_idx else base_color
                 p.set_facecolor(color)
 
-        self.canvas.draw_idle()
+        self._request_redraw()
 
     def on_release(self, event):
         if TabPallet._toolbar_busy(self):
@@ -2380,6 +2535,7 @@ class TabPallet(ttk.Frame):
         self.highlight_selection()
 
     def update_summary(self):
+        self._debug_log_call("update_summary")
         if not self.layers:
             self.totals_label.config(text="")
             self.materials_label.config(text="")
@@ -2495,8 +2651,6 @@ class TabPallet(ttk.Frame):
 
         self.clearance_label.config(text=clearance_text)
 
-        self.update_pattern_stats()
-
     def _edge_clearance_stats(self, pallet_w: float, pallet_l: float):
         if not self.layers or pallet_w <= 0 or pallet_l <= 0:
             return None
@@ -2540,6 +2694,7 @@ class TabPallet(ttk.Frame):
         return min_long, min_short
 
     def update_pattern_stats(self):
+        self._debug_log_call("update_pattern_stats")
         if not hasattr(self, "pattern_tree"):
             return
 
@@ -2556,9 +2711,7 @@ class TabPallet(ttk.Frame):
             self.pattern_scores.items(), key=lambda item: item[1].penalty
         )
         for name, score in sorted_scores:
-            display = score.display_name or DISPLAY_NAME_OVERRIDES.get(
-                name, name.replace("_", " ").capitalize()
-            )
+            display = self._pattern_display_name(name, score)
             values = (
                 display,
                 str(score.carton_count),
@@ -2592,14 +2745,9 @@ class TabPallet(ttk.Frame):
             if target_key:
                 self.pattern_tree.selection_set(target_key)
                 self.pattern_tree.see(target_key)
+                self._update_pattern_detail_only(target_key)
         finally:
-            def restore_and_apply(prev=previous_flag, target=target_key):
-                apply_pattern_selection_after_restore(self, prev, target)
-
-            if hasattr(self, "after"):
-                self.after_idle(restore_and_apply)
-            else:
-                restore_and_apply()
+            self._suspend_pattern_apply = previous_flag
 
     def on_pattern_select(self, event=None):
         if not hasattr(self, "pattern_tree") or not hasattr(
@@ -2612,18 +2760,36 @@ class TabPallet(ttk.Frame):
             self.pattern_detail_var.set("")
             return
 
-        apply_layout = not getattr(self, "_suspend_pattern_apply", False)
         key = selection[0]
+        display = self._update_pattern_detail_only(key)
+        if display and event is not None and not getattr(self, "_suspend_pattern_apply", False):
+            self._apply_pattern_selection(display)
+
+    def on_pattern_click_apply(self, event):
+        if getattr(self, "_suspend_pattern_apply", False):
+            return
+        if not hasattr(self, "pattern_tree"):
+            return
+        row_id = self.pattern_tree.identify_row(event.y)
+        if not row_id:
+            return
+        selection = self.pattern_tree.selection()
+        if selection and selection[0] == row_id:
+            self.on_pattern_select(event)
+
+    def _pattern_display_name(self, key: str, score: PatternScore) -> str:
+        return score.display_name or DISPLAY_NAME_OVERRIDES.get(
+            key, key.replace("_", " ").capitalize()
+        )
+
+    def _update_pattern_detail_only(self, key: str) -> str:
+        self._debug_log_call("on_pattern_select")
         score = self.pattern_scores.get(key)
         if not score:
             self.pattern_detail_var.set("")
-            return
+            return ""
 
-        display = score.display_name or DISPLAY_NAME_OVERRIDES.get(
-            key, key.replace("_", " ").capitalize()
-        )
-        if apply_layout:
-            self._apply_pattern_selection(display)
+        display = self._pattern_display_name(key, score)
         risk_text = (
             "Tak: " + ", ".join(score.warnings)
             if score.instability_risk and score.warnings
@@ -2646,18 +2812,7 @@ class TabPallet(ttk.Frame):
             f"Ryzyko utraty stabilności: {risk_text}."
         )
         self.pattern_detail_var.set(detail_text)
-
-    def on_pattern_click_apply(self, event):
-        if getattr(self, "_suspend_pattern_apply", False):
-            return
-        if not hasattr(self, "pattern_tree"):
-            return
-        row_id = self.pattern_tree.identify_row(event.y)
-        if not row_id:
-            return
-        selection = self.pattern_tree.selection()
-        if selection and selection[0] == row_id:
-            self.on_pattern_select()
+        return display
 
     def _apply_pattern_selection(self, display_name: str) -> None:
         """Update layout selection and redraw charts for the chosen pattern."""

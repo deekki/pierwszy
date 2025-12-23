@@ -306,7 +306,11 @@ def pack_hex_bottom_up(W, H, diam, margin=0):
     return centers
 
 
-def pack_rectangles_dynamic(width, height, wprod, lprod, margin=0):
+DEFAULT_MAX_RECTS = 600
+DEEP_MAX_RECTS = 1200
+
+
+def pack_rectangles_dynamic(width, height, wprod, lprod, margin=0, max_rects=DEFAULT_MAX_RECTS):
     """Pack rectangles using a dynamic optimisation strategy.
 
     The routine relies on ``rectpack`` to explore many packing permutations with
@@ -333,6 +337,8 @@ def pack_rectangles_dynamic(width, height, wprod, lprod, margin=0):
     packer = newPacker(rotation=True)
 
     estimate = int((eff_w * eff_h) // (wprod * lprod)) + 5
+    if max_rects is not None:
+        estimate = min(estimate, max_rects)
     for i in range(estimate):
         packer.add_rect(wprod, lprod, i)
 
@@ -344,7 +350,13 @@ def pack_rectangles_dynamic(width, height, wprod, lprod, margin=0):
     return len(positions), positions
 
 
-def pack_rectangles_dynamic_variants(carton, pallet):
+def pack_rectangles_dynamic_variants(
+    carton,
+    pallet,
+    *,
+    max_rects=DEFAULT_MAX_RECTS,
+    full_variants: bool = False,
+):
     """Generate deterministic dynamic variants using rectpack strategies."""
     width = pallet.width
     height = pallet.length
@@ -352,11 +364,17 @@ def pack_rectangles_dynamic_variants(carton, pallet):
     lprod = carton.length
 
     variants = {}
-    _, base = pack_rectangles_dynamic(width, height, wprod, lprod)
+    _, base = pack_rectangles_dynamic(
+        width, height, wprod, lprod, max_rects=max_rects
+    )
     variants["dynamic_default"] = base
     if abs(wprod - lprod) > 1e-6:
-        _, rotated = pack_rectangles_dynamic(width, height, lprod, wprod)
+        _, rotated = pack_rectangles_dynamic(
+            width, height, lprod, wprod, max_rects=max_rects
+        )
         variants["dynamic_rotated"] = rotated
+    if not full_variants:
+        return variants
 
     try:
         from rectpack import newPacker
@@ -377,6 +395,8 @@ def pack_rectangles_dynamic_variants(carton, pallet):
         if eff_w <= 0 or eff_h <= 0:
             continue
         estimate = int((eff_w * eff_h) // (wprod * lprod)) + 5
+        if max_rects is not None:
+            estimate = min(estimate, max_rects)
         for i in range(estimate):
             packer.add_rect(wprod, lprod, i)
         packer.add_bin(eff_w, eff_h)
