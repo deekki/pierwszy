@@ -371,7 +371,8 @@ def build_layouts(
         )
         display = scores[name].display_name
         area_ratio = (
-            sum(w * l for _, _, w, l in centered) / (inputs.pallet_w * inputs.pallet_l)
+            sum(w * length for _, _, w, length in centered)
+            / (inputs.pallet_w * inputs.pallet_l)
             if inputs.pallet_w > 0 and inputs.pallet_l > 0
             else 0.0
         )

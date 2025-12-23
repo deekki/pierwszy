@@ -1886,7 +1886,7 @@ class TabPallet(ttk.Frame):
 
         ctrl = self._ctrl_active(event)
         shift = self._shift_active(event)
-        result = self.editor_controller.on_press(
+        self.editor_controller.on_press(
             layer_idx,
             hit_index,
             event.button,

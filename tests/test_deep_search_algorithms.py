@@ -8,11 +8,11 @@ from palletizer_core.signature import layout_signature
 
 
 def _assert_layout_valid(layout, pallet_w, pallet_l):
-    for x, y, w, l in layout:
+    for x, y, w, length in layout:
         assert x >= -1e-6
         assert y >= -1e-6
         assert x + w <= pallet_w + 1e-6
-        assert y + l <= pallet_l + 1e-6
+        assert y + length <= pallet_l + 1e-6
     for i in range(len(layout)):
         ax, ay, aw, al = layout[i]
         for j in range(i + 1, len(layout)):
