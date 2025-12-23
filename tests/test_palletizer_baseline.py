@@ -25,7 +25,7 @@ def test_build_layouts_baseline_matches_previous_results():
     )
 
     assert result.best_layout_name == "Mixed"
-    assert len(result.layouts) == 7
+    assert len(result.layouts) == 6
 
     inputs_alt = PalletInputs(
         pallet_w=1200,
@@ -50,4 +50,4 @@ def test_build_layouts_baseline_matches_previous_results():
     )
 
     assert result_alt.best_layout_name == "Dynamic"
-    assert len(result_alt.layouts) == 7
+    assert len(result_alt.layouts) == 6

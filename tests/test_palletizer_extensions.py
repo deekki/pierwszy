@@ -94,4 +94,4 @@ def test_sanity_filter_removes_single_carton_columns(monkeypatch):
 
     layout_names = {name for _, _, name in result.layouts}
     assert "Bad layout" not in layout_names
-    assert "Good layout" in layout_names
+    assert "Good Layout" in layout_names

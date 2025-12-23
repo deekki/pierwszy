@@ -27,15 +27,20 @@ from palletizer_core.transformations import (
 )
 from packing_app.gui.editor_controller import EditorController
 from packing_app.gui.pallet_state_apply import apply_layout_result_to_tab_state
-from palletizer_core import Carton, Pallet, PatternScore
+from palletizer_core import Carton, Pallet
 from palletizer_core.engine import (
-    DISPLAY_NAME_OVERRIDES,
     LayerLayout,
     LayoutComputation,
     PalletInputs,
     build_layouts,
     group_cartons,
 )
+from palletizer_core.selector import (
+    RISK_CONTACT_THRESHOLD,
+    RISK_STABILITY_THRESHOLD,
+    RISK_SUPPORT_THRESHOLD,
+)
+from palletizer_core.solutions import Solution, SolutionCatalog, display_for_key
 from palletizer_core.units import parse_float
 from palletizer_core.stacking import compute_max_stack, compute_num_layers
 from palletizer_core.validation import validate_pallet_inputs
@@ -114,7 +119,8 @@ class TabPallet(ttk.Frame):
         self.best_layout_key = ""
         self.best_even = []
         self.best_odd = []
-        self.pattern_scores: Dict[str, PatternScore] = {}
+        self.solution_catalog: SolutionCatalog = SolutionCatalog.empty()
+        self.solution_by_key: Dict[str, Solution] = {}
         self.modify_mode_var = tk.BooleanVar(value=False)
         self.show_numbers_var = tk.BooleanVar(value=True)
         self.patches = []
@@ -128,9 +134,9 @@ class TabPallet(ttk.Frame):
         self._suspend_layer_sync = False
         self._suspend_pattern_apply = False
         self._pattern_apply_after_id = None
-        self._pending_pattern_key = None
-        self._pending_pattern_force = False
-        self._current_applied_pattern_key = None
+        self._pending_solution_key = None
+        self._pending_solution_force = False
+        self._current_applied_solution_key = None
         self._pattern_apply_in_progress = False
         self._compute_queue: queue.Queue = queue.Queue()
         self._compute_job_id = 0
@@ -155,7 +161,6 @@ class TabPallet(ttk.Frame):
         self.row_by_row_horizontal_var = tk.IntVar(value=0)
         self._row_by_row_user_modified = False
         self._updating_row_by_row = False
-        self.pattern_display_map: Dict[str, str] = {}
         self.build_ui()
 
     @staticmethod
@@ -166,7 +171,9 @@ class TabPallet(ttk.Frame):
     def layers_linked(self) -> bool:
         """Return True if odd and even layers use the same layout algorithm."""
         try:
-            return self.odd_layout_var.get() == self.even_layout_var.get()
+            odd_key = self._solution_key_from_display(self.odd_layout_var.get())
+            even_key = self._solution_key_from_display(self.even_layout_var.get())
+            return bool(odd_key and even_key and odd_key == even_key)
         except Exception:
             return False
 
@@ -1192,16 +1199,33 @@ class TabPallet(ttk.Frame):
             return
         self.set_products_per_carton(self._last_2d_products_per_carton)
 
+    def _solution_key_from_display(self, display: str) -> str | None:
+        if not display:
+            return None
+        catalog = getattr(self, "solution_catalog", None)
+        if not catalog:
+            return None
+        display_map = catalog.key_by_display()
+        if display in display_map:
+            return display_map[display]
+        for solution in catalog.solutions:
+            if solution.display == display:
+                return solution.key
+        return None
+
     def update_transform_frame(self):
         for widget in self.transform_frame.winfo_children():
             widget.destroy()
-        layout_options = [layout[2] for layout in self.layouts]
+        layout_options = self.solution_catalog.display_list()
         transform_options = [
             "Brak",
             "Odbicie wzdłuż dłuższego boku",
             "Odbicie wzdłuż krótszego boku",
             "Obrót 180°",
         ]
+
+        if not layout_options:
+            return
 
         layout_width = max((len(opt) for opt in layout_options), default=0) + 2
         transform_width = max((len(opt) for opt in transform_options), default=0) + 2
@@ -1211,8 +1235,8 @@ class TabPallet(ttk.Frame):
         prev_odd_transform = getattr(self, "odd_transform_var", None)
         prev_even_transform = getattr(self, "even_transform_var", None)
 
-        preferred_row = DISPLAY_NAME_OVERRIDES["row_by_row"]
-        interlock_name = "Interlock"
+        preferred_row = display_for_key("row_by_row")
+        interlock_name = display_for_key("interlock")
         best_layout = getattr(self, "best_layout_name", "")
         if best_layout in layout_options:
             odd_default = best_layout
@@ -1292,7 +1316,7 @@ class TabPallet(ttk.Frame):
         even_transform_menu.config(width=transform_width)
         even_transform_menu.grid(row=1, column=2, padx=5, pady=2)
 
-    def update_layers(self, side="both", force=False, *args):
+    def update_layers(self, side="both", force=False, draw: bool = True, draw_idle: bool = False, *args):
         num_layers = getattr(self, "num_layers", int(parse_dim(self.num_layers_var)))
         if side == "both" or not self.layers:
             self.layers = [list() for _ in range(num_layers)]
@@ -1304,20 +1328,22 @@ class TabPallet(ttk.Frame):
         self.drag_info = None
         if hasattr(self, "undo_stack"):
             self.undo_stack.clear()
-        odd_name = self.odd_layout_var.get()
-        even_name = self.even_layout_var.get()
-        odd_idx = self.layout_map.get(odd_name, 0)
-        even_idx = self.layout_map.get(even_name, 0)
-        odd_source = (
-            self.best_odd
-            if odd_name == self.best_layout_name
-            else self.layouts[odd_idx][1]
-        )
-        even_source = (
-            self.best_even
-            if even_name == self.best_layout_name
-            else self.layouts[even_idx][1]
-        )
+        odd_display = self.odd_layout_var.get()
+        even_display = self.even_layout_var.get()
+        odd_key = self._solution_key_from_display(odd_display) or self.best_layout_key
+        even_key = self._solution_key_from_display(even_display) or self.best_layout_key
+        odd_solution = self.solution_by_key.get(odd_key) if odd_key else None
+        even_solution = self.solution_by_key.get(even_key) if even_key else None
+        if not odd_solution and self.solution_catalog.solutions:
+            odd_solution = self.solution_catalog.solutions[0]
+            odd_key = odd_solution.key
+        if not even_solution and self.solution_catalog.solutions:
+            even_solution = self.solution_catalog.solutions[0]
+            even_key = even_solution.key
+        if not odd_solution or not even_solution:
+            return
+        odd_source = self.best_odd if odd_key == self.best_layout_key else odd_solution.layout
+        even_source = self.best_even if even_key == self.best_layout_key else even_solution.layout
         for i in range(1, num_layers + 1):
             idx = i - 1
             if i % 2 == 1:
@@ -1325,23 +1351,24 @@ class TabPallet(ttk.Frame):
                     if idx >= len(self.layers):
                         self.layers.append(list(odd_source))
                         self.carton_ids.append(list(range(1, len(odd_source) + 1)))
-                    elif self.layer_patterns[idx] != odd_name or force:
+                    elif self.layer_patterns[idx] != odd_key or force:
                         self.layers[idx] = list(odd_source)
                         self.carton_ids[idx] = list(range(1, len(odd_source) + 1))
-                    self.layer_patterns[idx] = odd_name
+                    self.layer_patterns[idx] = odd_key
                     self.transformations[idx] = self.odd_transform_var.get()
             else:
                 if side in ("both", "even"):
                     if idx >= len(self.layers):
                         self.layers.append(list(even_source))
                         self.carton_ids.append(list(range(1, len(even_source) + 1)))
-                    elif self.layer_patterns[idx] != even_name or force:
+                    elif self.layer_patterns[idx] != even_key or force:
                         self.layers[idx] = list(even_source)
                         self.carton_ids[idx] = list(range(1, len(even_source) + 1))
-                    self.layer_patterns[idx] = even_name
+                    self.layer_patterns[idx] = even_key
                     self.transformations[idx] = self.even_transform_var.get()
         self.renumber_layers()
-        self.draw_pallet()
+        if draw:
+            self.draw_pallet(draw_idle=draw_idle)
 
     def on_pallet_selected(self, *args):
         selected_pallet = next(
@@ -1658,13 +1685,8 @@ class TabPallet(ttk.Frame):
             f"Patterns: raw={raw_count}, shown={shown_count}"
         )
         self.update_pattern_stats()
-        selection = self.pattern_tree.selection() if hasattr(self, "pattern_tree") else ()
-        if selection:
-            self._request_apply_pattern_key(
-                selection[0], force=True, reason="FinalizeSync"
-            )
 
-    def draw_pallet(self):
+    def draw_pallet(self, draw_idle: bool = False):
         pallet_w = parse_dim(self.pallet_w_var)
         pallet_l = parse_dim(self.pallet_l_var)
         axes = [self.ax_odd, self.ax_even, self.ax_overlay]
@@ -1766,7 +1788,10 @@ class TabPallet(ttk.Frame):
             ax.set_xlim(-50, pallet_w + 50)
             ax.set_ylim(-50, pallet_l + 50)
             ax.set_aspect("equal")
-        self.canvas.draw()
+        if draw_idle:
+            self.canvas.draw_idle()
+        else:
+            self.canvas.draw()
         if hasattr(self, "status_var"):
             self.status_var.set("")
         if hasattr(self, "compute_btn"):
@@ -2553,7 +2578,8 @@ class TabPallet(ttk.Frame):
             self.limit_label.config(text="")
             self.area_label.config(text="")
             self.clearance_label.config(text="")
-            self.pattern_scores = {}
+            self.solution_catalog = SolutionCatalog.empty()
+            self.solution_by_key = {}
             self.best_layout_key = ""
             if hasattr(self, "pattern_tree"):
                 for item in self.pattern_tree.get_children():
@@ -2712,105 +2738,111 @@ class TabPallet(ttk.Frame):
         target_key = ""
         self._suspend_pattern_apply = True
         try:
+            self.pattern_tree.state(["disabled"])
             previous_selection = self.pattern_tree.selection()
             for item in self.pattern_tree.get_children():
                 self.pattern_tree.delete(item)
 
-            if not getattr(self, "pattern_scores", None):
+            catalog = getattr(self, "solution_catalog", None)
+            if not catalog or not catalog.solutions:
                 if hasattr(self, "pattern_detail_var"):
                     self.pattern_detail_var.set("")
                 return
 
-            sorted_scores = sorted(
-                self.pattern_scores.items(), key=lambda item: item[1].penalty
-            )
-            for name, score in sorted_scores:
-                display = self._pattern_display_name(name, score)
+            for solution in catalog.solutions:
+                metrics = solution.metrics
+                instability_risk = metrics.get("instability_risk", 0.0) > 0.5
                 values = (
-                    display,
-                    str(score.carton_count),
-                    f"{score.stability * 100:.1f}",
-                    f"{score.layer_eff * 100:.1f}",
-                    f"{score.cube_eff * 100:.1f}",
-                    f"{score.support_fraction * 100:.1f}",
-                    f"{score.min_support * 100:.1f}",
-                    f"{score.edge_contact * 100:.1f}",
-                    f"{score.min_edge_clearance:.1f}",
-                    str(score.grip_changes),
-                    "Tak" if score.instability_risk else "Nie",
+                    solution.display,
+                    str(int(metrics.get("cartons", 0))),
+                    f"{metrics.get('stability', 0.0) * 100:.1f}",
+                    f"{metrics.get('layer_eff', 0.0) * 100:.1f}",
+                    f"{metrics.get('cube_eff', 0.0) * 100:.1f}",
+                    f"{metrics.get('support_fraction', 0.0) * 100:.1f}",
+                    f"{metrics.get('min_support', 0.0) * 100:.1f}",
+                    f"{metrics.get('edge_contact', 0.0) * 100:.1f}",
+                    f"{metrics.get('min_edge_clearance', 0.0):.1f}",
+                    str(int(metrics.get("grip_changes", 0))),
+                    "Tak" if instability_risk else "Nie",
                 )
-                self.pattern_tree.insert("", "end", iid=name, values=values)
+                self.pattern_tree.insert("", "end", iid=solution.key, values=values)
 
-            best_key = getattr(self, "best_layout_key", "")
             target_key = ""
             if previous_selection:
                 prev = previous_selection[0]
-                if self.pattern_tree.exists(prev):
+                if prev in catalog.by_key:
                     target_key = prev
-            if not target_key and best_key and self.pattern_tree.exists(best_key):
-                target_key = best_key
             if not target_key:
-                first = self.pattern_tree.get_children()
-                if first:
-                    target_key = first[0]
+                for key in catalog.standard_keys_order:
+                    if key in catalog.by_key:
+                        target_key = key
+                        break
+            if not target_key and catalog.solutions:
+                target_key = catalog.solutions[0].key
             if target_key:
                 self.pattern_tree.selection_set(target_key)
                 self.pattern_tree.see(target_key)
                 self._update_pattern_detail_only(target_key)
         finally:
             self._suspend_pattern_apply = previous_flag
-        if target_key and target_key != self._current_applied_pattern_key:
-            self._request_apply_pattern_key(
-                target_key, force=False, reason="PostRebuild"
+            self.pattern_tree.state(["!disabled"])
+        if target_key and target_key != self._current_applied_solution_key:
+            self._request_apply_solution(
+                target_key, force=True, reason="PostRebuild"
             )
 
-    def _request_apply_pattern_key(
+    def _pattern_tree_disabled(self) -> bool:
+        try:
+            return self.pattern_tree.instate(["disabled"])
+        except Exception:
+            return False
+
+    def _request_apply_solution(
         self, key: str, *, force: bool, reason: str = ""
     ) -> None:
         if not key:
             return
-        self._pending_pattern_key = key
-        self._pending_pattern_force = self._pending_pattern_force or force
+        self._pending_solution_key = key
+        self._pending_solution_force = self._pending_solution_force or force
         if getattr(self, "_suspend_pattern_apply", False):
             return
         if self._pattern_apply_after_id is not None:
             self.after_cancel(self._pattern_apply_after_id)
-        self._pattern_apply_after_id = self.after_idle(self._flush_apply_pattern_key)
+        self._pattern_apply_after_id = self.after_idle(self._flush_apply_solution)
         if reason:
             self._debug_log_call(f"apply_pattern_request:{reason}")
 
-    def _flush_apply_pattern_key(self) -> None:
+    def _flush_apply_solution(self) -> None:
         self._pattern_apply_after_id = None
         if self._pattern_apply_in_progress:
             return
         if getattr(self, "_suspend_pattern_apply", False):
             return
-        key = self._pending_pattern_key
-        force = self._pending_pattern_force
-        self._pending_pattern_key = None
-        self._pending_pattern_force = False
+        key = self._pending_solution_key
+        force = self._pending_solution_force
+        self._pending_solution_key = None
+        self._pending_solution_force = False
         if key is None:
             return
-        if not self.pattern_scores or key not in self.pattern_scores:
+        if key not in self.solution_by_key:
             return
-        if not self.pattern_display_map or key not in self.pattern_display_map:
-            return
-        display = self._update_pattern_detail_only(key)
-        if not display:
-            return
-        if (not force) and key == self._current_applied_pattern_key:
+        self._update_pattern_detail_only(key)
+        if (not force) and key == self._current_applied_solution_key:
             return
         self._pattern_apply_in_progress = True
         try:
-            self._apply_pattern_selection(display)
-            self._current_applied_pattern_key = key
+            self._apply_solution_by_key(key)
+            self._current_applied_solution_key = key
         finally:
             self._pattern_apply_in_progress = False
+        self.canvas.draw_idle()
 
     def on_pattern_select(self, event=None):
         if not hasattr(self, "pattern_tree") or not hasattr(
             self, "pattern_detail_var"
         ):
+            return
+        if self._pattern_tree_disabled():
             return
 
         selection = self.pattern_tree.selection()
@@ -2822,14 +2854,14 @@ class TabPallet(ttk.Frame):
         self._update_pattern_detail_only(key)
         if getattr(self, "_suspend_pattern_apply", False):
             return
-        self._request_apply_pattern_key(
-            key, force=False, reason="TreeviewSelect"
-        )
+        self._request_apply_solution(key, force=False, reason="TreeviewSelect")
 
     def on_pattern_click_apply(self, event):
         if getattr(self, "_suspend_pattern_apply", False):
             return
         if not hasattr(self, "pattern_tree"):
+            return
+        if self._pattern_tree_disabled():
             return
         row_id = self.pattern_tree.identify_row(event.y)
         if not row_id:
@@ -2838,59 +2870,68 @@ class TabPallet(ttk.Frame):
         if not selection or selection[0] != row_id:
             self.pattern_tree.selection_set(row_id)
         self._update_pattern_detail_only(row_id)
-        self._request_apply_pattern_key(row_id, force=True, reason="MouseClick")
-
-    def _pattern_display_name(self, key: str, score: PatternScore) -> str:
-        return score.display_name or DISPLAY_NAME_OVERRIDES.get(
-            key, key.replace("_", " ").capitalize()
-        )
+        self._request_apply_solution(row_id, force=True, reason="MouseClick")
 
     def _update_pattern_detail_only(self, key: str) -> str:
         self._debug_log_call("on_pattern_select")
-        score = self.pattern_scores.get(key)
-        if not score:
+        solution = self.solution_by_key.get(key)
+        if not solution:
             self.pattern_detail_var.set("")
             return ""
 
-        display = self._pattern_display_name(key, score)
+        metrics = solution.metrics
+        display = solution.display
+        stability = float(metrics.get("stability", 0.0))
+        min_support = float(metrics.get("min_support", 0.0))
+        edge_contact = float(metrics.get("edge_contact", 0.0))
+        min_edge_clearance = float(metrics.get("min_edge_clearance", 0.0))
+        risk_reasons = []
+        if stability < RISK_STABILITY_THRESHOLD:
+            risk_reasons.append("niska stabilność warstwy")
+        if min_support < RISK_SUPPORT_THRESHOLD:
+            risk_reasons.append("karton podparty w <50%")
+        if edge_contact < RISK_CONTACT_THRESHOLD:
+            risk_reasons.append("słaby kontakt krawędziowy")
+        if min_edge_clearance < 0:
+            risk_reasons.append("wystawanie poza obrys palety")
+        instability_risk = bool(risk_reasons) or metrics.get("instability_risk", 0.0) > 0.5
         risk_text = (
-            "Tak: " + ", ".join(score.warnings)
-            if score.instability_risk and score.warnings
-            else ("Tak" if score.instability_risk else "Nie")
+            "Tak: " + ", ".join(risk_reasons)
+            if instability_risk and risk_reasons
+            else ("Tak" if instability_risk else "Nie")
         )
-        if score.weakest_carton:
-            wx, wy, ww, wl = score.weakest_carton
+        wx = metrics.get("weakest_carton_x", float("nan"))
+        wy = metrics.get("weakest_carton_y", float("nan"))
+        weakest_support = metrics.get("weakest_support", 0.0)
+        if math.isfinite(wx) and math.isfinite(wy):
             weakest_text = (
                 f"najmniej podparty karton przy ({wx:.0f}, {wy:.0f}) mm "
-                f"({score.weakest_support * 100:.1f}% podparcia)"
+                f"({weakest_support * 100:.1f}% podparcia)"
             )
         else:
             weakest_text = "brak kartonów w układzie"
 
         detail_text = (
-            f"{display}: środek ciężkości {score.com_offset:.0f} mm od centrum, "
-            f"podparcie średnie {score.support_fraction * 100:.1f}% (min {score.min_support * 100:.1f}%), "
-            f"min. luz przy krawędzi {score.min_edge_clearance:.1f} mm, orientacje mieszane "
-            f"{score.orientation_mix * 100:.1f}%, {weakest_text}. "
+            f"{display}: środek ciężkości {metrics.get('com_offset', 0.0):.0f} mm od centrum, "
+            f"podparcie średnie {metrics.get('support_fraction', 0.0) * 100:.1f}% "
+            f"(min {min_support * 100:.1f}%), "
+            f"min. luz przy krawędzi {min_edge_clearance:.1f} mm, orientacje mieszane "
+            f"{metrics.get('orientation_mix', 0.0) * 100:.1f}%, {weakest_text}. "
             f"Ryzyko utraty stabilności: {risk_text}."
         )
         self.pattern_detail_var.set(detail_text)
         return display
 
-    def _apply_pattern_selection(self, display_name: str) -> None:
+    def _apply_solution_by_key(self, key: str) -> None:
         """Update layout selection and redraw charts for the chosen pattern."""
-
-        if not display_name:
+        solution = self.solution_by_key.get(key)
+        if not solution:
             return
-        if display_name not in self.layout_map:
-            return
-
         if hasattr(self, "odd_layout_var"):
-            self.odd_layout_var.set(display_name)
+            self.odd_layout_var.set(solution.display)
         if hasattr(self, "even_layout_var"):
-            self.even_layout_var.set(display_name)
-
-        self.update_layers(force=True)
+            self.even_layout_var.set(solution.display)
+        self.update_layers(force=True, draw=True, draw_idle=True)
         self.update_summary()
 
     def adjust_spacing(self, delta: float) -> None:

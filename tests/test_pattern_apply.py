@@ -1,6 +1,7 @@
 import types
 from packing_app.gui.pallet_state_apply import apply_layout_result_to_tab_state
 from palletizer_core.engine import LayoutComputation, PalletInputs, build_layouts
+from palletizer_core.solutions import SolutionCatalog
 from palletizer_core.pattern_format import apply_pattern_data, gather_pattern_data
 from palletizer_core.stacking import compute_num_layers
 from palletizer_core.validation import validate_pallet_inputs
@@ -58,7 +59,8 @@ def make_raw_tab():
     tab.products_per_carton_var = DummyVar("1")
     tab._updating_products_per_carton = False
     tab._last_2d_products_per_carton = ""
-    tab.pattern_scores = {}
+    tab.solution_catalog = SolutionCatalog.empty()
+    tab.solution_by_key = {}
     tab.best_layout_key = ""
     return tab
 
