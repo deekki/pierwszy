@@ -133,11 +133,11 @@ class TabPallet(ttk.Frame):
         self._layer_sync_source = "height"
         self._suspend_layer_sync = False
         self._suspend_pattern_apply = False
-        self._pattern_apply_after_id = None
-        self._pending_solution_key = None
-        self._pending_solution_force = False
-        self._current_applied_solution_key = None
-        self._pattern_apply_in_progress = False
+        self._apply_after_id = None
+        self._pending_key = None
+        self._pending_force = False
+        self._current_applied_key = None
+        self._apply_in_progress = False
         self._compute_queue: queue.Queue = queue.Queue()
         self._compute_job_id = 0
         self._compute_polling = False
@@ -1206,17 +1206,12 @@ class TabPallet(ttk.Frame):
         if not catalog:
             return None
         display_map = catalog.key_by_display()
-        if display in display_map:
-            return display_map[display]
-        for solution in catalog.solutions:
-            if solution.display == display:
-                return solution.key
-        return None
+        return display_map.get(display)
 
     def update_transform_frame(self):
         for widget in self.transform_frame.winfo_children():
             widget.destroy()
-        layout_options = self.solution_catalog.display_list()
+        layout_options = self.solution_catalog.displays()
         transform_options = [
             "Brak",
             "Odbicie wzdłuż dłuższego boku",
@@ -1451,11 +1446,11 @@ class TabPallet(ttk.Frame):
         """
         self._clear_selection()
         self.drag_info = None
-        self._set_compute_status("Obliczanie...", disable_button=True)
+        self._set_compute_status("Obliczanie...", disable_button=True, disable_tree=True)
 
         inputs = self._read_inputs()
         if not self._validate_inputs(inputs):
-            self._set_compute_status("", disable_button=False)
+            self._set_compute_status("", disable_button=False, disable_tree=False)
             return
 
         options = self._read_compute_options()
@@ -1482,7 +1477,9 @@ class TabPallet(ttk.Frame):
         thread.start()
         self._poll_compute_results()
 
-    def _set_compute_status(self, text: str, disable_button: bool) -> None:
+    def _set_compute_status(
+        self, text: str, disable_button: bool, *, disable_tree: bool = False
+    ) -> None:
         if hasattr(self, "status_var"):
             self.status_var.set(text)
             self.status_label.update_idletasks()
@@ -1491,6 +1488,11 @@ class TabPallet(ttk.Frame):
                 self.compute_btn.state(["disabled"])
             else:
                 self.compute_btn.state(["!disabled"])
+        if hasattr(self, "pattern_tree"):
+            if disable_tree:
+                self.pattern_tree.state(["disabled"])
+            else:
+                self.pattern_tree.state(["!disabled"])
 
     def _next_compute_job_id(self) -> int:
         self._compute_job_id += 1
@@ -1525,12 +1527,12 @@ class TabPallet(ttk.Frame):
                 if kind == "error":
                     exc = payload[0]
                     messagebox.showerror("Błąd obliczeń", str(exc))
-                    self._set_compute_status("", disable_button=False)
+                    self._set_compute_status("", disable_button=False, disable_tree=False)
                     return
                 if kind == "result":
                     inputs, result = payload
                     self._finalize_results(inputs, result)
-                    self._set_compute_status("", disable_button=False)
+                    self._set_compute_status("Gotowe", disable_button=False, disable_tree=False)
                     return
         except queue.Empty:
             pass
@@ -2773,7 +2775,7 @@ class TabPallet(ttk.Frame):
                 if prev in catalog.by_key:
                     target_key = prev
             if not target_key:
-                for key in catalog.standard_keys_order:
+                for key in catalog.standard_order:
                     if key in catalog.by_key:
                         target_key = key
                         break
@@ -2786,10 +2788,8 @@ class TabPallet(ttk.Frame):
         finally:
             self._suspend_pattern_apply = previous_flag
             self.pattern_tree.state(["!disabled"])
-        if target_key and target_key != self._current_applied_solution_key:
-            self._request_apply_solution(
-                target_key, force=True, reason="PostRebuild"
-            )
+        if target_key:
+            self._request_apply(target_key, force=True, reason="PostRebuild")
 
     def _pattern_tree_disabled(self) -> bool:
         try:
@@ -2797,44 +2797,42 @@ class TabPallet(ttk.Frame):
         except Exception:
             return False
 
-    def _request_apply_solution(
-        self, key: str, *, force: bool, reason: str = ""
-    ) -> None:
+    def _request_apply(self, key: str, *, force: bool, reason: str = "") -> None:
         if not key:
             return
-        self._pending_solution_key = key
-        self._pending_solution_force = self._pending_solution_force or force
-        if getattr(self, "_suspend_pattern_apply", False):
+        self._pending_key = key
+        self._pending_force = self._pending_force or force
+        if getattr(self, "_suspend_pattern_apply", False) or self._pattern_tree_disabled():
             return
-        if self._pattern_apply_after_id is not None:
-            self.after_cancel(self._pattern_apply_after_id)
-        self._pattern_apply_after_id = self.after_idle(self._flush_apply_solution)
+        if self._apply_after_id is not None:
+            self.after_cancel(self._apply_after_id)
+        self._apply_after_id = self.after_idle(self._flush_apply)
         if reason:
             self._debug_log_call(f"apply_pattern_request:{reason}")
 
-    def _flush_apply_solution(self) -> None:
-        self._pattern_apply_after_id = None
-        if self._pattern_apply_in_progress:
+    def _flush_apply(self) -> None:
+        self._apply_after_id = None
+        if self._apply_in_progress:
             return
-        if getattr(self, "_suspend_pattern_apply", False):
+        if getattr(self, "_suspend_pattern_apply", False) or self._pattern_tree_disabled():
             return
-        key = self._pending_solution_key
-        force = self._pending_solution_force
-        self._pending_solution_key = None
-        self._pending_solution_force = False
+        key = self._pending_key
+        force = self._pending_force
+        self._pending_key = None
+        self._pending_force = False
         if key is None:
             return
         if key not in self.solution_by_key:
             return
         self._update_pattern_detail_only(key)
-        if (not force) and key == self._current_applied_solution_key:
+        if (not force) and key == self._current_applied_key:
             return
-        self._pattern_apply_in_progress = True
+        self._apply_in_progress = True
         try:
             self._apply_solution_by_key(key)
-            self._current_applied_solution_key = key
+            self._current_applied_key = key
         finally:
-            self._pattern_apply_in_progress = False
+            self._apply_in_progress = False
         self.canvas.draw_idle()
 
     def on_pattern_select(self, event=None):
@@ -2854,7 +2852,7 @@ class TabPallet(ttk.Frame):
         self._update_pattern_detail_only(key)
         if getattr(self, "_suspend_pattern_apply", False):
             return
-        self._request_apply_solution(key, force=False, reason="TreeviewSelect")
+        self._request_apply(key, force=False, reason="TreeviewSelect")
 
     def on_pattern_click_apply(self, event):
         if getattr(self, "_suspend_pattern_apply", False):
@@ -2870,7 +2868,7 @@ class TabPallet(ttk.Frame):
         if not selection or selection[0] != row_id:
             self.pattern_tree.selection_set(row_id)
         self._update_pattern_detail_only(row_id)
-        self._request_apply_solution(row_id, force=True, reason="MouseClick")
+        self._request_apply(row_id, force=True, reason="MouseClick")
 
     def _update_pattern_detail_only(self, key: str) -> str:
         self._debug_log_call("on_pattern_select")

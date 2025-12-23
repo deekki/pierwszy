@@ -21,7 +21,7 @@ def test_dedupe_prefers_standard_over_extra_for_same_signature():
     assert [solution.key for solution in catalog.solutions] == ["mixed"]
 
 
-def test_catalog_has_unique_keys_and_unique_signatures():
+def test_catalog_unique_keys_and_signatures():
     solutions = [
         make_solution("dynamic", "standard", 12, 0.6, ("sig1",)),
         make_solution("dynamic_alt", "extra", 11, 0.7, ("sig1",)),
@@ -36,7 +36,7 @@ def test_catalog_has_unique_keys_and_unique_signatures():
     assert len(signatures) == len(set(signatures))
 
 
-def test_sorting_default_max_cartons():
+def test_default_sort_max_cartons():
     low_cartons = make_solution("low", "extra", 8, 0.99, ("low",))
     high_cartons = make_solution("high", "extra", 12, 0.2, ("high",))
 
@@ -45,7 +45,7 @@ def test_sorting_default_max_cartons():
     assert [solution.key for solution in catalog.solutions] == ["high", "low"]
 
 
-def test_ui_model_matches_catalog_order():
+def test_ui_model_consistency():
     first = make_solution("first", "standard", 10, 0.5, ("first",))
     second = make_solution("second", "standard", 9, 0.5, ("second",))
 
