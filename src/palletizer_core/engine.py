@@ -8,7 +8,7 @@ from .models import Carton, Pallet
 from .sanity import DEFAULT_SANITY_POLICY, connected_components, is_sane
 from .signature import layout_signature
 from .solutions import (
-    STANDARD_KEYS_ORDER,
+    STANDARD_ORDER,
     Solution,
     SolutionCatalog,
     build_solution_catalog,
@@ -370,7 +370,7 @@ def build_layouts(
     for name, pattern in patterns.items():
         key = normalize_pattern_key(name)
         display = display_for_key(key)
-        kind = "standard" if key in STANDARD_KEYS_ORDER else "extra"
+        kind = "standard" if key in STANDARD_ORDER else "extra"
         adjusted = apply_spacing(pattern, inputs.spacing)
         centered = center_layout(
             adjusted, inputs.pallet_w, inputs.pallet_l, center_enabled, center_mode
@@ -479,7 +479,7 @@ def build_layouts(
                 solution.key: solution
                 for solution in solution_catalog.solutions[:result_limit]
             },
-            standard_keys_order=solution_catalog.standard_keys_order,
+            standard_order=solution_catalog.standard_order,
         )
     filtered_entries = [
         entry
@@ -526,7 +526,12 @@ def build_layouts(
         for solution in solution_catalog.solutions
     ]
     layout_map = {name: idx for idx, (_, __, name) in enumerate(layout_entries)}
-    best_layout_name = display_for_key(best_key) if best_key else ""
+    best_layout_name = ""
+    if best_key:
+        best_layout_name = solution_catalog.by_key.get(best_key, None)
+        best_layout_name = (
+            best_layout_name.display if best_layout_name else display_for_key(best_key)
+        )
     best_count_layout_name = best_layout_name
 
     return LayoutComputation(

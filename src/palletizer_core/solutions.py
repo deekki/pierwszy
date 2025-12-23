@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Iterable, Literal
 
 LayerLayout = list[tuple[float, float, float, float]]
 
 SolutionKind = Literal["standard", "extra"]
 
-STANDARD_KEYS_ORDER = [
+STANDARD_ORDER = [
     "dynamic",
     "mixed",
     "column_wxl",
@@ -17,7 +17,7 @@ STANDARD_KEYS_ORDER = [
     "row_by_row",
 ]
 
-STANDARD_DISPLAY_NAMES = {
+DISPLAY_MAP = {
     "dynamic": "Dynamic",
     "mixed": "Mixed",
     "column_wxl": "Column (W x L)",
@@ -47,28 +47,17 @@ class Solution:
 class SolutionCatalog:
     solutions: list[Solution]
     by_key: dict[str, Solution]
-    standard_keys_order: list[str] = field(
-        default_factory=lambda: list(STANDARD_KEYS_ORDER)
-    )
+    standard_order: list[str] = field(default_factory=lambda: list(STANDARD_ORDER))
 
     @classmethod
     def empty(cls) -> "SolutionCatalog":
-        return cls(solutions=[], by_key={}, standard_keys_order=list(STANDARD_KEYS_ORDER))
+        return cls(solutions=[], by_key={}, standard_order=list(STANDARD_ORDER))
 
-    def display_list(self) -> list[str]:
+    def displays(self) -> list[str]:
         return [solution.display for solution in self.solutions]
 
     def key_by_display(self) -> dict[str, str]:
-        mapping: dict[str, str] = {}
-        duplicates: set[str] = set()
-        for solution in self.solutions:
-            if solution.display in mapping:
-                duplicates.add(solution.display)
-            else:
-                mapping[solution.display] = solution.key
-        for display in duplicates:
-            mapping.pop(display, None)
-        return mapping
+        return {solution.display: solution.key for solution in self.solutions}
 
 
 def normalize_pattern_key(name: str) -> str:
@@ -76,8 +65,8 @@ def normalize_pattern_key(name: str) -> str:
 
 
 def display_for_key(key: str) -> str:
-    if key in STANDARD_DISPLAY_NAMES:
-        return STANDARD_DISPLAY_NAMES[key]
+    if key in DISPLAY_MAP:
+        return DISPLAY_MAP[key]
     return key.replace("_", " ").replace("-", " ").title()
 
 
@@ -107,12 +96,27 @@ def _ranking_sort_key(solution: Solution, standard_order: dict[str, int]) -> tup
     return (-cartons, -stability, kind_priority, tie_break)
 
 
+def _ensure_unique_displays(solutions: list[Solution]) -> list[Solution]:
+    counts: dict[str, int] = {}
+    for solution in solutions:
+        counts[solution.display] = counts.get(solution.display, 0) + 1
+    if all(count == 1 for count in counts.values()):
+        return solutions
+    unique: list[Solution] = []
+    for solution in solutions:
+        if counts.get(solution.display, 0) > 1:
+            unique.append(replace(solution, display=f"{solution.display} ({solution.key})"))
+        else:
+            unique.append(solution)
+    return unique
+
+
 def build_solution_catalog(
     candidates: Iterable[Solution],
     *,
-    standard_keys_order: Iterable[str] = STANDARD_KEYS_ORDER,
+    standard_order: Iterable[str] = STANDARD_ORDER,
 ) -> SolutionCatalog:
-    order_list = list(standard_keys_order)
+    order_list = list(standard_order)
     order_index = {key: idx for idx, key in enumerate(order_list)}
     signature_groups: dict[tuple, list[Solution]] = {}
     for solution in candidates:
@@ -124,15 +128,16 @@ def build_solution_catalog(
         winners.append(winner)
 
     winners_sorted = sorted(winners, key=lambda sol: _ranking_sort_key(sol, order_index))
+    winners_sorted = _ensure_unique_displays(winners_sorted)
     by_key = {solution.key: solution for solution in winners_sorted}
     return SolutionCatalog(
         solutions=winners_sorted,
         by_key=by_key,
-        standard_keys_order=order_list,
+        standard_order=order_list,
     )
 
 
 def ui_model_from_catalog(catalog: SolutionCatalog) -> tuple[list[str], list[str]]:
-    dropdown_options = catalog.display_list()
+    dropdown_options = catalog.displays()
     table_rows = [solution.key for solution in catalog.solutions]
     return dropdown_options, table_rows
