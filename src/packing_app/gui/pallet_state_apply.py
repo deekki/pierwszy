@@ -12,8 +12,8 @@ def apply_layout_result_to_tab_state(
     tab.layout_map = result.layout_map
     tab.best_layout_name = result.best_count_layout_name or result.best_layout_name
     tab.best_layout_key = result.best_layout_key
-    tab.pattern_scores = result.scores
-    tab.pattern_display_map = result.display_map
+    tab.solution_catalog = result.solution_catalog
+    tab.solution_by_key = result.solution_catalog.by_key
     tab.best_even = result.best_even
     tab.best_odd = result.best_odd
     tab.update_transform_frame()

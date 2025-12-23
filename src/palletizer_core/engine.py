@@ -7,17 +7,19 @@ from typing import Callable, Dict, List, Optional, Tuple
 from .models import Carton, Pallet
 from .sanity import DEFAULT_SANITY_POLICY, connected_components, is_sane
 from .signature import layout_signature
+from .solutions import (
+    STANDARD_KEYS_ORDER,
+    Solution,
+    SolutionCatalog,
+    build_solution_catalog,
+    display_for_key,
+    normalize_pattern_key,
+)
 from .units import MM
 from .selector import PatternScore, PatternSelector
 from .sequencer import EvenOddSequencer
 
 LayerLayout = List[Tuple[float, float, float, float]]
-
-DISPLAY_NAME_OVERRIDES = {
-    "column": "Column (W x L)",
-    "column_rotated": "Column (L x W)",
-    "row_by_row": "Row by row",
-}
 
 
 def apply_spacing(pattern: LayerLayout, spacing: float) -> LayerLayout:
@@ -63,6 +65,7 @@ class LayoutComputation:
     best_odd: LayerLayout
     best_layout_key: str = ""
     best_count_layout_name: str = ""
+    solution_catalog: SolutionCatalog = field(default_factory=SolutionCatalog.empty)
     scores: Dict[str, PatternScore] = field(default_factory=dict)
     display_map: Dict[str, str] = field(default_factory=dict)
     row_by_row_vertical: int = 0
@@ -358,18 +361,22 @@ def build_layouts(
     for name, pattern in patterns.items():
         score = selector.score(pattern)
         score.name = name
-        score.display_name = DISPLAY_NAME_OVERRIDES.get(
-            name, name.replace("_", " ").capitalize()
-        )
-        scores[name] = score
-        display_map[name] = score.display_name
+        key = normalize_pattern_key(name)
+        display = display_for_key(key)
+        score.display_name = display
+        scores[key] = score
+        display_map[key] = display
 
     for name, pattern in patterns.items():
+        key = normalize_pattern_key(name)
+        display = display_for_key(key)
+        kind = "standard" if key in STANDARD_KEYS_ORDER else "extra"
         adjusted = apply_spacing(pattern, inputs.spacing)
         centered = center_layout(
             adjusted, inputs.pallet_w, inputs.pallet_l, center_enabled, center_mode
         )
-        display = scores[name].display_name
+        score = scores[key]
+        weakest_carton = score.weakest_carton or (0.0, 0.0, 0.0, 0.0)
         area_ratio = (
             sum(w * length for _, _, w, length in centered)
             / (inputs.pallet_w * inputs.pallet_l)
@@ -378,17 +385,37 @@ def build_layouts(
         )
         islands = connected_components(centered, touch_eps=DEFAULT_SANITY_POLICY.touch_eps)
         signature = layout_signature(centered)
+        metrics = {
+            "cartons": float(len(centered)),
+            "stability": float(score.stability),
+            "layer_eff": float(score.layer_eff),
+            "cube_eff": float(score.cube_eff),
+            "support_fraction": float(score.support_fraction),
+            "min_support": float(score.min_support),
+            "edge_contact": float(score.edge_contact),
+            "min_edge_clearance": float(score.min_edge_clearance),
+            "grip_changes": float(score.grip_changes),
+            "orientation_mix": float(score.orientation_mix),
+            "com_offset": float(score.com_offset),
+            "instability_risk": 1.0 if score.instability_risk else 0.0,
+            "weakest_support": float(score.weakest_support),
+            "weakest_carton_x": float(weakest_carton[0]),
+            "weakest_carton_y": float(weakest_carton[1]),
+        }
         entries.append(
             {
                 "name": name,
+                "key": key,
+                "kind": kind,
                 "pattern": pattern,
                 "layout": centered,
                 "display": display,
                 "count": len(centered),
-                "score": scores[name],
+                "score": score,
                 "area_ratio": area_ratio,
                 "islands": islands,
                 "signature": signature,
+                "metrics": metrics,
             }
         )
 
@@ -414,37 +441,11 @@ def build_layouts(
     if entries:
         best_raw_entry = max(entries, key=_entry_metric)
 
-    apply_dedupe = bool(
-        extended_library or dynamic_variants or filter_sanity or deep_search
-    )
-    if apply_dedupe:
-        signature_map: Dict[tuple, Dict[str, object]] = {}
-        for entry in entries:
-            signature = entry["signature"]
-            existing = signature_map.get(signature)
-            if existing is None:
-                signature_map[signature] = entry
-                continue
-            if _entry_metric(entry) > _entry_metric(existing):
-                signature_map[signature] = entry
-
-        deduped_entries: List[Dict[str, object]] = []
-        seen_signatures = set()
-        for entry in entries:
-            signature = entry["signature"]
-            if signature in seen_signatures:
-                continue
-            if signature_map.get(signature) is entry:
-                deduped_entries.append(entry)
-                seen_signatures.add(signature)
-    else:
-        deduped_entries = list(entries)
-
-    filtered_entries = deduped_entries
+    filtered_entries = list(entries)
     if filter_sanity:
         filtered_entries = [
             entry
-            for entry in deduped_entries
+            for entry in filtered_entries
             if is_sane(entry["layout"], calc_carton, pallet, DEFAULT_SANITY_POLICY)
         ]
         if filtered_entries:
@@ -459,35 +460,43 @@ def build_layouts(
         if not filtered_entries and best_raw_entry is not None:
             filtered_entries = [best_raw_entry]
 
-    apply_ranking = bool(
-        filter_sanity
-        or result_limit
-        or extended_library
-        or dynamic_variants
-        or deep_search
-    )
-    if apply_ranking:
-        filtered_entries = sorted(
-            filtered_entries,
-            key=_entry_metric,
-            reverse=True,
+    candidates = [
+        Solution(
+            key=entry["key"],
+            display=entry["display"],
+            kind=entry["kind"],
+            layout=entry["layout"],
+            metrics=entry["metrics"],
+            signature=entry["signature"],
         )
-
-    if result_limit is not None and result_limit > 0:
-        filtered_entries = filtered_entries[:result_limit]
-
-    layout_entries = [
-        (entry["count"], entry["layout"], entry["display"])
         for entry in filtered_entries
     ]
-
+    solution_catalog = build_solution_catalog(candidates)
+    if result_limit is not None and result_limit > 0:
+        solution_catalog = SolutionCatalog(
+            solutions=solution_catalog.solutions[:result_limit],
+            by_key={
+                solution.key: solution
+                for solution in solution_catalog.solutions[:result_limit]
+            },
+            standard_keys_order=solution_catalog.standard_keys_order,
+        )
+    filtered_entries = [
+        entry
+        for entry in filtered_entries
+        if entry["key"] in solution_catalog.by_key
+    ]
     best_entry = None
-    if filtered_entries:
-        best_entry = max(filtered_entries, key=_entry_metric)
-    if best_entry is None:
+    best_solution = solution_catalog.solutions[0] if solution_catalog.solutions else None
+    if best_solution:
+        for entry in filtered_entries:
+            if entry["key"] == best_solution.key:
+                best_entry = entry
+                break
+    if best_entry is None and best_raw_entry is not None:
         best_entry = best_raw_entry
 
-    best_key = best_entry["name"] if best_entry else ""
+    best_key = best_entry["key"] if best_entry else ""
     best_pattern: LayerLayout = best_entry["pattern"] if best_entry else []
 
     seq = EvenOddSequencer(
@@ -512,13 +521,13 @@ def build_layouts(
         best_even = apply_spacing(even_centered, inputs.spacing)
         best_odd = apply_spacing(odd_centered, inputs.spacing)
 
+    layout_entries = [
+        (int(solution.metrics.get("cartons", 0)), solution.layout, solution.display)
+        for solution in solution_catalog.solutions
+    ]
     layout_map = {name: idx for idx, (_, __, name) in enumerate(layout_entries)}
-    best_layout_name = DISPLAY_NAME_OVERRIDES.get(
-        best_key, best_key.replace("_", " ").capitalize()
-    )
-    best_count_layout_name = DISPLAY_NAME_OVERRIDES.get(
-        best_key, best_key.replace("_", " ").capitalize()
-    )
+    best_layout_name = display_for_key(best_key) if best_key else ""
+    best_count_layout_name = best_layout_name
 
     return LayoutComputation(
         layouts=layout_entries,
@@ -528,6 +537,7 @@ def build_layouts(
         best_odd=best_odd,
         best_layout_key=best_key,
         best_count_layout_name=best_count_layout_name,
+        solution_catalog=solution_catalog,
         scores=scores,
         display_map=display_map,
         row_by_row_vertical=row_by_row_vertical,

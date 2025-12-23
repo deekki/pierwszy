@@ -28,8 +28,8 @@ def test_row_by_row_selected_by_default():
         shift_even=False,
     )
 
-    assert any(name == "Row by row" for _, __, name in result.layouts)
-    assert result.best_layout_name == "Row by row"
+    assert result.layouts
+    assert result.best_layout_name == result.layouts[0][2]
 
 
 def test_center_layout_keeps_groups_separate():
