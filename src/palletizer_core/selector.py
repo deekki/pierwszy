@@ -270,14 +270,24 @@ class PatternSelector:
             )
             patterns["mixed_max"] = dense
 
+        max_rects = (
+            algorithms.DEEP_MAX_RECTS if deep_search else algorithms.DEFAULT_MAX_RECTS
+        )
         # dynamic layout using a full search
         _, dynamic = algorithms.pack_rectangles_dynamic(
-            pallet_w, pallet_l, box_w, box_l
+            pallet_w, pallet_l, box_w, box_l, max_rects=max_rects
         )
         patterns["dynamic"] = dynamic
 
         if dynamic_variants or extended_library:
-            patterns.update(algorithms.pack_rectangles_dynamic_variants(self.carton, self.pallet))
+            patterns.update(
+                algorithms.pack_rectangles_dynamic_variants(
+                    self.carton,
+                    self.pallet,
+                    max_rects=max_rects,
+                    full_variants=deep_search,
+                )
+            )
 
         if extended_library:
             patterns.update(generate_block2(self.carton, self.pallet))
