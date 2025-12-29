@@ -63,6 +63,13 @@ def main():
     # Default window size adjusted for 1920x1080 displays
     root.geometry("1920x1080")
 
+    style = ttk.Style()
+    style.configure("TLabel", padding=(2, 1))
+    style.configure("TEntry", padding=(2, 1))
+    style.configure("TSpinbox", padding=(2, 1))
+    style.configure("TButton", padding=(6, 3))
+    style.configure("Treeview", rowheight=22)
+
     menubar = tk.Menu(root)
     tools_menu = tk.Menu(menubar, tearoff=0)
     tools_menu.add_command(

@@ -181,6 +181,7 @@ class TabPallet(ttk.Frame):
         self.context_layer = 0
         self.context_pos = (0, 0)
         self.undo_stack = []
+        self.redo_stack = []
         self.row_by_row_vertical_var = tk.IntVar(value=0)
         self.row_by_row_horizontal_var = tk.IntVar(value=0)
         self._row_by_row_user_modified = False
@@ -674,44 +675,59 @@ class TabPallet(ttk.Frame):
         )
 
         control_frame = ttk.Frame(actions_frame)
-        control_frame.grid(row=0, column=0, sticky="w", padx=5, pady=(4, 0))
+        control_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=(4, 0))
+        control_frame.columnconfigure(tuple(range(10)), weight=1)
 
         self.compute_btn = ttk.Button(
             control_frame, text="Oblicz", command=self.compute_pallet
         )
-        self.compute_btn.pack(side=tk.LEFT, padx=(0, 6))
+        self.compute_btn.grid(row=0, column=0, padx=4, pady=2, sticky="w")
         ttk.Checkbutton(
             control_frame,
             text="Tryb edycji",
             variable=self.modify_mode_var,
             command=self.toggle_edit_mode,
-        ).pack(side=tk.LEFT, padx=6)
+        ).grid(row=0, column=1, padx=4, pady=2, sticky="w")
         ttk.Checkbutton(
             control_frame,
             text="Pokaż numerację",
             variable=self.show_numbers_var,
             command=self.draw_pallet,
-        ).pack(side=tk.LEFT, padx=6)
+        ).grid(row=0, column=2, padx=4, pady=2, sticky="w")
         ttk.Button(
             control_frame,
             text="Wstaw karton",
             command=self.insert_carton_button,
-        ).pack(side=tk.LEFT, padx=6)
+        ).grid(row=0, column=3, padx=4, pady=2, sticky="w")
         ttk.Button(
             control_frame,
             text="Usuń karton",
             command=self.delete_selected_carton,
-        ).pack(side=tk.LEFT, padx=6)
+        ).grid(row=0, column=4, padx=4, pady=2, sticky="w")
+        ttk.Button(
+            control_frame,
+            text="Cofnij",
+            command=self.undo,
+        ).grid(row=0, column=5, padx=4, pady=2, sticky="w")
+        ttk.Button(
+            control_frame,
+            text="Ponów",
+            command=self.redo,
+        ).grid(row=0, column=6, padx=4, pady=2, sticky="w")
         ttk.Button(
             control_frame,
             text="Zapisz wzór",
             command=self.save_pattern_dialog,
-        ).pack(side=tk.LEFT, padx=6)
+        ).grid(row=0, column=7, padx=4, pady=2, sticky="w")
         ttk.Button(
             control_frame,
             text="Wczytaj wzór",
             command=self.load_pattern_dialog,
-        ).pack(side=tk.LEFT, padx=6)
+        ).grid(row=0, column=8, padx=4, pady=2, sticky="w")
+        self.selection_label_var = tk.StringVar(value="Zaznaczono: 0")
+        ttk.Label(control_frame, textvariable=self.selection_label_var).grid(
+            row=0, column=9, padx=4, pady=2, sticky="e"
+        )
         self.status_var = tk.StringVar(value="")
         status_frame = ttk.Frame(actions_frame)
         status_frame.columnconfigure(0, weight=1)
@@ -922,14 +938,21 @@ class TabPallet(ttk.Frame):
 
     def _sync_selection_from_controller(self) -> None:
         self.selected_indices = self.editor_controller.selected_pairs()
+        self.selection_label_var.set(
+            f"Zaznaczono: {len(self.selected_indices)}"
+        )
 
     def _set_selection_pairs(self, selection_pairs) -> None:
         self.editor_controller.set_selection_from_pairs(set(selection_pairs))
         self.selected_indices = set(selection_pairs)
+        self.selection_label_var.set(
+            f"Zaznaczono: {len(self.selected_indices)}"
+        )
 
     def _clear_selection(self) -> None:
         self.editor_controller.clear_all()
         self.selected_indices.clear()
+        self.selection_label_var.set("Zaznaczono: 0")
 
     def _selection_for_active_layer(self) -> set[tuple[int, int]]:
         active_layer = self.editor_controller.active_layer
@@ -3221,24 +3244,45 @@ class TabPallet(ttk.Frame):
         if recorder is not None:
             recorder()
 
-    def push_undo_state(self) -> None:
-        state = {
+    def _capture_state(self) -> dict:
+        return {
             "layers": [list(layer) for layer in self.layers],
             "carton_ids": [list(ids) for ids in self.carton_ids],
-            "selected": set(self.selected_indices),
+            "selected": set(self.editor_controller.selected_pairs()),
         }
+
+    def push_undo_state(self) -> None:
+        state = self._capture_state()
         if self.undo_stack:
             last = self.undo_stack[-1]
             if last["layers"] == state["layers"] and last["carton_ids"] == state["carton_ids"]:
                 return
         self.undo_stack.append(state)
+        self.redo_stack.clear()
         if len(self.undo_stack) > 50:
             self.undo_stack.pop(0)
 
     def undo(self) -> None:
         if not self.undo_stack:
             return
+        current = self._capture_state()
         state = self.undo_stack.pop()
+        self.redo_stack.append(current)
+        self.layers = [list(layer) for layer in state["layers"]]
+        self.carton_ids = [list(ids) for ids in state["carton_ids"]]
+        self._set_selection_pairs(state.get("selected", set()))
+        self.drag_info = None
+        self.drag_select_origin = None
+        self.drag_snapshot_saved = False
+        self.draw_pallet()
+        self.update_summary()
+        self.highlight_selection()
+
+    def redo(self) -> None:
+        if not self.redo_stack:
+            return
+        self.push_undo_state()
+        state = self.redo_stack.pop()
         self.layers = [list(layer) for layer in state["layers"]]
         self.carton_ids = [list(ids) for ids in state["carton_ids"]]
         self._set_selection_pairs(state.get("selected", set()))
@@ -3257,6 +3301,10 @@ class TabPallet(ttk.Frame):
             key == "z" and self._ctrl_active(event)
         ):
             self.undo()
+        if key in {"ctrl+y", "control+y", "cmd+y"} or (
+            key == "y" and self._ctrl_active(event)
+        ):
+            self.redo()
 
     def save_pattern_dialog(self):
         name = simpledialog.askstring("Zapisz wzór", "Nazwa wzoru:")
