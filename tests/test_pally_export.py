@@ -103,7 +103,7 @@ def test_layers_slips():
     assert data["layers"].count("Shim paper: Default") == 2
 
 
-def test_swap_axes_and_quantization():
+def test_swap_axes_and_mapping():
     rects = [(0.0, 0.0, 300.0, 200.0)]
     data = build_pally_json(
         config=PallyExportConfig(
@@ -155,6 +155,30 @@ def test_quantization_rounds_to_step():
     assert pattern["y"] == 120.0
 
 
+def test_quantization_prevents_noise():
+    rects = [(10.0, 20.0, 200.0, 300.0)]
+    data = build_pally_json(
+        config=PallyExportConfig(
+            name="Test",
+            pallet_w=800,
+            pallet_l=1200,
+            pallet_h=150,
+            box_w=200,
+            box_l=300,
+            box_h=300,
+            box_weight_g=500,
+            overhang_ends=0,
+            overhang_sides=0,
+            quant_step_mm=0.5,
+        ),
+        layer_rects_list=[rects],
+        slips_after=set(),
+    )
+    pattern = data["layerTypes"][1]["pattern"][0]
+    assert pattern["x"] == 110.0
+    assert pattern["y"] == 170.0
+
+
 def test_dedupe_tolerant_signature():
     base_layer = [(0.0, 0.0, 100.0, 200.0)]
     noisy_layer = [(0.0001, 0.0, 100.0002, 199.9999)]
@@ -177,3 +201,26 @@ def test_dedupe_tolerant_signature():
     )
     layer_types = [lt for lt in data["layerTypes"] if lt.get("class") == "layer"]
     assert len(layer_types) == 1
+
+
+def test_large_value_quantization_to_half_mm():
+    rects = [(0.0, 0.0, 400.0, 1676.128)]
+    data = build_pally_json(
+        config=PallyExportConfig(
+            name="Test",
+            pallet_w=1000,
+            pallet_l=1200,
+            pallet_h=100,
+            box_w=400,
+            box_l=1676.0,
+            box_h=300,
+            box_weight_g=500,
+            overhang_ends=0,
+            overhang_sides=0,
+            quant_step_mm=0.5,
+        ),
+        layer_rects_list=[rects],
+        slips_after=set(),
+    )
+    item = data["layerTypes"][1]["pattern"][0]
+    assert item["y"] == 838.0
