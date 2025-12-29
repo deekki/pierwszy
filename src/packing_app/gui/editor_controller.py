@@ -14,6 +14,7 @@ class EditorController:
     is_dragging: bool = False
     drag_threshold_px: float = 4.0
     pressed_button: int | None = None
+    redo_stack: list[Dict[int, Set[int]]] = field(default_factory=list)
 
     def selection_for_layer(self, layer_idx: int) -> Set[int]:
         return self.selected_by_layer.setdefault(layer_idx, set())
@@ -49,6 +50,10 @@ class EditorController:
     ) -> Dict[str, object]:
         selection_changed = False
         clear_layer = False
+        if self.active_layer is not None and self.active_layer != layer_idx:
+            if not ctrl and not shift:
+                self.selection_for_layer(self.active_layer).clear()
+            self.reset_drag_state()
         self.active_layer = layer_idx
 
         layer_selection = self.selection_for_layer(layer_idx)
@@ -120,3 +125,9 @@ class EditorController:
         self.is_dragging = False
         self.pressed_button = None
         return {"was_dragging": was_dragging}
+
+    def reset_drag_state(self) -> None:
+        self.drag_start = None
+        self.last_pos = None
+        self.is_dragging = False
+        self.pressed_button = None
