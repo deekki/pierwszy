@@ -26,7 +26,6 @@ from palletizer_core.pally_export import (
     PallyExportConfig,
     build_pally_json,
     find_out_of_bounds,
-    parse_slips_after,
 )
 from palletizer_core.transformations import (
     apply_transformation as apply_transformation_core,
@@ -115,12 +114,17 @@ class TabPallet(ttk.Frame):
         self.pally_out_dir_var = tk.StringVar(
             value=os.path.join(base_dir, "pally_exports")
         )
-        self.pally_slips_after_var = tk.StringVar(value="")
-        self.pally_overhang_ends_var = tk.StringVar(value="0")
-        self.pally_overhang_sides_var = tk.StringVar(value="0")
-        self.pally_label_orientation_var = tk.IntVar(value=180)
+        self.pally_slip_vars: list[tk.BooleanVar] = []
+        self.pally_label_orientation_map = {
+            "Etykieta: przód": 0,
+            "Etykieta: lewy bok": -90,
+            "Etykieta: prawy bok": 90,
+            "Etykieta: tył": 180,
+        }
+        self.pally_label_orientation_display_var = tk.StringVar(
+            value="Etykieta: tył"
+        )
         self.pally_swap_axes_var = tk.BooleanVar(value=False)
-        self.pally_result_path_var = tk.StringVar(value="Plik wynikowy: -")
         self.pallet_base_mass = 25.0
         self.pack(fill=tk.BOTH, expand=True)
         self.columnconfigure(0, weight=1)
@@ -543,19 +547,19 @@ class TabPallet(ttk.Frame):
         pally_frame.grid(
             row=0, column=6, rowspan=3, padx=(10, 5), pady=4, sticky="nsew"
         )
-        pally_frame.columnconfigure(0, weight=0)
-        pally_frame.columnconfigure(1, weight=1)
+        for idx in range(2):
+            pally_frame.columnconfigure(idx, weight=1)
         ttk.Label(pally_frame, text="Nazwa:").grid(
-            row=0, column=0, padx=5, pady=2, sticky="w"
+            row=0, column=0, padx=4, pady=2, sticky="w"
         )
         ttk.Entry(pally_frame, textvariable=self.pally_name_var, width=22).grid(
-            row=0, column=1, padx=5, pady=2, sticky="ew"
+            row=0, column=1, padx=4, pady=2, sticky="ew"
         )
         ttk.Label(pally_frame, text="Folder:").grid(
-            row=1, column=0, padx=5, pady=2, sticky="w"
+            row=1, column=0, padx=4, pady=2, sticky="w"
         )
         folder_frame = ttk.Frame(pally_frame)
-        folder_frame.grid(row=1, column=1, padx=5, pady=2, sticky="ew")
+        folder_frame.grid(row=1, column=1, padx=4, pady=2, sticky="ew")
         folder_frame.columnconfigure(0, weight=1)
         ttk.Entry(folder_frame, textvariable=self.pally_out_dir_var).grid(
             row=0, column=0, padx=(0, 4), pady=0, sticky="ew"
@@ -564,63 +568,36 @@ class TabPallet(ttk.Frame):
             folder_frame, text="...", width=3, command=self._choose_pally_directory
         ).grid(row=0, column=1, padx=(0, 0), pady=0)
         ttk.Label(pally_frame, text="Przekładki (warstwy):").grid(
-            row=2, column=0, padx=5, pady=2, sticky="w"
+            row=2, column=0, padx=4, pady=2, sticky="nw"
         )
-        ttk.Entry(
+        self.pally_slip_frame = ttk.Frame(pally_frame)
+        self.pally_slip_frame.grid(row=2, column=1, padx=4, pady=2, sticky="w")
+
+        ttk.Label(pally_frame, text="Etykieta:").grid(
+            row=3, column=0, padx=4, pady=2, sticky="w"
+        )
+        label_choices = list(self.pally_label_orientation_map.keys())
+        ttk.Combobox(
             pally_frame,
-            textvariable=self.pally_slips_after_var,
+            textvariable=self.pally_label_orientation_display_var,
+            values=label_choices,
+            state="readonly",
             width=22,
-        ).grid(row=2, column=1, padx=5, pady=2, sticky="ew")
-        ttk.Label(pally_frame, text="1-based, przecinki; 0 zawsze na drewnie").grid(
-            row=3, column=0, columnspan=2, padx=5, pady=(0, 4), sticky="w"
-        )
-
-        ttk.Label(pally_frame, text="Overhang końce [mm]:").grid(
-            row=4, column=0, padx=5, pady=2, sticky="w"
-        )
-        ttk.Spinbox(
-            pally_frame,
-            from_=0,
-            to=999,
-            textvariable=self.pally_overhang_ends_var,
-            width=8,
-        ).grid(row=4, column=1, padx=5, pady=2, sticky="w")
-        ttk.Label(pally_frame, text="Overhang boki [mm]:").grid(
-            row=5, column=0, padx=5, pady=2, sticky="w"
-        )
-        ttk.Spinbox(
-            pally_frame,
-            from_=0,
-            to=999,
-            textvariable=self.pally_overhang_sides_var,
-            width=8,
-        ).grid(row=5, column=1, padx=5, pady=2, sticky="w")
-
-        ttk.Label(pally_frame, text="Label orientation:").grid(
-            row=6, column=0, padx=5, pady=2, sticky="w"
-        )
-        label_options = [0, -90, 90, 180]
-        ttk.OptionMenu(
-            pally_frame,
-            self.pally_label_orientation_var,
-            self.pally_label_orientation_var.get(),
-            *label_options,
-        ).grid(row=6, column=1, padx=5, pady=2, sticky="w")
+        ).grid(row=3, column=1, padx=4, pady=2, sticky="ew")
 
         ttk.Checkbutton(
             pally_frame,
             text="Swap axes for PALLY (EUR)",
             variable=self.pally_swap_axes_var,
-        ).grid(row=7, column=0, columnspan=2, padx=5, pady=2, sticky="w")
+        ).grid(row=4, column=0, columnspan=2, padx=4, pady=2, sticky="w")
 
         ttk.Button(
             pally_frame,
             text="Eksportuj PALLY JSON",
             command=self.export_pally_json,
-        ).grid(row=8, column=0, columnspan=2, padx=5, pady=4, sticky="ew")
-        ttk.Label(
-            pally_frame, textvariable=self.pally_result_path_var, wraplength=240
-        ).grid(row=9, column=0, columnspan=2, padx=5, pady=(0, 4), sticky="w")
+        ).grid(row=5, column=0, columnspan=2, padx=4, pady=4, sticky="ew")
+
+        self._update_pally_slip_checkboxes()
 
         ttk.Label(layers_frame, text="Liczba przekładek:").grid(
             row=3, column=0, padx=5, pady=4, sticky="w"
@@ -885,6 +862,43 @@ class TabPallet(ttk.Frame):
             self.ext_dims_label.config(text=f"{ext_w:.1f} x {ext_l:.1f} x {ext_h:.1f}")
         except ValueError:
             self.ext_dims_label.config(text="Błąd danych")
+
+    def _update_pally_slip_checkboxes(self) -> None:
+        if not hasattr(self, "pally_slip_frame"):
+            return
+        for widget in self.pally_slip_frame.winfo_children():
+            widget.destroy()
+        self.pally_slip_vars.clear()
+
+        base_var = tk.BooleanVar(value=True)
+        self.pally_slip_vars.append(base_var)
+        ttk.Checkbutton(
+            self.pally_slip_frame,
+            text="Po palecie (warstwa 0)",
+            variable=base_var,
+            state="disabled",
+        ).grid(row=0, column=0, padx=2, pady=1, sticky="w")
+
+        layer_count = len(self.layers) if self.layers else int(parse_dim(self.num_layers_var))
+        for idx in range(1, layer_count + 1):
+            var = tk.BooleanVar(value=False)
+            self.pally_slip_vars.append(var)
+            row = (idx - 1) // 2 + 1
+            col = (idx - 1) % 2
+            ttk.Checkbutton(
+                self.pally_slip_frame,
+                text=f"Po warstwie {idx}",
+                variable=var,
+            ).grid(row=row, column=col, padx=2, pady=1, sticky="w")
+
+    def _selected_slip_layers(self) -> set[int]:
+        slips: set[int] = set()
+        for idx, var in enumerate(self.pally_slip_vars):
+            if idx == 0:
+                continue
+            if var.get():
+                slips.add(idx)
+        return slips
 
     @staticmethod
     def _format_number(value) -> str:
@@ -1477,6 +1491,7 @@ class TabPallet(ttk.Frame):
                     self.layer_patterns[idx] = even_key
                     self.transformations[idx] = self.even_transform_var.get()
         self.renumber_layers()
+        self._update_pally_slip_checkboxes()
         if draw:
             self.draw_pallet(draw_idle=draw_idle)
 
@@ -3087,21 +3102,19 @@ class TabPallet(ttk.Frame):
         pallet_w = int(round(parse_dim(self.pallet_w_var)))
         pallet_l = int(round(parse_dim(self.pallet_l_var)))
         pallet_h = int(round(parse_dim(self.pallet_h_var)))
-        box_w = int(round(parse_dim(self.box_w_var)))
-        box_l = int(round(parse_dim(self.box_l_var)))
-        box_h = int(round(parse_dim(self.box_h_var)))
+        box_w_int = parse_dim(self.box_w_var)
+        box_l_int = parse_dim(self.box_l_var)
+        box_h_int = parse_dim(self.box_h_var)
+        thickness = parse_dim(self.cardboard_thickness_var)
+
+        box_w = int(round(box_w_int + 2 * thickness))
+        box_l = int(round(box_l_int + 2 * thickness))
+        box_h = int(round(box_h_int + 2 * thickness))
 
         if min(pallet_w, pallet_l, pallet_h, box_w, box_l, box_h) <= 0:
             messagebox.showwarning(
                 "Brak danych", "Podaj poprawne wymiary palety i kartonu."
             )
-            return
-
-        try:
-            overhang_ends = int(parse_float(self.pally_overhang_ends_var.get()))
-            overhang_sides = int(parse_float(self.pally_overhang_sides_var.get()))
-        except Exception:
-            messagebox.showwarning("Błąd", "Niepoprawne wartości overhangu.")
             return
 
         weight_text = self.manual_carton_weight_var.get().strip()
@@ -3138,9 +3151,7 @@ class TabPallet(ttk.Frame):
             )
             layer_rects_list.append(coords)
 
-        slips_after = parse_slips_after(
-            self.pally_slips_after_var.get(), len(layer_rects_list)
-        )
+        slips_after = self._selected_slip_layers()
         config = PallyExportConfig(
             name=name,
             pallet_w=pallet_w,
@@ -3150,9 +3161,11 @@ class TabPallet(ttk.Frame):
             box_l=box_l,
             box_h=box_h,
             box_weight_g=box_weight_g,
-            overhang_ends=overhang_ends,
-            overhang_sides=overhang_sides,
-            label_orientation=int(self.pally_label_orientation_var.get()),
+            overhang_ends=0,
+            overhang_sides=0,
+            label_orientation=self.pally_label_orientation_map.get(
+                self.pally_label_orientation_display_var.get(), 180
+            ),
             swap_axes_for_pally=bool(self.pally_swap_axes_var.get()),
         )
 
@@ -3162,9 +3175,9 @@ class TabPallet(ttk.Frame):
 
         warnings = find_out_of_bounds(payload)
         if warnings:
-            messagebox.showwarning(
-                "Poza paletą", "\n".join(warnings), parent=self.winfo_toplevel()
-            )
+            if hasattr(self, "status_var"):
+                self.status_var.set(f"Błąd: {warnings[0]}")
+            return
 
         os.makedirs(out_dir, exist_ok=True)
         filename = f"{self._slugify_filename(name)}.json"
@@ -3172,8 +3185,7 @@ class TabPallet(ttk.Frame):
         with open(path, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=4, ensure_ascii=False)
         if hasattr(self, "status_var"):
-            self.status_var.set(f"Zapisano PALLY JSON: {path}")
-        self.pally_result_path_var.set(f"Plik wynikowy: {path}")
+            self.status_var.set("Zapisano PALLY JSON")
 
     def gather_pattern_data(self, name: str = "") -> dict:
         """Collect current pallet layout as a JSON-serialisable dict."""

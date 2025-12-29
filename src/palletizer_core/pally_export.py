@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, timezone
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
@@ -69,7 +70,32 @@ def _swap_rect_axes(rects: Iterable[Tuple[float, float, float, float]]) -> List[
 
 
 def _quantize(value: float, step: float) -> float:
-    return round(value / step) * step
+    quantized = Decimal(str(value)) / Decimal(str(step))
+    snapped = quantized.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    return float(snapped * Decimal(str(step)))
+
+
+def _normalize_angle(value: int) -> int:
+    return value % 360
+
+
+def _label_direction(label_orientation: int, rotation: int) -> int:
+    return _normalize_angle(label_orientation + rotation)
+
+
+def _nearest_edge(pallet_w: float, pallet_l: float, x: float, y: float) -> str:
+    distances = [
+        (x, "left"),
+        (pallet_w - x, "right"),
+        (y, "front"),
+        (pallet_l - y, "back"),
+    ]
+    return min(distances, key=lambda item: (item[0], item[1]))[1]
+
+
+def _expected_orientation_for_edge(edge: str) -> int:
+    mapping = {"front": 0, "left": 270, "right": 90, "back": 180}
+    return mapping[edge]
 
 
 def rects_to_pally_pattern(
@@ -77,25 +103,38 @@ def rects_to_pally_pattern(
     carton_w: float,
     carton_l: float,
     pallet_w: float,
+    pallet_l: float,
     quant_step_mm: float,
+    label_orientation: int,
 ) -> Tuple[List[Dict], List[Tuple[float, float, float, float]]]:
-    del pallet_w
     pattern: List[Dict] = []
     signature_rects: List[Tuple[float, float, float, float]] = []
+
     for x, y, w, length in rects:
-        x_center = x + w / 2.0
-        y_center = y + length / 2.0
+        x_center = _quantize(x + w / 2.0, quant_step_mm)
+        y_center = _quantize(y + length / 2.0, quant_step_mm)
 
         orientation_error_0 = abs(w - carton_w) + abs(length - carton_l)
         orientation_error_90 = abs(w - carton_l) + abs(length - carton_w)
-        rot = 0 if orientation_error_0 <= orientation_error_90 else 90
+        base_rot = 0 if orientation_error_0 <= orientation_error_90 else 90
+        flipped_rot = (base_rot + 180) % 360
 
-        x_center = _quantize(x_center, quant_step_mm)
-        y_center = _quantize(y_center, quant_step_mm)
+        nearest_edge = _nearest_edge(pallet_w, pallet_l, x_center, y_center)
+        expected_orientation = _expected_orientation_for_edge(nearest_edge)
+        base_dir = _label_direction(label_orientation, base_rot)
+        flipped_dir = _label_direction(label_orientation, flipped_rot)
+
+        if (base_dir == expected_orientation) != (flipped_dir == expected_orientation):
+            rot = base_rot if base_dir == expected_orientation else flipped_rot
+        elif base_dir == flipped_dir:
+            rot = base_rot
+        else:
+            rot = base_rot
 
         w_eff, l_eff = (carton_w, carton_l) if rot in (0, 180) else (carton_l, carton_w)
         w_eff = _quantize(w_eff, quant_step_mm)
         l_eff = _quantize(l_eff, quant_step_mm)
+
         pattern.append({"x": x_center, "y": y_center, "r": [rot], "g": [], "f": 1})
         signature_rects.append(
             (
@@ -105,11 +144,16 @@ def rects_to_pally_pattern(
                 l_eff,
             )
         )
-    return pattern, signature_rects
+
+    sort_key = lambda item_rect: (item_rect[0]["y"], item_rect[0]["x"])
+    paired = list(zip(pattern, signature_rects))
+    paired.sort(key=sort_key)
+    sorted_pattern, sorted_signature_rects = zip(*paired) if paired else ([], [])
+    return list(sorted_pattern), list(sorted_signature_rects)
 
 
 def mirror_pattern(pattern: Iterable[Dict], pallet_w: float) -> List[Dict]:
-    rot_map = {0: 0, 90: 270, 180: 180, 270: 90}
+    rot_map = {angle: (360 - angle) % 360 for angle in (0, 90, 180, 270)}
     mirrored: List[Dict] = []
     for item in pattern:
         rot_value = item.get("r", [0])[0]
@@ -151,7 +195,9 @@ def build_pally_json(
             carton_w,
             carton_l,
             pallet_width,
+            pallet_length,
             quant_step_mm=config.quant_step_mm,
+            label_orientation=config.label_orientation,
         )
         signature = layout_signature(signature_rects, eps=config.signature_eps_mm)
         if signature not in signature_to_name:
