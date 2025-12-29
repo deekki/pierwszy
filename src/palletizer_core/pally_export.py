@@ -1,11 +1,39 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Iterable, List, Tuple, Dict, Set
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from palletizer_core.signature import layout_signature
 
 LayerRects = List[Tuple[float, float, float, float]]
+
+
+@dataclass
+class PallyExportConfig:
+    name: str
+    pallet_w: int
+    pallet_l: int
+    pallet_h: int
+    box_w: int
+    box_l: int
+    box_h: int
+    box_weight_g: int
+    overhang_ends: int
+    overhang_sides: int
+    box_padding: int = 0
+    label_orientation: int = 180
+    alt_layout: str = "mirror"
+    units: str = "metric"
+    swap_axes_for_pally: Optional[bool] = None
+    quant_step_mm: float = 0.5
+    signature_eps_mm: float = 0.5
+    approach: str = "inverse"
+    alt_approach: str = "inverse"
+
+    def __post_init__(self) -> None:
+        if self.swap_axes_for_pally is None:
+            self.swap_axes_for_pally = self.pallet_w > self.pallet_l
 
 
 def iso_utc_now_ms() -> str:
@@ -33,26 +61,49 @@ def parse_slips_after(text: str, max_layers: int) -> Set[int]:
     return slips
 
 
+def _swap_rect_axes(rects: Iterable[Tuple[float, float, float, float]]) -> List[Tuple[float, float, float, float]]:
+    swapped: List[Tuple[float, float, float, float]] = []
+    for x, y, w, length in rects:
+        swapped.append((y, x, length, w))
+    return swapped
+
+
+def _quantize(value: float, step: float) -> float:
+    return round(value / step) * step
+
+
 def rects_to_pally_pattern(
     rects: Iterable[Tuple[float, float, float, float]],
     carton_w: float,
     carton_l: float,
     pallet_w: float,
-    tol: float = 1.0,
-) -> List[Dict]:
+    quant_step_mm: float,
+) -> Tuple[List[Dict], List[Tuple[float, float, float, float]]]:
     del pallet_w
     pattern: List[Dict] = []
+    signature_rects: List[Tuple[float, float, float, float]] = []
     for x, y, w, length in rects:
         x_center = x + w / 2.0
         y_center = y + length / 2.0
-        if abs(w - carton_w) <= tol and abs(length - carton_l) <= tol:
-            rot = 0
-        elif abs(w - carton_l) <= tol and abs(length - carton_w) <= tol:
-            rot = 90
-        else:
-            rot = 0
+
+        orientation_error_0 = abs(w - carton_w) + abs(length - carton_l)
+        orientation_error_90 = abs(w - carton_l) + abs(length - carton_w)
+        rot = 0 if orientation_error_0 <= orientation_error_90 else 90
+
+        x_center = _quantize(x_center, quant_step_mm)
+        y_center = _quantize(y_center, quant_step_mm)
+
+        w_eff, l_eff = (carton_w, carton_l) if rot in (0, 180) else (carton_l, carton_w)
         pattern.append({"x": x_center, "y": y_center, "r": [rot], "g": [], "f": 1})
-    return pattern
+        signature_rects.append(
+            (
+                x_center - w_eff / 2.0,
+                y_center - l_eff / 2.0,
+                w_eff,
+                l_eff,
+            )
+        )
+    return pattern, signature_rects
 
 
 def mirror_pattern(pattern: Iterable[Dict], pallet_w: float) -> List[Dict]:
@@ -73,42 +124,53 @@ def mirror_pattern(pattern: Iterable[Dict], pallet_w: float) -> List[Dict]:
 
 
 def build_pally_json(
-    name: str,
-    pallet_w: int,
-    pallet_l: int,
-    pallet_h: int,
-    box_w: int,
-    box_l: int,
-    box_h: int,
-    box_weight_g: int,
+    config: PallyExportConfig,
     layer_rects_list: List[LayerRects],
     slips_after: Set[int],
 ) -> Dict:
     num_layers = len(layer_rects_list)
+    pallet_width = (
+        min(config.pallet_w, config.pallet_l)
+        if config.swap_axes_for_pally
+        else config.pallet_w
+    )
+    pallet_length = (
+        max(config.pallet_w, config.pallet_l)
+        if config.swap_axes_for_pally
+        else config.pallet_l
+    )
+    carton_w = config.box_l if config.swap_axes_for_pally else config.box_w
+    carton_l = config.box_w if config.swap_axes_for_pally else config.box_l
+
     layer_types: List[Dict] = [
         {"name": "Shim paper: Default", "class": "separator", "height": 1}
     ]
     signature_to_name: Dict[tuple, str] = {}
-    signature_to_pattern: Dict[tuple, List[Dict]] = {}
     layer_type_names: List[str] = []
     next_idx = 1
 
     for rects in layer_rects_list:
-        signature = layout_signature(rects)
+        rects_to_use = _swap_rect_axes(rects) if config.swap_axes_for_pally else rects
+        pattern, signature_rects = rects_to_pally_pattern(
+            rects_to_use,
+            carton_w,
+            carton_l,
+            pallet_width,
+            quant_step_mm=config.quant_step_mm,
+        )
+        signature = layout_signature(signature_rects, eps=config.signature_eps_mm)
         if signature not in signature_to_name:
             layer_name = f"Layer type: {next_idx}"
             next_idx += 1
-            pattern = rects_to_pally_pattern(rects, box_w, box_l, pallet_w)
             signature_to_name[signature] = layer_name
-            signature_to_pattern[signature] = pattern
             layer_types.append(
                 {
                     "name": layer_name,
                     "class": "layer",
                     "pattern": pattern,
-                    "altPattern": mirror_pattern(pattern, pallet_w),
-                    "approach": "inverse",
-                    "altApproach": "inverse",
+                    "altPattern": mirror_pattern(pattern, pallet_width),
+                    "approach": config.approach,
+                    "altApproach": config.alt_approach,
                 }
             )
         layer_type_names.append(signature_to_name[signature])
@@ -120,32 +182,86 @@ def build_pally_json(
             layers.append("Shim paper: Default")
 
     return {
-        "name": name,
+        "name": config.name,
         "description": "",
         "dimensions": {
-            "height": num_layers * box_h,
-            "width": pallet_w,
-            "length": pallet_l,
-            "palletHeight": pallet_h,
+            "height": num_layers * config.box_h,
+            "width": pallet_width,
+            "length": pallet_length,
+            "palletHeight": config.pallet_h,
         },
         "productDimensions": {
-            "weight": box_weight_g,
-            "height": box_h,
-            "width": box_w,
-            "length": box_l,
+            "weight": config.box_weight_g,
+            "height": config.box_h,
+            "width": carton_w,
+            "length": carton_l,
         },
         "maxGrip": 1,
         "maxGripAuto": False,
-        "labelOrientation": 180,
+        "labelOrientation": config.label_orientation,
         "guiSettings": {
             "PPB_VERSION_NO": "3.1.1",
-            "boxPadding": 0,
-            "units": "metric",
-            "overhangSides": 0,
-            "overhangEnds": 0,
-            "altLayout": "mirror",
+            "boxPadding": config.box_padding,
+            "units": config.units,
+            "overhangSides": config.overhang_sides,
+            "overhangEnds": config.overhang_ends,
+            "altLayout": config.alt_layout,
         },
         "dateModified": iso_utc_now_ms(),
         "layerTypes": layer_types,
         "layers": layers,
     }
+
+
+def find_out_of_bounds(payload: Dict) -> List[str]:
+    pallet_width = float(payload.get("dimensions", {}).get("width", 0))
+    pallet_length = float(payload.get("dimensions", {}).get("length", 0))
+    product_width = float(payload.get("productDimensions", {}).get("width", 0))
+    product_length = float(payload.get("productDimensions", {}).get("length", 0))
+    gui_settings = payload.get("guiSettings", {})
+    overhang_sides = float(gui_settings.get("overhangSides", 0))
+    overhang_ends = float(gui_settings.get("overhangEnds", 0))
+
+    layer_types_lookup = {lt.get("name"): lt for lt in payload.get("layerTypes", [])}
+    messages: List[str] = []
+    layer_counter = 0
+    for layer_name in payload.get("layers", []):
+        layer_type = layer_types_lookup.get(layer_name)
+        if not layer_type or layer_type.get("class") == "separator":
+            continue
+        layer_counter += 1
+        for item in layer_type.get("pattern", []):
+            rot = item.get("r", [0])[0]
+            w_eff, l_eff = (
+                (product_width, product_length)
+                if rot in (0, 180)
+                else (product_length, product_width)
+            )
+            x_center = float(item.get("x", 0))
+            y_center = float(item.get("y", 0))
+            left = x_center - w_eff / 2.0
+            right = x_center + w_eff / 2.0
+            bottom = y_center - l_eff / 2.0
+            top = y_center + l_eff / 2.0
+
+            if left < -overhang_sides:
+                diff = -overhang_sides - left
+                messages.append(
+                    f"Warstwa {layer_counter}: lewa krawędź poza zakresem o {diff:.1f} mm"
+                )
+            if right > pallet_width + overhang_sides:
+                diff = right - (pallet_width + overhang_sides)
+                messages.append(
+                    f"Warstwa {layer_counter}: prawa krawędź poza zakresem o {diff:.1f} mm"
+                )
+            if bottom < 0:
+                diff = -bottom
+                messages.append(
+                    f"Warstwa {layer_counter}: dolna krawędź poza zakresem o {diff:.1f} mm"
+                )
+            if top > pallet_length + overhang_ends:
+                diff = top - (pallet_length + overhang_ends)
+                messages.append(
+                    f"Warstwa {layer_counter}: górna krawędź poza zakresem o {diff:.1f} mm"
+                )
+    return messages

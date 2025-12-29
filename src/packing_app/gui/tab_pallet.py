@@ -22,7 +22,12 @@ from palletizer_core.pattern_io import (
     get_pattern_dir,
     save_pattern,
 )
-from palletizer_core.pally_export import build_pally_json, parse_slips_after
+from palletizer_core.pally_export import (
+    PallyExportConfig,
+    build_pally_json,
+    find_out_of_bounds,
+    parse_slips_after,
+)
 from palletizer_core.transformations import (
     apply_transformation as apply_transformation_core,
     inverse_transformation as inverse_transformation_core,
@@ -111,6 +116,11 @@ class TabPallet(ttk.Frame):
             value=os.path.join(base_dir, "pally_exports")
         )
         self.pally_slips_after_var = tk.StringVar(value="")
+        self.pally_overhang_ends_var = tk.StringVar(value="0")
+        self.pally_overhang_sides_var = tk.StringVar(value="0")
+        self.pally_label_orientation_var = tk.IntVar(value=180)
+        self.pally_swap_axes_var = tk.BooleanVar(value=False)
+        self.pally_result_path_var = tk.StringVar(value="")
         self.pallet_base_mass = 25.0
         self.pack(fill=tk.BOTH, expand=True)
         self.columnconfigure(0, weight=1)
@@ -233,6 +243,9 @@ class TabPallet(ttk.Frame):
         self.pallet_w_var = tk.StringVar(value=str(self.predefined_pallets[0]["w"]))
         self.pallet_l_var = tk.StringVar(value=str(self.predefined_pallets[0]["l"]))
         self.pallet_h_var = tk.StringVar(value=str(self.predefined_pallets[0]["h"]))
+        self.pally_swap_axes_var.set(
+            float(self.pallet_w_var.get()) > float(self.pallet_l_var.get())
+        )
         self.pallet_dims_var = tk.StringVar(value="")
 
         ttk.Label(layers_frame, text="Paleta:").grid(
@@ -531,23 +544,25 @@ class TabPallet(ttk.Frame):
             row=0, column=6, rowspan=3, padx=(10, 5), pady=4, sticky="nsew"
         )
         pally_frame.columnconfigure(1, weight=1)
-        ttk.Label(pally_frame, text="Nazwa projektu (name):").grid(
+        ttk.Label(pally_frame, text="Nazwa projektu:").grid(
             row=0, column=0, padx=5, pady=2, sticky="w"
         )
-        ttk.Entry(
-            pally_frame,
-            textvariable=self.pally_name_var,
-            width=24,
-        ).grid(row=0, column=1, padx=5, pady=2, sticky="ew")
+        ttk.Entry(pally_frame, textvariable=self.pally_name_var, width=24).grid(
+            row=0, column=1, padx=5, pady=2, sticky="ew"
+        )
         ttk.Label(pally_frame, text="Folder zapisu:").grid(
             row=1, column=0, padx=5, pady=2, sticky="w"
         )
-        ttk.Entry(
-            pally_frame,
-            textvariable=self.pally_out_dir_var,
-            width=24,
-        ).grid(row=1, column=1, padx=5, pady=2, sticky="ew")
-        ttk.Label(pally_frame, text="Przekładki po warstwie (1-based, przecinki):").grid(
+        folder_frame = ttk.Frame(pally_frame)
+        folder_frame.grid(row=1, column=1, padx=5, pady=2, sticky="ew")
+        folder_frame.columnconfigure(0, weight=1)
+        ttk.Entry(folder_frame, textvariable=self.pally_out_dir_var).grid(
+            row=0, column=0, padx=(0, 4), pady=0, sticky="ew"
+        )
+        ttk.Button(
+            folder_frame, text="...", width=3, command=self._choose_pally_directory
+        ).grid(row=0, column=1, padx=(0, 0), pady=0)
+        ttk.Label(pally_frame, text="Przekładki po warstwie:").grid(
             row=2, column=0, padx=5, pady=2, sticky="w"
         )
         ttk.Entry(
@@ -555,14 +570,56 @@ class TabPallet(ttk.Frame):
             textvariable=self.pally_slips_after_var,
             width=24,
         ).grid(row=2, column=1, padx=5, pady=2, sticky="ew")
-        ttk.Label(pally_frame, text="0 zawsze na drewnie").grid(
+        ttk.Label(pally_frame, text="1-based, przecinki; 0 zawsze na drewnie").grid(
             row=3, column=0, columnspan=2, padx=5, pady=(0, 4), sticky="w"
         )
+
+        ttk.Label(pally_frame, text="Overhang ends (mm):").grid(
+            row=4, column=0, padx=5, pady=2, sticky="w"
+        )
+        ttk.Spinbox(
+            pally_frame,
+            from_=0,
+            to=999,
+            textvariable=self.pally_overhang_ends_var,
+            width=8,
+        ).grid(row=4, column=1, padx=5, pady=2, sticky="w")
+        ttk.Label(pally_frame, text="Overhang sides (mm):").grid(
+            row=5, column=0, padx=5, pady=2, sticky="w"
+        )
+        ttk.Spinbox(
+            pally_frame,
+            from_=0,
+            to=999,
+            textvariable=self.pally_overhang_sides_var,
+            width=8,
+        ).grid(row=5, column=1, padx=5, pady=2, sticky="w")
+
+        ttk.Label(pally_frame, text="Label orientation:").grid(
+            row=6, column=0, padx=5, pady=2, sticky="w"
+        )
+        label_options = [0, -90, 90, 180]
+        ttk.OptionMenu(
+            pally_frame,
+            self.pally_label_orientation_var,
+            self.pally_label_orientation_var.get(),
+            *label_options,
+        ).grid(row=6, column=1, padx=5, pady=2, sticky="w")
+
+        ttk.Checkbutton(
+            pally_frame,
+            text="Swap axes for PALLY (EUR)",
+            variable=self.pally_swap_axes_var,
+        ).grid(row=7, column=0, columnspan=2, padx=5, pady=2, sticky="w")
+
         ttk.Button(
             pally_frame,
             text="Eksportuj PALLY JSON",
             command=self.export_pally_json,
-        ).grid(row=4, column=0, columnspan=2, padx=5, pady=4, sticky="ew")
+        ).grid(row=8, column=0, columnspan=2, padx=5, pady=4, sticky="ew")
+        ttk.Label(
+            pally_frame, textvariable=self.pally_result_path_var, wraplength=240
+        ).grid(row=9, column=0, columnspan=2, padx=5, pady=(0, 4), sticky="w")
 
         ttk.Label(layers_frame, text="Liczba przekładek:").grid(
             row=3, column=0, padx=5, pady=4, sticky="w"
@@ -3001,6 +3058,11 @@ class TabPallet(ttk.Frame):
         slug = slug.strip("_")
         return slug or "export"
 
+    def _choose_pally_directory(self) -> None:
+        path = filedialog.askdirectory(initialdir=self.pally_out_dir_var.get())
+        if path:
+            self.pally_out_dir_var.set(path)
+
     def export_pally_json(self) -> None:
         if not self.layers:
             messagebox.showwarning("Brak warstw", "Brak warstw do eksportu.")
@@ -3023,6 +3085,13 @@ class TabPallet(ttk.Frame):
             messagebox.showwarning(
                 "Brak danych", "Podaj poprawne wymiary palety i kartonu."
             )
+            return
+
+        try:
+            overhang_ends = int(parse_float(self.pally_overhang_ends_var.get()))
+            overhang_sides = int(parse_float(self.pally_overhang_sides_var.get()))
+        except Exception:
+            messagebox.showwarning("Błąd", "Niepoprawne wartości overhangu.")
             return
 
         weight_text = self.manual_carton_weight_var.get().strip()
@@ -3062,7 +3131,7 @@ class TabPallet(ttk.Frame):
         slips_after = parse_slips_after(
             self.pally_slips_after_var.get(), len(layer_rects_list)
         )
-        payload = build_pally_json(
+        config = PallyExportConfig(
             name=name,
             pallet_w=pallet_w,
             pallet_l=pallet_l,
@@ -3071,9 +3140,21 @@ class TabPallet(ttk.Frame):
             box_l=box_l,
             box_h=box_h,
             box_weight_g=box_weight_g,
-            layer_rects_list=layer_rects_list,
-            slips_after=slips_after,
+            overhang_ends=overhang_ends,
+            overhang_sides=overhang_sides,
+            label_orientation=int(self.pally_label_orientation_var.get()),
+            swap_axes_for_pally=bool(self.pally_swap_axes_var.get()),
         )
+
+        payload = build_pally_json(
+            config=config, layer_rects_list=layer_rects_list, slips_after=slips_after
+        )
+
+        warnings = find_out_of_bounds(payload)
+        if warnings:
+            messagebox.showwarning(
+                "Poza paletą", "\n".join(warnings), parent=self.winfo_toplevel()
+            )
 
         os.makedirs(out_dir, exist_ok=True)
         filename = f"{self._slugify_filename(name)}.json"
@@ -3082,6 +3163,7 @@ class TabPallet(ttk.Frame):
             json.dump(payload, handle, indent=4, ensure_ascii=False)
         if hasattr(self, "status_var"):
             self.status_var.set(f"Zapisano PALLY JSON: {path}")
+        self.pally_result_path_var.set(f"Plik wynikowy: {path}")
 
     def gather_pattern_data(self, name: str = "") -> dict:
         """Collect current pallet layout as a JSON-serialisable dict."""
