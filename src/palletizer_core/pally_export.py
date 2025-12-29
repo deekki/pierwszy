@@ -145,7 +145,8 @@ def rects_to_pally_pattern(
             )
         )
 
-    sort_key = lambda item_rect: (item_rect[0]["y"], item_rect[0]["x"])
+    def sort_key(item_rect):
+        return (item_rect[0]["y"], item_rect[0]["x"])
     paired = list(zip(pattern, signature_rects))
     paired.sort(key=sort_key)
     sorted_pattern, sorted_signature_rects = zip(*paired) if paired else ([], [])
