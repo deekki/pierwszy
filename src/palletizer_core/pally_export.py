@@ -94,6 +94,8 @@ def rects_to_pally_pattern(
         y_center = _quantize(y_center, quant_step_mm)
 
         w_eff, l_eff = (carton_w, carton_l) if rot in (0, 180) else (carton_l, carton_w)
+        w_eff = _quantize(w_eff, quant_step_mm)
+        l_eff = _quantize(l_eff, quant_step_mm)
         pattern.append({"x": x_center, "y": y_center, "r": [rot], "g": [], "f": 1})
         signature_rects.append(
             (
@@ -129,18 +131,11 @@ def build_pally_json(
     slips_after: Set[int],
 ) -> Dict:
     num_layers = len(layer_rects_list)
-    pallet_width = (
-        min(config.pallet_w, config.pallet_l)
-        if config.swap_axes_for_pally
-        else config.pallet_w
-    )
-    pallet_length = (
-        max(config.pallet_w, config.pallet_l)
-        if config.swap_axes_for_pally
-        else config.pallet_l
-    )
-    carton_w = config.box_l if config.swap_axes_for_pally else config.box_w
-    carton_l = config.box_w if config.swap_axes_for_pally else config.box_l
+    swap_axes = bool(config.swap_axes_for_pally)
+    pallet_width = min(config.pallet_w, config.pallet_l) if swap_axes else config.pallet_w
+    pallet_length = max(config.pallet_w, config.pallet_l) if swap_axes else config.pallet_l
+    carton_w = config.box_l if swap_axes else config.box_w
+    carton_l = config.box_w if swap_axes else config.box_l
 
     layer_types: List[Dict] = [
         {"name": "Shim paper: Default", "class": "separator", "height": 1}
@@ -150,7 +145,7 @@ def build_pally_json(
     next_idx = 1
 
     for rects in layer_rects_list:
-        rects_to_use = _swap_rect_axes(rects) if config.swap_axes_for_pally else rects
+        rects_to_use = _swap_rect_axes(rects) if swap_axes else rects
         pattern, signature_rects = rects_to_pally_pattern(
             rects_to_use,
             carton_w,

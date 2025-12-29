@@ -120,7 +120,7 @@ class TabPallet(ttk.Frame):
         self.pally_overhang_sides_var = tk.StringVar(value="0")
         self.pally_label_orientation_var = tk.IntVar(value=180)
         self.pally_swap_axes_var = tk.BooleanVar(value=False)
-        self.pally_result_path_var = tk.StringVar(value="")
+        self.pally_result_path_var = tk.StringVar(value="Plik wynikowy: -")
         self.pallet_base_mass = 25.0
         self.pack(fill=tk.BOTH, expand=True)
         self.columnconfigure(0, weight=1)
@@ -543,14 +543,15 @@ class TabPallet(ttk.Frame):
         pally_frame.grid(
             row=0, column=6, rowspan=3, padx=(10, 5), pady=4, sticky="nsew"
         )
+        pally_frame.columnconfigure(0, weight=0)
         pally_frame.columnconfigure(1, weight=1)
-        ttk.Label(pally_frame, text="Nazwa projektu:").grid(
+        ttk.Label(pally_frame, text="Nazwa:").grid(
             row=0, column=0, padx=5, pady=2, sticky="w"
         )
-        ttk.Entry(pally_frame, textvariable=self.pally_name_var, width=24).grid(
+        ttk.Entry(pally_frame, textvariable=self.pally_name_var, width=22).grid(
             row=0, column=1, padx=5, pady=2, sticky="ew"
         )
-        ttk.Label(pally_frame, text="Folder zapisu:").grid(
+        ttk.Label(pally_frame, text="Folder:").grid(
             row=1, column=0, padx=5, pady=2, sticky="w"
         )
         folder_frame = ttk.Frame(pally_frame)
@@ -562,19 +563,19 @@ class TabPallet(ttk.Frame):
         ttk.Button(
             folder_frame, text="...", width=3, command=self._choose_pally_directory
         ).grid(row=0, column=1, padx=(0, 0), pady=0)
-        ttk.Label(pally_frame, text="Przekładki po warstwie:").grid(
+        ttk.Label(pally_frame, text="Przekładki (warstwy):").grid(
             row=2, column=0, padx=5, pady=2, sticky="w"
         )
         ttk.Entry(
             pally_frame,
             textvariable=self.pally_slips_after_var,
-            width=24,
+            width=22,
         ).grid(row=2, column=1, padx=5, pady=2, sticky="ew")
         ttk.Label(pally_frame, text="1-based, przecinki; 0 zawsze na drewnie").grid(
             row=3, column=0, columnspan=2, padx=5, pady=(0, 4), sticky="w"
         )
 
-        ttk.Label(pally_frame, text="Overhang ends (mm):").grid(
+        ttk.Label(pally_frame, text="Overhang końce [mm]:").grid(
             row=4, column=0, padx=5, pady=2, sticky="w"
         )
         ttk.Spinbox(
@@ -584,7 +585,7 @@ class TabPallet(ttk.Frame):
             textvariable=self.pally_overhang_ends_var,
             width=8,
         ).grid(row=4, column=1, padx=5, pady=2, sticky="w")
-        ttk.Label(pally_frame, text="Overhang sides (mm):").grid(
+        ttk.Label(pally_frame, text="Overhang boki [mm]:").grid(
             row=5, column=0, padx=5, pady=2, sticky="w"
         )
         ttk.Spinbox(
@@ -931,6 +932,14 @@ class TabPallet(ttk.Frame):
             raw = var.get().strip() if hasattr(var, "get") else str(var)
             values.append(self._format_number(raw) if raw else "-")
         self.pallet_dims_var.set(" × ".join(values))
+
+    def _update_pally_swap_axes_default(self) -> None:
+        try:
+            pallet_w = parse_float(self.pallet_w_var.get())
+            pallet_l = parse_float(self.pallet_l_var.get())
+        except Exception:
+            return
+        self.pally_swap_axes_var.set(pallet_w > pallet_l)
 
     def _get_active_carton_weight(self) -> Tuple[float, str]:
         var = getattr(self, "manual_carton_weight_var", None)
@@ -1478,6 +1487,7 @@ class TabPallet(ttk.Frame):
         self.pallet_w_var.set(str(selected_pallet["w"]))
         self.pallet_l_var.set(str(selected_pallet["l"]))
         self.pallet_h_var.set(str(selected_pallet["h"]))
+        self._update_pally_swap_axes_default()
         self.compute_pallet()
 
     def on_carton_selected(self, *args):
