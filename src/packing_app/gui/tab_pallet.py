@@ -116,13 +116,13 @@ class TabPallet(ttk.Frame):
         )
         self.pally_slip_vars: list[tk.BooleanVar] = []
         self.pally_label_orientation_map = {
-            "Etykieta: przód": 0,
-            "Etykieta: lewy bok": -90,
-            "Etykieta: prawy bok": 90,
-            "Etykieta: tył": 180,
+            "Przód": 0,
+            "Lewy bok": -90,
+            "Prawy bok": 90,
+            "Tył": 180,
         }
         self.pally_label_orientation_display_var = tk.StringVar(
-            value="Etykieta: tył"
+            value="Tył"
         )
         self.pally_swap_axes_var = tk.BooleanVar(value=False)
         self.pallet_base_mass = 25.0
@@ -568,13 +568,13 @@ class TabPallet(ttk.Frame):
         ttk.Button(
             folder_frame, text="...", width=3, command=self._choose_pally_directory
         ).grid(row=0, column=1, padx=(0, 0), pady=0)
-        ttk.Label(pally_frame, text="Przekładki (warstwy):").grid(
-            row=2, column=0, padx=4, pady=2, sticky="nw"
+        ttk.Label(pally_frame, text="Przekładka po warstwie:").grid(
+            row=2, column=0, padx=4, pady=2, sticky="w"
         )
         self.pally_slip_frame = ttk.Frame(pally_frame)
-        self.pally_slip_frame.grid(row=2, column=1, padx=4, pady=2, sticky="w")
+        self.pally_slip_frame.grid(row=2, column=1, padx=2, pady=2, sticky="w")
 
-        ttk.Label(pally_frame, text="Etykieta:").grid(
+        ttk.Label(pally_frame, text="Kierunek etykiety:").grid(
             row=3, column=0, padx=4, pady=2, sticky="w"
         )
         label_choices = list(self.pally_label_orientation_map.keys())
@@ -890,22 +890,20 @@ class TabPallet(ttk.Frame):
         self.pally_slip_vars.append(base_var)
         ttk.Checkbutton(
             self.pally_slip_frame,
-            text="Po palecie (warstwa 0)",
+            text="0",
             variable=base_var,
             state="disabled",
-        ).grid(row=0, column=0, padx=2, pady=1, sticky="w")
+        ).grid(row=0, column=0, padx=2, pady=0, sticky="w")
 
         layer_count = len(self.layers) if self.layers else int(parse_dim(self.num_layers_var))
         for idx in range(1, layer_count + 1):
             var = tk.BooleanVar(value=False)
             self.pally_slip_vars.append(var)
-            row = (idx - 1) // 2 + 1
-            col = (idx - 1) % 2
             ttk.Checkbutton(
                 self.pally_slip_frame,
-                text=f"Po warstwie {idx}",
+                text=f"{idx}",
                 variable=var,
-            ).grid(row=row, column=col, padx=2, pady=1, sticky="w")
+            ).grid(row=0, column=idx, padx=2, pady=0, sticky="w")
 
     def _selected_slip_layers(self) -> set[int]:
         slips: set[int] = set()
