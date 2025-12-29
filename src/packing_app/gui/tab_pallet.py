@@ -3,6 +3,7 @@ import logging
 import math
 import os
 import queue
+import re
 import threading
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, simpledialog
@@ -21,6 +22,7 @@ from palletizer_core.pattern_io import (
     get_pattern_dir,
     save_pattern,
 )
+from palletizer_core.pally_export import build_pally_json, parse_slips_after
 from palletizer_core.transformations import (
     apply_transformation as apply_transformation_core,
     inverse_transformation as inverse_transformation_core,
@@ -101,6 +103,14 @@ class TabPallet(ttk.Frame):
         self.manual_carton_weight_var = tk.StringVar(
             value=self._format_number(initial_weight) if initial_weight else ""
         )
+        base_dir = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "..", "..")
+        )
+        self.pally_name_var = tk.StringVar(value="export")
+        self.pally_out_dir_var = tk.StringVar(
+            value=os.path.join(base_dir, "pally_exports")
+        )
+        self.pally_slips_after_var = tk.StringVar(value="")
         self.pallet_base_mass = 25.0
         self.pack(fill=tk.BOTH, expand=True)
         self.columnconfigure(0, weight=1)
@@ -446,6 +456,7 @@ class TabPallet(ttk.Frame):
         advanced_frame.grid(
             row=5, column=0, columnspan=6, padx=5, pady=6, sticky="we"
         )
+        advanced_frame.columnconfigure(6, weight=1)
         ttk.Checkbutton(
             advanced_frame,
             text="Extended library patterns",
@@ -514,6 +525,44 @@ class TabPallet(ttk.Frame):
         ttk.Label(advanced_frame, textvariable=self.generated_patterns_var).grid(
             row=2, column=1, padx=5, pady=4, sticky="w"
         )
+
+        pally_frame = ttk.LabelFrame(advanced_frame, text="PALLY / UR export")
+        pally_frame.grid(
+            row=0, column=6, rowspan=3, padx=(10, 5), pady=4, sticky="nsew"
+        )
+        pally_frame.columnconfigure(1, weight=1)
+        ttk.Label(pally_frame, text="Nazwa projektu (name):").grid(
+            row=0, column=0, padx=5, pady=2, sticky="w"
+        )
+        ttk.Entry(
+            pally_frame,
+            textvariable=self.pally_name_var,
+            width=24,
+        ).grid(row=0, column=1, padx=5, pady=2, sticky="ew")
+        ttk.Label(pally_frame, text="Folder zapisu:").grid(
+            row=1, column=0, padx=5, pady=2, sticky="w"
+        )
+        ttk.Entry(
+            pally_frame,
+            textvariable=self.pally_out_dir_var,
+            width=24,
+        ).grid(row=1, column=1, padx=5, pady=2, sticky="ew")
+        ttk.Label(pally_frame, text="Przekładki po warstwie (1-based, przecinki):").grid(
+            row=2, column=0, padx=5, pady=2, sticky="w"
+        )
+        ttk.Entry(
+            pally_frame,
+            textvariable=self.pally_slips_after_var,
+            width=24,
+        ).grid(row=2, column=1, padx=5, pady=2, sticky="ew")
+        ttk.Label(pally_frame, text="0 zawsze na drewnie").grid(
+            row=3, column=0, columnspan=2, padx=5, pady=(0, 4), sticky="w"
+        )
+        ttk.Button(
+            pally_frame,
+            text="Eksportuj PALLY JSON",
+            command=self.export_pally_json,
+        ).grid(row=4, column=0, columnspan=2, padx=5, pady=4, sticky="ew")
 
         ttk.Label(layers_frame, text="Liczba przekładek:").grid(
             row=3, column=0, padx=5, pady=4, sticky="w"
@@ -2945,6 +2994,94 @@ class TabPallet(ttk.Frame):
     # ------------------------------------------------------------------
     # JSON pattern export / import helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _slugify_filename(value: str) -> str:
+        slug = re.sub(r"[^\w\-]+", "_", value.strip().lower())
+        slug = slug.strip("_")
+        return slug or "export"
+
+    def export_pally_json(self) -> None:
+        if not self.layers:
+            messagebox.showwarning("Brak warstw", "Brak warstw do eksportu.")
+            return
+
+        name = self.pally_name_var.get().strip() or "export"
+        out_dir = self.pally_out_dir_var.get().strip()
+        if not out_dir:
+            messagebox.showwarning("Brak folderu", "Podaj folder zapisu.")
+            return
+
+        pallet_w = int(round(parse_dim(self.pallet_w_var)))
+        pallet_l = int(round(parse_dim(self.pallet_l_var)))
+        pallet_h = int(round(parse_dim(self.pallet_h_var)))
+        box_w = int(round(parse_dim(self.box_w_var)))
+        box_l = int(round(parse_dim(self.box_l_var)))
+        box_h = int(round(parse_dim(self.box_h_var)))
+
+        if min(pallet_w, pallet_l, pallet_h, box_w, box_l, box_h) <= 0:
+            messagebox.showwarning(
+                "Brak danych", "Podaj poprawne wymiary palety i kartonu."
+            )
+            return
+
+        weight_text = self.manual_carton_weight_var.get().strip()
+        if weight_text:
+            try:
+                weight_kg = parse_float(weight_text)
+            except Exception:
+                messagebox.showwarning("Błąd", "Niepoprawna masa kartonu.")
+                return
+        else:
+            weight_kg = self.carton_weights.get(self.carton_var.get(), 0)
+
+        if not weight_kg:
+            messagebox.showwarning(
+                "Brak masy",
+                "Brak masy kartonu. Uzupełnij pole lub wybierz karton z wagą.",
+            )
+            return
+
+        box_weight_g = int(round(weight_kg * 1000))
+        layer_rects_list = []
+        for idx, layer in enumerate(self.layers):
+            if idx >= len(self.transformations):
+                messagebox.showwarning(
+                    "Brak transformacji",
+                    "Nie można pobrać transformacji dla wszystkich warstw.",
+                )
+                return
+            coords = self.apply_transformation(
+                list(layer),
+                self.transformations[idx],
+                pallet_w,
+                pallet_l,
+            )
+            layer_rects_list.append(coords)
+
+        slips_after = parse_slips_after(
+            self.pally_slips_after_var.get(), len(layer_rects_list)
+        )
+        payload = build_pally_json(
+            name=name,
+            pallet_w=pallet_w,
+            pallet_l=pallet_l,
+            pallet_h=pallet_h,
+            box_w=box_w,
+            box_l=box_l,
+            box_h=box_h,
+            box_weight_g=box_weight_g,
+            layer_rects_list=layer_rects_list,
+            slips_after=slips_after,
+        )
+
+        os.makedirs(out_dir, exist_ok=True)
+        filename = f"{self._slugify_filename(name)}.json"
+        path = os.path.join(out_dir, filename)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=4, ensure_ascii=False)
+        if hasattr(self, "status_var"):
+            self.status_var.set(f"Zapisano PALLY JSON: {path}")
 
     def gather_pattern_data(self, name: str = "") -> dict:
         """Collect current pallet layout as a JSON-serialisable dict."""
