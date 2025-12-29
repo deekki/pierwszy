@@ -22,6 +22,13 @@ def test_mirror():
     assert mirrored[0]["r"] == [270]
 
 
+def test_mirror_handles_270_rotation():
+    pattern = [{"x": 100.0, "y": 150.0, "r": [270], "g": [], "f": 1}]
+    mirrored = mirror_pattern(pattern, pallet_w=800)
+    assert mirrored[0]["x"] == 700.0
+    assert mirrored[0]["r"] == [90]
+
+
 def test_schema_keys_order():
     rects = [(0.0, 0.0, 100.0, 200.0)]
     data = build_pally_json(
@@ -224,3 +231,49 @@ def test_large_value_quantization_to_half_mm():
     )
     item = data["layerTypes"][1]["pattern"][0]
     assert item["y"] == 838.0
+
+
+def test_label_orientation_flips_towards_back_edge():
+    rects = [(300.0, 950.0, 100.0, 200.0)]
+    data = build_pally_json(
+        config=PallyExportConfig(
+            name="Test",
+            pallet_w=800,
+            pallet_l=1200,
+            pallet_h=150,
+            box_w=100,
+            box_l=200,
+            box_h=300,
+            box_weight_g=500,
+            overhang_ends=0,
+            overhang_sides=0,
+            label_orientation=0,
+        ),
+        layer_rects_list=[rects],
+        slips_after=set(),
+    )
+    pattern = data["layerTypes"][1]["pattern"][0]
+    assert pattern["r"] == [180]
+
+
+def test_pattern_sorted_deterministically():
+    rects = [(200.0, 300.0, 100.0, 200.0), (0.0, 0.0, 100.0, 200.0)]
+    data = build_pally_json(
+        config=PallyExportConfig(
+            name="Test",
+            pallet_w=800,
+            pallet_l=1200,
+            pallet_h=150,
+            box_w=100,
+            box_l=200,
+            box_h=300,
+            box_weight_g=500,
+            overhang_ends=0,
+            overhang_sides=0,
+        ),
+        layer_rects_list=[rects],
+        slips_after=set(),
+    )
+    pattern = data["layerTypes"][1]["pattern"]
+    coords = [(item["x"], item["y"]) for item in pattern]
+    assert coords == [(50.0, 100.0), (250.0, 400.0)]
