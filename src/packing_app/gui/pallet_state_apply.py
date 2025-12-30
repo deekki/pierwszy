@@ -7,6 +7,8 @@ def apply_layout_result_to_tab_state(
     tab,
     inputs: PalletInputs,
     result: LayoutComputation,
+    *,
+    force_layers: bool = False,
 ) -> None:
     tab.layouts = result.layouts
     tab.layout_map = result.layout_map
@@ -19,6 +21,6 @@ def apply_layout_result_to_tab_state(
     tab.update_transform_frame()
     tab.num_layers = inputs.num_layers
     tab.slip_count = inputs.slip_count
-    tab.update_layers()
+    tab.update_layers(force=force_layers)
     getattr(tab, "sort_layers", lambda: None)()
     tab.update_summary()
