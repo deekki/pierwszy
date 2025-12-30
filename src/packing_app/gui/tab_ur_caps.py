@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import logging
 import os
@@ -186,43 +188,53 @@ class TabURCaps(ttk.Frame):
         advanced_frame.grid(row=2, column=0, sticky="ew", padx=4, pady=(0, 8))
         advanced_frame.columnconfigure(1, weight=1)
 
-        ttk.Label(advanced_frame, text="Chwytak:").grid(
+        ttk.Label(advanced_frame, text="Chwytak (w przygotowaniu):").grid(
             row=0, column=0, padx=4, pady=4, sticky="e"
         )
         ttk.Combobox(
             advanced_frame,
             textvariable=self.gripper_mode_var,
             values=["model", "custom", "import"],
-            state="readonly",
+            state="disabled",
             width=25,
         ).grid(row=0, column=1, padx=4, pady=4, sticky="w")
 
         file_frame = ttk.Frame(advanced_frame)
         file_frame.grid(row=1, column=0, columnspan=2, sticky="ew", padx=4)
         file_frame.columnconfigure(0, weight=1)
-        ttk.Entry(file_frame, textvariable=self.gripper_file_var).grid(
+        ttk.Entry(file_frame, textvariable=self.gripper_file_var, state="disabled").grid(
             row=0, column=0, padx=(0, 4), pady=4, sticky="ew"
         )
-        ttk.Button(file_frame, text="Importuj gripper.json", command=self._choose_gripper_file).grid(
+        ttk.Button(
+            file_frame,
+            text="Importuj gripper.json",
+            command=self._choose_gripper_file,
+            state="disabled",
+        ).grid(
             row=0, column=1, pady=4
         )
         ttk.Checkbutton(
             advanced_frame,
-            text="Odwróć IO chwytaka",
+            text="Odwróć IO chwytaka (w przygotowaniu)",
             variable=self.gripper_invert_var,
+            state="disabled",
         ).grid(row=2, column=0, columnspan=2, padx=4, pady=4, sticky="w")
 
         ttk.Label(advanced_frame, text="Prędkość ruchu:").grid(
             row=3, column=0, padx=4, pady=4, sticky="e"
         )
-        ttk.Entry(advanced_frame, textvariable=self.movement_speed_var).grid(
+        ttk.Entry(
+            advanced_frame, textvariable=self.movement_speed_var, state="disabled"
+        ).grid(
             row=3, column=1, padx=4, pady=4, sticky="ew"
         )
 
         ttk.Label(advanced_frame, text="Planowanie ścieżki:").grid(
             row=4, column=0, padx=4, pady=4, sticky="e"
         )
-        ttk.Entry(advanced_frame, textvariable=self.path_planning_var).grid(
+        ttk.Entry(
+            advanced_frame, textvariable=self.path_planning_var, state="disabled"
+        ).grid(
             row=4, column=1, padx=4, pady=4, sticky="ew"
         )
 
@@ -232,6 +244,13 @@ class TabURCaps(ttk.Frame):
         ttk.Entry(advanced_frame, textvariable=self.program_hint_var, state="readonly").grid(
             row=5, column=1, padx=4, pady=4, sticky="ew"
         )
+
+        ttk.Label(
+            advanced_frame,
+            text="Ustawienia chwytaka i ruchu w przygotowaniu – nie wpływają na eksport.",
+            wraplength=280,
+            justify="left",
+        ).grid(row=6, column=0, columnspan=2, padx=4, pady=(0, 4), sticky="w")
 
         ttk.Button(
             export_frame,
