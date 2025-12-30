@@ -277,3 +277,108 @@ def test_pattern_sorted_deterministically():
     pattern = data["layerTypes"][1]["pattern"]
     coords = [(item["x"], item["y"]) for item in pattern]
     assert coords == [(50.0, 100.0), (250.0, 400.0)]
+
+
+def test_pattern_sequence_columns():
+    rects = [(200.0, 0.0, 100.0, 200.0), (0.0, 300.0, 100.0, 200.0)]
+    data = build_pally_json(
+        config=PallyExportConfig(
+            name="Test",
+            pallet_w=800,
+            pallet_l=1200,
+            pallet_h=150,
+            box_w=100,
+            box_l=200,
+            box_h=300,
+            box_weight_g=500,
+            overhang_ends=0,
+            overhang_sides=0,
+            placement_sequence="columns",
+        ),
+        layer_rects_list=[rects],
+        slips_after=set(),
+    )
+    coords = [(item["x"], item["y"]) for item in data["layerTypes"][1]["pattern"]]
+    assert coords == [(50.0, 400.0), (250.0, 100.0)]
+
+
+def test_pattern_sequence_snake_rows():
+    rects = [
+        (0.0, 0.0, 100.0, 100.0),
+        (200.0, 0.0, 100.0, 100.0),
+        (0.0, 200.0, 100.0, 100.0),
+        (200.0, 200.0, 100.0, 100.0),
+    ]
+    data = build_pally_json(
+        config=PallyExportConfig(
+            name="Test",
+            pallet_w=400,
+            pallet_l=400,
+            pallet_h=150,
+            box_w=100,
+            box_l=100,
+            box_h=300,
+            box_weight_g=500,
+            overhang_ends=0,
+            overhang_sides=0,
+            placement_sequence="snake",
+        ),
+        layer_rects_list=[rects],
+        slips_after=set(),
+    )
+    coords = [(item["x"], item["y"]) for item in data["layerTypes"][1]["pattern"]]
+    assert coords == [(50.0, 50.0), (250.0, 50.0), (250.0, 250.0), (50.0, 250.0)]
+
+
+def test_pattern_sequence_center_priority():
+    rects = [
+        (0.0, 0.0, 100.0, 100.0),
+        (300.0, 0.0, 100.0, 100.0),
+        (150.0, 100.0, 100.0, 100.0),
+    ]
+    data = build_pally_json(
+        config=PallyExportConfig(
+            name="Test",
+            pallet_w=400,
+            pallet_l=400,
+            pallet_h=150,
+            box_w=100,
+            box_l=100,
+            box_h=300,
+            box_weight_g=500,
+            overhang_ends=0,
+            overhang_sides=0,
+            placement_sequence="center",
+        ),
+        layer_rects_list=[rects],
+        slips_after=set(),
+    )
+    coords = [(item["x"], item["y"]) for item in data["layerTypes"][1]["pattern"]]
+    assert coords[0] == (200.0, 150.0)
+
+
+def test_alt_pattern_uses_configured_mode():
+    rects = [(0.0, 0.0, 100.0, 200.0)]
+    data = build_pally_json(
+        config=PallyExportConfig(
+            name="Test",
+            pallet_w=800,
+            pallet_l=1200,
+            pallet_h=150,
+            box_w=100,
+            box_l=200,
+            box_h=300,
+            box_weight_g=500,
+            overhang_ends=0,
+            overhang_sides=0,
+            alt_layout="altPattern",
+            approach="normal",
+            alt_approach="inverse",
+        ),
+        layer_rects_list=[rects],
+        slips_after=set(),
+    )
+    layer = next(lt for lt in data["layerTypes"] if lt.get("class") == "layer")
+    assert layer["pattern"] == layer["altPattern"]
+    assert layer["approach"] == "normal"
+    assert layer["altApproach"] == "inverse"
