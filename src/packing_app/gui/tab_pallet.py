@@ -3,7 +3,6 @@ import logging
 import math
 import os
 import queue
-import re
 import threading
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, simpledialog
@@ -21,11 +20,6 @@ from palletizer_core.pattern_io import (
     ensure_pattern_dir,
     get_pattern_dir,
     save_pattern,
-)
-from palletizer_core.pally_export import (
-    PallyExportConfig,
-    build_pally_json,
-    find_out_of_bounds,
 )
 from palletizer_core.transformations import (
     apply_transformation as apply_transformation_core,
@@ -92,24 +86,8 @@ class TabPallet(ttk.Frame):
         self.manual_carton_weight_var = tk.StringVar(
             value=self._format_number(initial_weight) if initial_weight else ""
         )
-        base_dir = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "..", "..")
-        )
-        self.pally_name_var = tk.StringVar(value="export")
-        self.pally_out_dir_var = tk.StringVar(
-            value=os.path.join(base_dir, "pally_exports")
-        )
-        self.pally_slip_vars: list[tk.BooleanVar] = []
-        self.pally_label_orientation_map = {
-            "Przód": 0,
-            "Lewy bok": -90,
-            "Prawy bok": 90,
-            "Tył": 180,
-        }
-        self.pally_label_orientation_display_var = tk.StringVar(
-            value="Tył"
-        )
-        self.pally_swap_axes_var = tk.BooleanVar(value=False)
+        self.notebook = parent if isinstance(parent, ttk.Notebook) else None
+        self.ur_caps_tab = None
         self.pallet_base_mass = 25.0
         self.pack(fill=tk.BOTH, expand=True)
         self.columnconfigure(0, weight=1)
@@ -188,6 +166,28 @@ class TabPallet(ttk.Frame):
         except Exception:
             return False
 
+    def set_ur_caps_tab(self, tab) -> None:
+        self.ur_caps_tab = tab
+
+    def open_ur_caps_tab(self) -> None:
+        if self.notebook is None:
+            messagebox.showinfo(
+                "UR CAPS",
+                "Zakładka UR CAPS jest dostępna tylko w głównym oknie aplikacji.",
+            )
+            return
+        if self.ur_caps_tab is None:
+            messagebox.showwarning(
+                "UR CAPS",
+                "Brak zakładki UR CAPS. Uruchom aplikację ponownie.",
+            )
+            return
+        try:
+            self.ur_caps_tab.fetch_from_pallet(quiet_if_missing=True)
+        except Exception:
+            logger.exception("Failed to prepare UR CAPS tab")
+        self.notebook.select(self.ur_caps_tab)
+
     def build_ui(self):
         main_paned = ttk.Panedwindow(self, orient=tk.VERTICAL)
         main_paned.grid(row=0, column=0, sticky="nsew", padx=12, pady=10)
@@ -234,9 +234,6 @@ class TabPallet(ttk.Frame):
         self.pallet_w_var = tk.StringVar(value=str(self.predefined_pallets[0]["w"]))
         self.pallet_l_var = tk.StringVar(value=str(self.predefined_pallets[0]["l"]))
         self.pallet_h_var = tk.StringVar(value=str(self.predefined_pallets[0]["h"]))
-        self.pally_swap_axes_var.set(
-            float(self.pallet_w_var.get()) > float(self.pallet_l_var.get())
-        )
         self.pallet_dims_var = tk.StringVar(value="")
 
         ttk.Label(layers_frame, text="Paleta:").grid(
@@ -530,61 +527,25 @@ class TabPallet(ttk.Frame):
             row=2, column=1, padx=5, pady=4, sticky="w"
         )
 
-        pally_frame = ttk.LabelFrame(advanced_frame, text="PALLY / UR export")
-        pally_frame.grid(
+        ur_caps_frame = ttk.LabelFrame(advanced_frame, text="UR CAPS")
+        ur_caps_frame.grid(
             row=0, column=6, rowspan=3, padx=(10, 5), pady=4, sticky="nsew"
         )
-        for idx in range(2):
-            pally_frame.columnconfigure(idx, weight=1)
-        ttk.Label(pally_frame, text="Nazwa:").grid(
-            row=0, column=0, padx=4, pady=2, sticky="w"
-        )
-        ttk.Entry(pally_frame, textvariable=self.pally_name_var, width=22).grid(
-            row=0, column=1, padx=4, pady=2, sticky="ew"
-        )
-        ttk.Label(pally_frame, text="Folder:").grid(
-            row=1, column=0, padx=4, pady=2, sticky="w"
-        )
-        folder_frame = ttk.Frame(pally_frame)
-        folder_frame.grid(row=1, column=1, padx=4, pady=2, sticky="ew")
-        folder_frame.columnconfigure(0, weight=1)
-        ttk.Entry(folder_frame, textvariable=self.pally_out_dir_var).grid(
-            row=0, column=0, padx=(0, 4), pady=0, sticky="ew"
-        )
+        ur_caps_frame.columnconfigure(0, weight=1)
+        ttk.Label(
+            ur_caps_frame,
+            text=(
+                "Eksportuj konfigurację do zakładki UR CAPS, "
+                "aby przygotować pliki PALLY/JSON."
+            ),
+            wraplength=220,
+            justify="left",
+        ).grid(row=0, column=0, padx=6, pady=(6, 2), sticky="w")
         ttk.Button(
-            folder_frame, text="...", width=3, command=self._choose_pally_directory
-        ).grid(row=0, column=1, padx=(0, 0), pady=0)
-        ttk.Label(pally_frame, text="Przekładka po warstwie:").grid(
-            row=2, column=0, padx=4, pady=2, sticky="w"
-        )
-        self.pally_slip_frame = ttk.Frame(pally_frame)
-        self.pally_slip_frame.grid(row=2, column=1, padx=2, pady=2, sticky="w")
-
-        ttk.Label(pally_frame, text="Kierunek etykiety:").grid(
-            row=3, column=0, padx=4, pady=2, sticky="w"
-        )
-        label_choices = list(self.pally_label_orientation_map.keys())
-        ttk.Combobox(
-            pally_frame,
-            textvariable=self.pally_label_orientation_display_var,
-            values=label_choices,
-            state="readonly",
-            width=22,
-        ).grid(row=3, column=1, padx=4, pady=2, sticky="ew")
-
-        ttk.Checkbutton(
-            pally_frame,
-            text="Swap axes for PALLY (EUR)",
-            variable=self.pally_swap_axes_var,
-        ).grid(row=4, column=0, columnspan=2, padx=4, pady=2, sticky="w")
-
-        ttk.Button(
-            pally_frame,
-            text="Eksportuj PALLY JSON",
-            command=self.export_pally_json,
-        ).grid(row=5, column=0, columnspan=2, padx=4, pady=4, sticky="ew")
-
-        self._update_pally_slip_checkboxes()
+            ur_caps_frame,
+            text="Eksport do UR CAPS",
+            command=self.open_ur_caps_tab,
+        ).grid(row=1, column=0, padx=6, pady=6, sticky="ew")
 
         ttk.Label(layers_frame, text="Liczba przekładek:").grid(
             row=3, column=0, padx=5, pady=4, sticky="w"
@@ -865,41 +826,6 @@ class TabPallet(ttk.Frame):
         except ValueError:
             self.ext_dims_label.config(text="Błąd danych")
 
-    def _update_pally_slip_checkboxes(self) -> None:
-        if not hasattr(self, "pally_slip_frame"):
-            return
-        for widget in self.pally_slip_frame.winfo_children():
-            widget.destroy()
-        self.pally_slip_vars.clear()
-
-        base_var = tk.BooleanVar(value=True)
-        self.pally_slip_vars.append(base_var)
-        ttk.Checkbutton(
-            self.pally_slip_frame,
-            text="0",
-            variable=base_var,
-            state="disabled",
-        ).grid(row=0, column=0, padx=2, pady=0, sticky="w")
-
-        layer_count = len(self.layers) if self.layers else int(parse_dim(self.num_layers_var))
-        for idx in range(1, layer_count + 1):
-            var = tk.BooleanVar(value=False)
-            self.pally_slip_vars.append(var)
-            ttk.Checkbutton(
-                self.pally_slip_frame,
-                text=f"{idx}",
-                variable=var,
-            ).grid(row=0, column=idx, padx=2, pady=0, sticky="w")
-
-    def _selected_slip_layers(self) -> set[int]:
-        slips: set[int] = set()
-        for idx, var in enumerate(self.pally_slip_vars):
-            if idx == 0:
-                continue
-            if var.get():
-                slips.add(idx)
-        return slips
-
     @staticmethod
     def _format_number(value) -> str:
         if isinstance(value, str):
@@ -953,14 +879,6 @@ class TabPallet(ttk.Frame):
             raw = var.get().strip() if hasattr(var, "get") else str(var)
             values.append(self._format_number(raw) if raw else "-")
         self.pallet_dims_var.set(" × ".join(values))
-
-    def _update_pally_swap_axes_default(self) -> None:
-        try:
-            pallet_w = parse_float(self.pallet_w_var.get())
-            pallet_l = parse_float(self.pallet_l_var.get())
-        except Exception:
-            return
-        self.pally_swap_axes_var.set(pallet_w > pallet_l)
 
     def _get_active_carton_weight(self) -> Tuple[float, str]:
         var = getattr(self, "manual_carton_weight_var", None)
@@ -1498,7 +1416,6 @@ class TabPallet(ttk.Frame):
                     self.layer_patterns[idx] = even_key
                     self.transformations[idx] = self.even_transform_var.get()
         self.renumber_layers()
-        self._update_pally_slip_checkboxes()
         if draw:
             self.draw_pallet(draw_idle=draw_idle)
 
@@ -1509,7 +1426,6 @@ class TabPallet(ttk.Frame):
         self.pallet_w_var.set(str(selected_pallet["w"]))
         self.pallet_l_var.set(str(selected_pallet["l"]))
         self.pallet_h_var.set(str(selected_pallet["h"]))
-        self._update_pally_swap_axes_default()
         self.compute_pallet()
 
     def on_carton_selected(self, *args):
@@ -1829,16 +1745,11 @@ class TabPallet(ttk.Frame):
 
     def _update_snapshot(self, inputs: PalletInputs) -> None:
         try:
-            slips_after = self._selected_slip_layers()
-        except Exception:
-            slips_after = set()
-
-        try:
             self.last_snapshot = PalletSnapshot.from_layers(
                 inputs=inputs,
                 layers=self.layers,
                 transformations=self.transformations,
-                slips_after=slips_after,
+                slips_after=set(),
                 transform_func=self.apply_transformation,
             )
         except Exception:
@@ -3098,120 +3009,6 @@ class TabPallet(ttk.Frame):
         new_val = max(0.0, current + delta)
         self.spacing_var.set(f"{new_val:.1f}")
         self.compute_pallet()
-
-    # ------------------------------------------------------------------
-    # JSON pattern export / import helpers
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _slugify_filename(value: str) -> str:
-        slug = re.sub(r"[^\w\-]+", "_", value.strip().lower())
-        slug = slug.strip("_")
-        return slug or "export"
-
-    def _choose_pally_directory(self) -> None:
-        path = filedialog.askdirectory(initialdir=self.pally_out_dir_var.get())
-        if path:
-            self.pally_out_dir_var.set(path)
-
-    def export_pally_json(self) -> None:
-        if not self.layers:
-            messagebox.showwarning("Brak warstw", "Brak warstw do eksportu.")
-            return
-
-        name = self.pally_name_var.get().strip() or "export"
-        out_dir = self.pally_out_dir_var.get().strip()
-        if not out_dir:
-            messagebox.showwarning("Brak folderu", "Podaj folder zapisu.")
-            return
-
-        pallet_w = int(round(parse_dim(self.pallet_w_var)))
-        pallet_l = int(round(parse_dim(self.pallet_l_var)))
-        pallet_h = int(round(parse_dim(self.pallet_h_var)))
-        box_w_int = parse_dim(self.box_w_var)
-        box_l_int = parse_dim(self.box_l_var)
-        box_h_int = parse_dim(self.box_h_var)
-        thickness = parse_dim(self.cardboard_thickness_var)
-
-        box_w = int(round(box_w_int + 2 * thickness))
-        box_l = int(round(box_l_int + 2 * thickness))
-        box_h = int(round(box_h_int + 2 * thickness))
-
-        if min(pallet_w, pallet_l, pallet_h, box_w, box_l, box_h) <= 0:
-            messagebox.showwarning(
-                "Brak danych", "Podaj poprawne wymiary palety i kartonu."
-            )
-            return
-
-        weight_text = self.manual_carton_weight_var.get().strip()
-        if weight_text:
-            try:
-                weight_kg = parse_float(weight_text)
-            except Exception:
-                messagebox.showwarning("Błąd", "Niepoprawna masa kartonu.")
-                return
-        else:
-            weight_kg = self.carton_weights.get(self.carton_var.get(), 0)
-
-        if not weight_kg:
-            messagebox.showwarning(
-                "Brak masy",
-                "Brak masy kartonu. Uzupełnij pole lub wybierz karton z wagą.",
-            )
-            return
-
-        box_weight_g = int(round(weight_kg * 1000))
-        layer_rects_list = []
-        for idx, layer in enumerate(self.layers):
-            if idx >= len(self.transformations):
-                messagebox.showwarning(
-                    "Brak transformacji",
-                    "Nie można pobrać transformacji dla wszystkich warstw.",
-                )
-                return
-            coords = self.apply_transformation(
-                list(layer),
-                self.transformations[idx],
-                pallet_w,
-                pallet_l,
-            )
-            layer_rects_list.append(coords)
-
-        slips_after = self._selected_slip_layers()
-        config = PallyExportConfig(
-            name=name,
-            pallet_w=pallet_w,
-            pallet_l=pallet_l,
-            pallet_h=pallet_h,
-            box_w=box_w,
-            box_l=box_l,
-            box_h=box_h,
-            box_weight_g=box_weight_g,
-            overhang_ends=0,
-            overhang_sides=0,
-            label_orientation=self.pally_label_orientation_map.get(
-                self.pally_label_orientation_display_var.get(), 180
-            ),
-            swap_axes_for_pally=bool(self.pally_swap_axes_var.get()),
-        )
-
-        payload = build_pally_json(
-            config=config, layer_rects_list=layer_rects_list, slips_after=slips_after
-        )
-
-        warnings = find_out_of_bounds(payload)
-        if warnings:
-            if hasattr(self, "status_var"):
-                self.status_var.set(f"Błąd: {warnings[0]}")
-            return
-
-        os.makedirs(out_dir, exist_ok=True)
-        filename = f"{self._slugify_filename(name)}.json"
-        path = os.path.join(out_dir, filename)
-        with open(path, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle, indent=4, ensure_ascii=False)
-        if hasattr(self, "status_var"):
-            self.status_var.set("Zapisano PALLY JSON")
 
     def gather_pattern_data(self, name: str = "") -> dict:
         """Collect current pallet layout as a JSON-serialisable dict."""
