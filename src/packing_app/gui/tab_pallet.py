@@ -54,6 +54,7 @@ from palletizer_core.solutions import Solution, SolutionCatalog, display_for_key
 from palletizer_core.units import parse_float
 from palletizer_core.stacking import compute_max_stack, compute_num_layers
 from palletizer_core.validation import validate_pallet_inputs
+from packing_app.core.pallet_snapshot import PalletSnapshot
 from packing_app.data.repository import (
     load_cartons,
     load_pallets,
@@ -129,6 +130,7 @@ class TabPallet(ttk.Frame):
         self.best_odd = []
         self.solution_catalog: SolutionCatalog = SolutionCatalog.empty()
         self.solution_by_key: Dict[str, Solution] = {}
+        self.last_snapshot: PalletSnapshot | None = None
         self.modify_mode_var = tk.BooleanVar(value=False)
         self.show_numbers_var = tk.BooleanVar(value=True)
         self.patches = []
@@ -1823,6 +1825,25 @@ class TabPallet(ttk.Frame):
             f"Patterns: raw={raw_count}, shown={shown_count}"
         )
         self.update_pattern_stats()
+        self._update_snapshot(inputs)
+
+    def _update_snapshot(self, inputs: PalletInputs) -> None:
+        try:
+            slips_after = self._selected_slip_layers()
+        except Exception:
+            slips_after = set()
+
+        try:
+            self.last_snapshot = PalletSnapshot.from_layers(
+                inputs=inputs,
+                layers=self.layers,
+                transformations=self.transformations,
+                slips_after=slips_after,
+                transform_func=self.apply_transformation,
+            )
+        except Exception:
+            logger.exception("Failed to build pallet snapshot")
+            self.last_snapshot = None
 
     def draw_pallet(self, draw_idle: bool = False):
         pallet_w = parse_dim(self.pallet_w_var)
