@@ -31,6 +31,7 @@ class PallyExportConfig:
     signature_eps_mm: float = 0.5
     approach: str = "inverse"
     alt_approach: str = "inverse"
+    placement_sequence: str = "default"
 
     def __post_init__(self) -> None:
         if self.swap_axes_for_pally is None:
@@ -98,6 +99,49 @@ def _expected_orientation_for_edge(edge: str) -> int:
     return mapping[edge]
 
 
+def _sort_pattern_items(
+    items: List[Tuple[Dict, Tuple[float, float, float, float]]],
+    placement_sequence: str,
+    pallet_w: float,
+    pallet_l: float,
+    quant_step_mm: float,
+) -> List[Tuple[Dict, Tuple[float, float, float, float]]]:
+    if placement_sequence == "columns":
+        return sorted(items, key=lambda item: (item[0].get("x", 0), item[0].get("y", 0)))
+
+    if placement_sequence in {"rows", "default"}:
+        return sorted(items, key=lambda item: (item[0].get("y", 0), item[0].get("x", 0)))
+
+    if placement_sequence == "center":
+        cx = pallet_w / 2.0
+        cy = pallet_l / 2.0
+        return sorted(
+            items,
+            key=lambda item: (
+                abs(item[0].get("x", 0) - cx) + abs(item[0].get("y", 0) - cy),
+                item[0].get("y", 0),
+                item[0].get("x", 0),
+            ),
+        )
+
+    if placement_sequence == "snake":
+        tol = max(quant_step_mm, 1e-6)
+        rows: Dict[float, List[Tuple[Dict, Tuple[float, float, float, float]]]] = {}
+        for item in items:
+            y = item[0].get("y", 0)
+            key = round(y / tol) * tol
+            rows.setdefault(key, []).append(item)
+        ordered: List[Tuple[Dict, Tuple[float, float, float, float]]] = []
+        for idx, key in enumerate(sorted(rows.keys())):
+            row_items = sorted(rows[key], key=lambda itm: itm[0].get("x", 0))
+            if idx % 2:
+                row_items.reverse()
+            ordered.extend(row_items)
+        return ordered
+
+    return sorted(items, key=lambda item: (item[0].get("y", 0), item[0].get("x", 0)))
+
+
 def rects_to_pally_pattern(
     rects: Iterable[Tuple[float, float, float, float]],
     carton_w: float,
@@ -106,9 +150,9 @@ def rects_to_pally_pattern(
     pallet_l: float,
     quant_step_mm: float,
     label_orientation: int,
+    placement_sequence: str = "default",
 ) -> Tuple[List[Dict], List[Tuple[float, float, float, float]]]:
-    pattern: List[Dict] = []
-    signature_rects: List[Tuple[float, float, float, float]] = []
+    pattern_with_signatures: List[Tuple[Dict, Tuple[float, float, float, float]]] = []
 
     for x, y, w, length in rects:
         x_center = _quantize(x + w / 2.0, quant_step_mm)
@@ -135,21 +179,26 @@ def rects_to_pally_pattern(
         w_eff = _quantize(w_eff, quant_step_mm)
         l_eff = _quantize(l_eff, quant_step_mm)
 
-        pattern.append({"x": x_center, "y": y_center, "r": [rot], "g": [], "f": 1})
-        signature_rects.append(
+        pattern_with_signatures.append(
             (
-                x_center - w_eff / 2.0,
-                y_center - l_eff / 2.0,
-                w_eff,
-                l_eff,
+                {"x": x_center, "y": y_center, "r": [rot], "g": [], "f": 1},
+                (
+                    x_center - w_eff / 2.0,
+                    y_center - l_eff / 2.0,
+                    w_eff,
+                    l_eff,
+                ),
             )
         )
 
-    def sort_key(item_rect):
-        return (item_rect[0]["y"], item_rect[0]["x"])
-    paired = list(zip(pattern, signature_rects))
-    paired.sort(key=sort_key)
-    sorted_pattern, sorted_signature_rects = zip(*paired) if paired else ([], [])
+    ordered = _sort_pattern_items(
+        pattern_with_signatures,
+        placement_sequence=placement_sequence,
+        pallet_w=pallet_w,
+        pallet_l=pallet_l,
+        quant_step_mm=quant_step_mm,
+    )
+    sorted_pattern, sorted_signature_rects = zip(*ordered) if ordered else ([], [])
     return list(sorted_pattern), list(sorted_signature_rects)
 
 
@@ -199,18 +248,22 @@ def build_pally_json(
             pallet_length,
             quant_step_mm=config.quant_step_mm,
             label_orientation=config.label_orientation,
+            placement_sequence=config.placement_sequence,
         )
         signature = layout_signature(signature_rects, eps=config.signature_eps_mm)
         if signature not in signature_to_name:
             layer_name = f"Layer type: {next_idx}"
             next_idx += 1
             signature_to_name[signature] = layer_name
+            alt_pattern = (
+                list(pattern) if config.alt_layout == "altPattern" else mirror_pattern(pattern, pallet_width)
+            )
             layer_types.append(
                 {
                     "name": layer_name,
                     "class": "layer",
                     "pattern": pattern,
-                    "altPattern": mirror_pattern(pattern, pallet_width),
+                    "altPattern": alt_pattern,
                     "approach": config.approach,
                     "altApproach": config.alt_approach,
                 }

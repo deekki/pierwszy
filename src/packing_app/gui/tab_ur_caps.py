@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import tkinter as tk
+from dataclasses import dataclass, asdict
 from tkinter import filedialog, messagebox, ttk
 
 from palletizer_core.pally_export import (
@@ -10,6 +11,7 @@ from palletizer_core.pally_export import (
     build_pally_json,
     find_out_of_bounds,
 )
+from palletizer_core.sanity import connected_components
 from packing_app.core.pallet_snapshot import PalletSnapshot
 
 logger = logging.getLogger(__name__)
@@ -32,6 +34,20 @@ class TabURCaps(ttk.Frame):
         }
         self.pally_label_orientation_display_var = tk.StringVar(value="Tył")
         self.pally_swap_axes_var = tk.BooleanVar(value=False)
+        self.left_palette_mode_var = tk.StringVar(value="mirror")
+        self.approach_right_var = tk.StringVar(value="inverse")
+        self.approach_left_var = tk.StringVar(value="inverse")
+        self.placement_sequence_var = tk.StringVar(value="default")
+        self.forbid_islands_var = tk.BooleanVar(value=True)
+
+        self.gripper_mode_var = tk.StringVar(value="model")
+        self.gripper_file_var = tk.StringVar(value="")
+        self.gripper_invert_var = tk.BooleanVar(value=False)
+        self.movement_speed_var = tk.StringVar(value="")
+        self.path_planning_var = tk.StringVar(value="")
+        self.program_hint_var = tk.StringVar(
+            value="Ustawienia programów Pally dostępne wkrótce"
+        )
         self.status_var = tk.StringVar(value="")
         self.snapshot_summary_var = tk.StringVar(value="Brak danych z Paletyzacji")
         self.weight_summary_var = tk.StringVar(value="Masa kartonu: -")
@@ -64,15 +80,19 @@ class TabURCaps(ttk.Frame):
 
         export_frame = ttk.LabelFrame(main_frame, text="Eksport UR CAPS")
         export_frame.grid(row=1, column=0, sticky="nsew")
-        export_frame.columnconfigure(1, weight=1)
+        export_frame.columnconfigure(0, weight=1)
 
-        ttk.Label(export_frame, text="Nazwa:").grid(row=0, column=0, padx=4, pady=4, sticky="e")
-        ttk.Entry(export_frame, textvariable=self.pally_name_var, width=28).grid(
+        header_frame = ttk.Frame(export_frame)
+        header_frame.grid(row=0, column=0, sticky="ew")
+        header_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(header_frame, text="Nazwa:").grid(row=0, column=0, padx=4, pady=4, sticky="e")
+        ttk.Entry(header_frame, textvariable=self.pally_name_var, width=28).grid(
             row=0, column=1, padx=4, pady=4, sticky="ew"
         )
 
-        ttk.Label(export_frame, text="Folder:").grid(row=1, column=0, padx=4, pady=4, sticky="e")
-        folder_frame = ttk.Frame(export_frame)
+        ttk.Label(header_frame, text="Folder:").grid(row=1, column=0, padx=4, pady=4, sticky="e")
+        folder_frame = ttk.Frame(header_frame)
         folder_frame.grid(row=1, column=1, padx=4, pady=4, sticky="ew")
         folder_frame.columnconfigure(0, weight=1)
         ttk.Entry(folder_frame, textvariable=self.pally_out_dir_var).grid(
@@ -82,37 +102,145 @@ class TabURCaps(ttk.Frame):
             row=0, column=1
         )
 
-        ttk.Label(export_frame, text="Kierunek etykiety:").grid(
-            row=2, column=0, padx=4, pady=4, sticky="e"
+        basic_frame = ttk.LabelFrame(export_frame, text="BASIC")
+        basic_frame.grid(row=1, column=0, sticky="ew", padx=4, pady=(4, 8))
+        basic_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(basic_frame, text="Kierunek etykiety:").grid(
+            row=0, column=0, padx=4, pady=4, sticky="e"
         )
         ttk.Combobox(
-            export_frame,
+            basic_frame,
             textvariable=self.pally_label_orientation_display_var,
             values=list(self.pally_label_orientation_map.keys()),
             state="readonly",
             width=25,
+        ).grid(row=0, column=1, padx=4, pady=4, sticky="w")
+
+        ttk.Label(basic_frame, text="Lewa paleta:").grid(
+            row=1, column=0, padx=4, pady=4, sticky="e"
+        )
+        ttk.Combobox(
+            basic_frame,
+            textvariable=self.left_palette_mode_var,
+            values=["mirror", "altPattern"],
+            state="readonly",
+            width=25,
+        ).grid(row=1, column=1, padx=4, pady=4, sticky="w")
+
+        ttk.Label(basic_frame, text="Approach (prawa):").grid(
+            row=2, column=0, padx=4, pady=4, sticky="e"
+        )
+        ttk.Combobox(
+            basic_frame,
+            textvariable=self.approach_right_var,
+            values=["normal", "inverse"],
+            state="readonly",
+            width=25,
         ).grid(row=2, column=1, padx=4, pady=4, sticky="w")
 
+        ttk.Label(basic_frame, text="Approach (lewa):").grid(
+            row=3, column=0, padx=4, pady=4, sticky="e"
+        )
+        ttk.Combobox(
+            basic_frame,
+            textvariable=self.approach_left_var,
+            values=["normal", "inverse"],
+            state="readonly",
+            width=25,
+        ).grid(row=3, column=1, padx=4, pady=4, sticky="w")
+
+        ttk.Label(basic_frame, text="Kolejność odkładania:").grid(
+            row=4, column=0, padx=4, pady=4, sticky="e"
+        )
+        ttk.Combobox(
+            basic_frame,
+            textvariable=self.placement_sequence_var,
+            values=["default", "rows", "columns", "snake", "center"],
+            state="readonly",
+            width=25,
+        ).grid(row=4, column=1, padx=4, pady=4, sticky="w")
+
         ttk.Checkbutton(
-            export_frame,
+            basic_frame,
             text="Swap axes for PALLY (EUR)",
             variable=self.pally_swap_axes_var,
-        ).grid(row=3, column=0, columnspan=2, padx=4, pady=4, sticky="w")
+        ).grid(row=5, column=0, columnspan=2, padx=4, pady=4, sticky="w")
 
-        ttk.Label(export_frame, text="Przekładka po warstwie:").grid(
-            row=4, column=0, padx=4, pady=4, sticky="ne"
+        ttk.Label(basic_frame, text="Polityka układu:").grid(
+            row=6, column=0, padx=4, pady=4, sticky="e"
         )
-        self.pally_slip_frame = ttk.Frame(export_frame)
-        self.pally_slip_frame.grid(row=4, column=1, padx=4, pady=4, sticky="w")
+        ttk.Checkbutton(
+            basic_frame,
+            text="Bez samotnych wysp (connected)",
+            variable=self.forbid_islands_var,
+        ).grid(row=6, column=1, padx=4, pady=4, sticky="w")
+
+        ttk.Label(basic_frame, text="Przekładka po warstwie:").grid(
+            row=7, column=0, padx=4, pady=4, sticky="ne"
+        )
+        self.pally_slip_frame = ttk.Frame(basic_frame)
+        self.pally_slip_frame.grid(row=7, column=1, padx=4, pady=4, sticky="w")
+
+        advanced_frame = ttk.LabelFrame(export_frame, text="ADVANCED")
+        advanced_frame.grid(row=2, column=0, sticky="ew", padx=4, pady=(0, 8))
+        advanced_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(advanced_frame, text="Chwytak:").grid(
+            row=0, column=0, padx=4, pady=4, sticky="e"
+        )
+        ttk.Combobox(
+            advanced_frame,
+            textvariable=self.gripper_mode_var,
+            values=["model", "custom", "import"],
+            state="readonly",
+            width=25,
+        ).grid(row=0, column=1, padx=4, pady=4, sticky="w")
+
+        file_frame = ttk.Frame(advanced_frame)
+        file_frame.grid(row=1, column=0, columnspan=2, sticky="ew", padx=4)
+        file_frame.columnconfigure(0, weight=1)
+        ttk.Entry(file_frame, textvariable=self.gripper_file_var).grid(
+            row=0, column=0, padx=(0, 4), pady=4, sticky="ew"
+        )
+        ttk.Button(file_frame, text="Importuj gripper.json", command=self._choose_gripper_file).grid(
+            row=0, column=1, pady=4
+        )
+        ttk.Checkbutton(
+            advanced_frame,
+            text="Odwróć IO chwytaka",
+            variable=self.gripper_invert_var,
+        ).grid(row=2, column=0, columnspan=2, padx=4, pady=4, sticky="w")
+
+        ttk.Label(advanced_frame, text="Prędkość ruchu:").grid(
+            row=3, column=0, padx=4, pady=4, sticky="e"
+        )
+        ttk.Entry(advanced_frame, textvariable=self.movement_speed_var).grid(
+            row=3, column=1, padx=4, pady=4, sticky="ew"
+        )
+
+        ttk.Label(advanced_frame, text="Planowanie ścieżki:").grid(
+            row=4, column=0, padx=4, pady=4, sticky="e"
+        )
+        ttk.Entry(advanced_frame, textvariable=self.path_planning_var).grid(
+            row=4, column=1, padx=4, pady=4, sticky="ew"
+        )
+
+        ttk.Label(advanced_frame, text="Pally Programs:").grid(
+            row=5, column=0, padx=4, pady=4, sticky="e"
+        )
+        ttk.Entry(advanced_frame, textvariable=self.program_hint_var, state="readonly").grid(
+            row=5, column=1, padx=4, pady=4, sticky="ew"
+        )
 
         ttk.Button(
             export_frame,
             text="Eksportuj PALLY JSON",
             command=self.export_pally_json,
-        ).grid(row=5, column=0, columnspan=2, padx=4, pady=(8, 4), sticky="ew")
+        ).grid(row=3, column=0, padx=4, pady=(8, 4), sticky="ew")
 
         ttk.Label(export_frame, textvariable=self.status_var, justify="left").grid(
-            row=6, column=0, columnspan=2, padx=4, pady=(2, 0), sticky="w"
+            row=4, column=0, padx=4, pady=(2, 0), sticky="w"
         )
 
     def fetch_from_pallet(self, quiet_if_missing: bool = False) -> None:
@@ -190,16 +318,55 @@ class TabURCaps(ttk.Frame):
         slug = slug.strip("_")
         return slug or "export"
 
+    def _collect_config(self) -> URCapsConfig:
+        return URCapsConfig(
+            name=self.pally_name_var.get().strip() or "export",
+            output_dir=self.pally_out_dir_var.get().strip(),
+            label_orientation_display=self.pally_label_orientation_display_var.get(),
+            swap_axes_for_pally=bool(self.pally_swap_axes_var.get()),
+            slips_after=self._selected_slip_layers(),
+            left_palette_mode=self.left_palette_mode_var.get(),
+            approach_right=self.approach_right_var.get(),
+            approach_left=self.approach_left_var.get(),
+            placement_sequence=self.placement_sequence_var.get(),
+            forbid_islands=bool(self.forbid_islands_var.get()),
+            gripper_mode=self.gripper_mode_var.get(),
+            gripper_file=self.gripper_file_var.get(),
+            gripper_invert_io=bool(self.gripper_invert_var.get()),
+            movement_speed=self.movement_speed_var.get(),
+            path_planning=self.path_planning_var.get(),
+            pally_program_hint=self.program_hint_var.get(),
+        )
+
     def _choose_directory(self) -> None:
         path = filedialog.askdirectory(initialdir=self.pally_out_dir_var.get())
         if path:
             self.pally_out_dir_var.set(path)
+
+    def _choose_gripper_file(self) -> None:
+        path = filedialog.askopenfilename(
+            initialdir=self.pally_out_dir_var.get(),
+            filetypes=[("gripper.json", "*.json"), ("All files", "*")],
+        )
+        if path:
+            self.gripper_file_var.set(path)
 
     def _get_box_weight_g(self) -> tuple[int, str]:
         if hasattr(self.pallet_tab, "_get_active_carton_weight"):
             weight_kg, source = self.pallet_tab._get_active_carton_weight()  # pylint: disable=protected-access
             return int(round(max(weight_kg, 0.0) * 1000)), source
         return 0, "unknown"
+
+    def _check_islands_policy(self, snapshot: PalletSnapshot, config: URCapsConfig) -> bool:
+        if not config.forbid_islands:
+            return True
+        for idx, rects in enumerate(snapshot.layer_rects_list, start=1):
+            if connected_components(rects) > 1:
+                self.status_var.set(
+                    f"Warstwa {idx}: układ rozłączny – eksport zablokowany (bez wysp)"
+                )
+                return False
+        return True
 
     def export_pally_json(self) -> None:
         snapshot = self.active_snapshot
@@ -210,9 +377,8 @@ class TabURCaps(ttk.Frame):
             messagebox.showwarning("UR CAPS", "Brak warstw do eksportu.")
             return
 
-        name = self.pally_name_var.get().strip() or "export"
-        out_dir = self.pally_out_dir_var.get().strip()
-        if not out_dir:
+        ur_config = self._collect_config()
+        if not ur_config.output_dir:
             messagebox.showwarning("Brak folderu", "Podaj folder zapisu.")
             return
 
@@ -237,8 +403,11 @@ class TabURCaps(ttk.Frame):
             messagebox.showwarning("UR CAPS", "Brak współrzędnych warstw w snapshot.")
             return
 
+        if not self._check_islands_policy(snapshot, ur_config):
+            return
+
         config = PallyExportConfig(
-            name=name,
+            name=ur_config.name,
             pallet_w=pallet_w,
             pallet_l=pallet_l,
             pallet_h=pallet_h,
@@ -249,15 +418,19 @@ class TabURCaps(ttk.Frame):
             overhang_ends=0,
             overhang_sides=0,
             label_orientation=self.pally_label_orientation_map.get(
-                self.pally_label_orientation_display_var.get(), 180
+                ur_config.label_orientation_display, 180
             ),
-            swap_axes_for_pally=bool(self.pally_swap_axes_var.get()),
+            swap_axes_for_pally=ur_config.swap_axes_for_pally,
+            alt_layout=ur_config.left_palette_mode,
+            approach=ur_config.approach_right,
+            alt_approach=ur_config.approach_left,
+            placement_sequence=ur_config.placement_sequence,
         )
 
         payload = build_pally_json(
             config=config,
             layer_rects_list=layer_rects_list,
-            slips_after=self._selected_slip_layers(),
+            slips_after=ur_config.slips_after,
         )
 
         warnings = find_out_of_bounds(payload)
@@ -265,10 +438,33 @@ class TabURCaps(ttk.Frame):
             self.status_var.set(f"Błąd: {warnings[0]}")
             return
 
-        os.makedirs(out_dir, exist_ok=True)
-        filename = f"{self._slugify_filename(name)}.json"
-        path = os.path.join(out_dir, filename)
+        os.makedirs(ur_config.output_dir, exist_ok=True)
+        filename = f"{self._slugify_filename(ur_config.name)}.json"
+        path = os.path.join(ur_config.output_dir, filename)
         with open(path, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=4, ensure_ascii=False)
         self.status_var.set(f"Zapisano PALLY JSON: {path}")
 
+@dataclass
+class URCapsConfig:
+    name: str
+    output_dir: str
+    label_orientation_display: str
+    swap_axes_for_pally: bool
+    slips_after: set[int]
+    left_palette_mode: str = "mirror"
+    approach_right: str = "inverse"
+    approach_left: str = "inverse"
+    placement_sequence: str = "default"
+    forbid_islands: bool = False
+    gripper_mode: str = "model"
+    gripper_file: str = ""
+    gripper_invert_io: bool = False
+    movement_speed: str = ""
+    path_planning: str = ""
+    pally_program_hint: str = ""
+
+    def to_dict(self) -> dict:
+        data = asdict(self)
+        data["slips_after"] = sorted(self.slips_after)
+        return data
