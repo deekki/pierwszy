@@ -8,6 +8,10 @@ import tkinter as tk
 from dataclasses import dataclass, asdict
 from tkinter import filedialog, messagebox, ttk
 
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.patches import Rectangle
+
 from palletizer_core.pally_export import (
     PallyExportConfig,
     build_pally_json,
@@ -42,6 +46,7 @@ class TabURCaps(ttk.Frame):
         self.status_var = tk.StringVar(value="")
         self.snapshot_summary_var = tk.StringVar(value="Brak danych z Paletyzacji")
         self.weight_summary_var = tk.StringVar(value="Masa kartonu: -")
+        self.preview_layer_var = tk.StringVar(value="1")
 
         self.build_ui()
 
@@ -174,6 +179,36 @@ class TabURCaps(ttk.Frame):
             row=3, column=0, padx=4, pady=(2, 0), sticky="w"
         )
 
+        preview_frame = ttk.LabelFrame(main_frame, text="Podgląd warstwy")
+        preview_frame.grid(row=2, column=0, sticky="nsew", pady=(8, 0))
+        preview_frame.columnconfigure(0, weight=1)
+        preview_frame.rowconfigure(1, weight=1)
+
+        controls_frame = ttk.Frame(preview_frame)
+        controls_frame.grid(row=0, column=0, sticky="ew", padx=4, pady=4)
+        controls_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(controls_frame, text="Warstwa:").grid(
+            row=0, column=0, padx=4, pady=4, sticky="e"
+        )
+        self.preview_layer_combo = ttk.Combobox(
+            controls_frame,
+            textvariable=self.preview_layer_var,
+            state="readonly",
+            width=10,
+        )
+        self.preview_layer_combo.grid(row=0, column=1, padx=4, pady=4, sticky="w")
+        self.preview_layer_combo.bind("<<ComboboxSelected>>", self._render_layer_preview)
+
+        self.preview_fig = plt.Figure(figsize=(6, 3.5))
+        self.preview_ax = self.preview_fig.add_subplot(111)
+        self.preview_canvas = FigureCanvasTkAgg(self.preview_fig, master=preview_frame)
+        self.preview_canvas.get_tk_widget().grid(
+            row=1, column=0, sticky="nsew", padx=4, pady=(0, 4)
+        )
+        self._draw_empty_preview("Brak danych do podglądu")
+        self._bind_preview_traces()
+
     def fetch_from_pallet(self, quiet_if_missing: bool = False) -> None:
         snapshot = getattr(self.pallet_tab, "last_snapshot", None)
         if snapshot is None:
@@ -195,6 +230,8 @@ class TabURCaps(ttk.Frame):
         self.pally_swap_axes_var.set(snapshot.pallet_w > snapshot.pallet_l)
         self.status_var.set("Pobrano dane z Paletyzacji")
         self._update_weight_summary()
+        self._refresh_preview_layers(len(snapshot.layers))
+        self._render_layer_preview()
 
     def _update_snapshot_summary(self, snapshot: PalletSnapshot) -> None:
         pallet = f"Paleta: {snapshot.pallet_w} × {snapshot.pallet_l} × {snapshot.pallet_h} mm"
@@ -248,6 +285,14 @@ class TabURCaps(ttk.Frame):
         slug = slug.strip("_")
         return slug or "export"
 
+    def _bind_preview_traces(self) -> None:
+        for var in (
+            self.pally_label_orientation_display_var,
+            self.pally_swap_axes_var,
+            self.placement_sequence_var,
+        ):
+            var.trace_add("write", self._render_layer_preview)
+
     def _collect_config(self) -> URCapsConfig:
         return URCapsConfig(
             name=self.pally_name_var.get().strip() or "export",
@@ -271,6 +316,177 @@ class TabURCaps(ttk.Frame):
             weight_kg, source = self.pallet_tab._get_active_carton_weight()  # pylint: disable=protected-access
             return int(round(max(weight_kg, 0.0) * 1000)), source
         return 0, "unknown"
+
+    def _refresh_preview_layers(self, layer_count: int) -> None:
+        values = [str(idx) for idx in range(1, layer_count + 1)]
+        self.preview_layer_combo["values"] = values
+        if values:
+            if self.preview_layer_var.get() not in values:
+                self.preview_layer_var.set(values[0])
+        else:
+            self.preview_layer_var.set("1")
+
+    def _selected_layer_index(self, max_layers: int) -> int:
+        try:
+            selected = int(self.preview_layer_var.get())
+        except (TypeError, ValueError):
+            return 1
+        return min(max(selected, 1), max_layers)
+
+    def _build_preview_payload(self, snapshot: PalletSnapshot) -> dict | None:
+        if not snapshot.layer_rects_list:
+            return None
+
+        box_weight_g, _ = self._get_box_weight_g()
+
+        config = PallyExportConfig(
+            name=self.pally_name_var.get().strip() or "preview",
+            pallet_w=int(round(snapshot.pallet_w)),
+            pallet_l=int(round(snapshot.pallet_l)),
+            pallet_h=int(round(snapshot.pallet_h)),
+            box_w=int(round(snapshot.box_w + 2 * snapshot.thickness)),
+            box_l=int(round(snapshot.box_l + 2 * snapshot.thickness)),
+            box_h=int(round(snapshot.box_h + 2 * snapshot.thickness)),
+            box_weight_g=box_weight_g,
+            overhang_ends=0,
+            overhang_sides=0,
+            label_orientation=self.pally_label_orientation_map.get(
+                self.pally_label_orientation_display_var.get(), 180
+            ),
+            swap_axes_for_pally=bool(self.pally_swap_axes_var.get()),
+            alt_layout=self.left_palette_mode_var.get(),
+            approach=self.approach_right_var.get(),
+            alt_approach=self.approach_left_var.get(),
+            placement_sequence=self.placement_sequence_var.get(),
+        )
+
+        return build_pally_json(
+            config=config,
+            layer_rects_list=snapshot.layer_rects_list,
+            slips_after=self._selected_slip_layers(),
+            include_base_slip=(
+                bool(self.pally_slip_vars[0].get()) if self.pally_slip_vars else True
+            ),
+        )
+
+    def _extract_layer_pattern(self, payload: dict, layer_idx: int) -> list[dict] | None:
+        layer_types = {lt.get("name"): lt for lt in payload.get("layerTypes", [])}
+        layer_counter = 0
+        for layer_name in payload.get("layers", []):
+            layer_type = layer_types.get(layer_name)
+            if not layer_type or layer_type.get("class") == "separator":
+                continue
+            layer_counter += 1
+            if layer_counter == layer_idx:
+                return layer_type.get("pattern") or []
+        return None
+
+    def _draw_empty_preview(self, message: str) -> None:
+        self.preview_ax.clear()
+        self.preview_ax.axis("off")
+        self.preview_ax.text(
+            0.5,
+            0.5,
+            message,
+            ha="center",
+            va="center",
+            transform=self.preview_ax.transAxes,
+        )
+        self.preview_canvas.draw()
+
+    def _draw_layer_pattern(self, payload: dict, pattern: list[dict], layer_idx: int) -> None:
+        dimensions = payload.get("dimensions", {})
+        product_dims = payload.get("productDimensions", {})
+        pallet_w = float(dimensions.get("width", 0))
+        pallet_l = float(dimensions.get("length", 0))
+        product_w = float(product_dims.get("width", 0))
+        product_l = float(product_dims.get("length", 0))
+
+        if not pallet_w or not pallet_l or not product_w or not product_l:
+            self._draw_empty_preview("Brak danych do podglądu")
+            return
+
+        self.preview_ax.clear()
+        self.preview_ax.set_title(f"Warstwa {layer_idx}")
+        self.preview_ax.set_aspect("equal")
+        self.preview_ax.add_patch(
+            Rectangle((0, 0), pallet_w, pallet_l, fill=False, edgecolor="black", lw=1.5)
+        )
+
+        centers: list[tuple[float, float]] = []
+        for idx, item in enumerate(pattern, start=1):
+            rotation = (item.get("r") or [0])[0]
+            width, length = (
+                (product_w, product_l) if rotation in (0, 180) else (product_l, product_w)
+            )
+            x_center = float(item.get("x", 0))
+            y_center = float(item.get("y", 0))
+            x_left = x_center - width / 2.0
+            y_bottom = y_center - length / 2.0
+            self.preview_ax.add_patch(
+                Rectangle(
+                    (x_left, y_bottom),
+                    width,
+                    length,
+                    fill=True,
+                    facecolor="#cfe2f3",
+                    edgecolor="#0b5394",
+                    lw=1,
+                    alpha=0.9,
+                )
+            )
+            self.preview_ax.text(
+                x_center,
+                y_center,
+                str(idx),
+                ha="center",
+                va="center",
+                fontsize=9,
+                color="#0b5394",
+                fontweight="bold",
+            )
+            if centers:
+                self.preview_ax.annotate(
+                    "",
+                    xy=(x_center, y_center),
+                    xytext=centers[-1],
+                    arrowprops={"arrowstyle": "->", "color": "#cc0000", "lw": 1.2},
+                )
+            centers.append((x_center, y_center))
+
+        self.preview_ax.set_xlim(
+            0, max(pallet_w, max((c[0] for c in centers), default=0))
+        )
+        self.preview_ax.set_ylim(
+            0, max(pallet_l, max((c[1] for c in centers), default=0))
+        )
+        self.preview_ax.grid(True, linestyle="--", alpha=0.2)
+        self.preview_ax.set_xlabel("Szerokość [mm]")
+        self.preview_ax.set_ylabel("Długość [mm]")
+        self.preview_canvas.draw()
+
+    def _render_layer_preview(self, *args) -> None:  # noqa: ARG002
+        snapshot = self.active_snapshot
+        if snapshot is None or not snapshot.layer_rects_list:
+            self._draw_empty_preview("Brak danych do podglądu")
+            return
+
+        layer_idx = self._selected_layer_index(len(snapshot.layer_rects_list))
+        payload = self._build_preview_payload(snapshot)
+        if not payload:
+            self._draw_empty_preview("Brak danych do podglądu")
+            return
+
+        pattern = self._extract_layer_pattern(payload, layer_idx)
+        if not pattern:
+            self._draw_empty_preview("Brak wzoru warstwy")
+            return
+
+        try:
+            self._draw_layer_pattern(payload, pattern, layer_idx)
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed to draw UR CAPS layer preview")
+            self._draw_empty_preview("Błąd podglądu")
 
     def export_pally_json(self) -> None:
         snapshot = self.active_snapshot
