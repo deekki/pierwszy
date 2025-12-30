@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, timezone
@@ -8,6 +9,8 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple
 from palletizer_core.signature import layout_signature
 
 LayerRects = List[Tuple[float, float, float, float]]
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -224,6 +227,7 @@ def build_pally_json(
     layer_rects_list: List[LayerRects],
     slips_after: Set[int],
     include_base_slip: bool = True,
+    manual_orders_by_signature: Optional[Dict[str, List[int]]] = None,
 ) -> Dict:
     num_layers = len(layer_rects_list)
     swap_axes = bool(config.swap_axes_for_pally)
@@ -239,6 +243,8 @@ def build_pally_json(
     layer_type_names: List[str] = []
     next_idx = 1
 
+    manual_orders_by_signature = manual_orders_by_signature or {}
+
     for rects in layer_rects_list:
         rects_to_use = _swap_rect_axes(rects) if swap_axes else rects
         pattern, signature_rects = rects_to_pally_pattern(
@@ -252,6 +258,7 @@ def build_pally_json(
             placement_sequence=config.placement_sequence,
         )
         signature = layout_signature(signature_rects, eps=config.signature_eps_mm)
+        manual_order = manual_orders_by_signature.get(str(signature))
         if signature not in signature_to_name:
             layer_name = f"Layer type: {next_idx}"
             next_idx += 1
@@ -259,6 +266,17 @@ def build_pally_json(
             alt_pattern = (
                 list(pattern) if config.alt_layout == "altPattern" else mirror_pattern(pattern, pallet_width)
             )
+            if manual_order:
+                if len(manual_order) != len(pattern):
+                    logger.warning(
+                        "Manual permutation length mismatch for signature %s: %s != %s",  # noqa: TRY400
+                        signature,
+                        len(manual_order),
+                        len(pattern),
+                    )
+                else:
+                    pattern = [pattern[idx] for idx in manual_order]
+                    alt_pattern = [alt_pattern[idx] for idx in manual_order]
             layer_types.append(
                 {
                     "name": layer_name,
