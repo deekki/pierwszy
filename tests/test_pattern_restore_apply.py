@@ -1,4 +1,4 @@
-from packing_app.gui.tab_pallet import apply_pattern_selection_after_restore
+from packing_app.gui.pallet_helpers import apply_pattern_selection_after_restore
 
 
 class DummyTree:

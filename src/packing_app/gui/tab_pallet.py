@@ -32,6 +32,10 @@ from palletizer_core.transformations import (
     inverse_transformation as inverse_transformation_core,
 )
 from packing_app.gui.editor_controller import EditorController
+from packing_app.gui.pallet_helpers import (
+    apply_pattern_selection_after_restore,
+    filter_selection_for_layer,
+)
 from packing_app.gui.pallet_state_apply import apply_layout_result_to_tab_state
 from palletizer_core import Carton, Pallet
 from palletizer_core.engine import (
@@ -61,26 +65,6 @@ from packing_app.data.repository import (
 
 
 logger = logging.getLogger(__name__)
-
-
-def apply_pattern_selection_after_restore(tab, previous_flag: bool, target_key: str) -> bool:
-    setattr(tab, "_suspend_pattern_apply", previous_flag)
-    if not target_key:
-        return False
-    tree = getattr(tab, "pattern_tree", None)
-    if tree is None:
-        return False
-    selection = tree.selection()
-    if selection and selection[0] == target_key:
-        tab.on_pattern_select()
-        return True
-    return False
-
-
-def filter_selection_for_layer(selected_indices, layer_idx: int):
-    return {(layer, idx) for layer, idx in selected_indices if layer == layer_idx}
-
-
 def parse_dim(var: tk.StringVar) -> float:
     try:
         val = parse_float(var.get())
