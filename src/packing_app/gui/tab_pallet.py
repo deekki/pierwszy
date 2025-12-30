@@ -446,7 +446,7 @@ class TabPallet(ttk.Frame):
         self.extended_library_var = tk.BooleanVar(value=False)
         self.dynamic_variants_var = tk.BooleanVar(value=False)
         self.deep_search_var = tk.BooleanVar(value=False)
-        self.filter_sanity_var = tk.BooleanVar(value=True)
+        self.filter_sanity_var = tk.BooleanVar(value=False)
         self.allow_offsets_var = tk.BooleanVar(value=False)
         self.min_support_var = tk.StringVar(value="0.80")
         self.assume_full_support_var = tk.BooleanVar(value=False)
@@ -1367,11 +1367,25 @@ class TabPallet(ttk.Frame):
 
     def update_layers(self, side="both", force=False, draw: bool = True, draw_idle: bool = False, *args):
         num_layers = getattr(self, "num_layers", int(parse_dim(self.num_layers_var)))
-        if side == "both" or not self.layers:
-            self.layers = [list() for _ in range(num_layers)]
-            self.carton_ids = [list() for _ in range(num_layers)]
-            self.layer_patterns = ["" for _ in range(num_layers)]
-            self.transformations = ["" for _ in range(num_layers)]
+        has_existing_layers = bool(self.layers)
+        previous_len = len(self.layers)
+        if not has_existing_layers:
+            self.layers = []
+            self.carton_ids = []
+            self.layer_patterns = []
+            self.transformations = []
+        if has_existing_layers and side == "both" and num_layers < len(self.layers):
+            self.layers = self.layers[:num_layers]
+            self.carton_ids = self.carton_ids[:num_layers]
+            self.layer_patterns = self.layer_patterns[:num_layers]
+            self.transformations = self.transformations[:num_layers]
+        while len(self.layers) < num_layers:
+            self.layers.append([])
+            self.carton_ids.append([])
+            self.layer_patterns.append("")
+            self.transformations.append("")
+        preserved_len = min(previous_len, num_layers) if has_existing_layers else 0
+        skip_existing_overwrite = side == "both" and has_existing_layers and not force
         self._clear_selection()
         self.editor_controller.active_layer = 0
         self.drag_info = None
@@ -1395,26 +1409,23 @@ class TabPallet(ttk.Frame):
         even_source = self.best_even if even_key == self.best_layout_key else even_solution.layout
         for i in range(1, num_layers + 1):
             idx = i - 1
+            is_existing_layer = idx < preserved_len
             if i % 2 == 1:
                 if side in ("both", "odd"):
-                    if idx >= len(self.layers):
-                        self.layers.append(list(odd_source))
-                        self.carton_ids.append(list(range(1, len(odd_source) + 1)))
-                    elif self.layer_patterns[idx] != odd_key or force:
-                        self.layers[idx] = list(odd_source)
-                        self.carton_ids[idx] = list(range(1, len(odd_source) + 1))
-                    self.layer_patterns[idx] = odd_key
-                    self.transformations[idx] = self.odd_transform_var.get()
+                    if not (skip_existing_overwrite and is_existing_layer):
+                        if not is_existing_layer or self.layer_patterns[idx] != odd_key or force:
+                            self.layers[idx] = list(odd_source)
+                            self.carton_ids[idx] = list(range(1, len(odd_source) + 1))
+                        self.layer_patterns[idx] = odd_key
+                        self.transformations[idx] = self.odd_transform_var.get()
             else:
                 if side in ("both", "even"):
-                    if idx >= len(self.layers):
-                        self.layers.append(list(even_source))
-                        self.carton_ids.append(list(range(1, len(even_source) + 1)))
-                    elif self.layer_patterns[idx] != even_key or force:
-                        self.layers[idx] = list(even_source)
-                        self.carton_ids[idx] = list(range(1, len(even_source) + 1))
-                    self.layer_patterns[idx] = even_key
-                    self.transformations[idx] = self.even_transform_var.get()
+                    if not (skip_existing_overwrite and is_existing_layer):
+                        if not is_existing_layer or self.layer_patterns[idx] != even_key or force:
+                            self.layers[idx] = list(even_source)
+                            self.carton_ids[idx] = list(range(1, len(even_source) + 1))
+                        self.layer_patterns[idx] = even_key
+                        self.transformations[idx] = self.even_transform_var.get()
         self.renumber_layers()
         if draw:
             self.draw_pallet(draw_idle=draw_idle)

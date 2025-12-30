@@ -223,6 +223,7 @@ def build_pally_json(
     config: PallyExportConfig,
     layer_rects_list: List[LayerRects],
     slips_after: Set[int],
+    include_base_slip: bool = True,
 ) -> Dict:
     num_layers = len(layer_rects_list)
     swap_axes = bool(config.swap_axes_for_pally)
@@ -270,7 +271,9 @@ def build_pally_json(
             )
         layer_type_names.append(signature_to_name[signature])
 
-    layers: List[str] = ["Shim paper: Default"]
+    layers: List[str] = []
+    if include_base_slip:
+        layers.append("Shim paper: Default")
     for idx, layer_name in enumerate(layer_type_names, start=1):
         layers.append(layer_name)
         if idx in slips_after:
