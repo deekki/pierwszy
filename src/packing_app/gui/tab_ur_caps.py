@@ -339,9 +339,10 @@ class TabURCaps(ttk.Frame):
             logger.exception("Failed to load pattern from UR CAPS")
 
     def fetch_from_pallet(self, quiet_if_missing: bool = False) -> None:
-        snapshot = getattr(self.pallet_tab, "last_snapshot", None)
+        snapshot_builder = getattr(self.pallet_tab, "get_current_snapshot", None)
+        snapshot = snapshot_builder() if callable(snapshot_builder) else None
         if snapshot is None:
-            message = "Brak zapisanego układu w zakładce Paletyzacja."
+            message = "Nie udało się pobrać aktualnego układu z Paletyzacji."
             if quiet_if_missing:
                 self.status_var.set(message)
                 return
@@ -350,26 +351,41 @@ class TabURCaps(ttk.Frame):
         self.apply_snapshot(snapshot)
 
     def apply_snapshot(self, snapshot: PalletSnapshot) -> None:
+        previous_orders = dict(self.manual_orders_by_signature)
+        previous_progress = dict(self.manual_progress_by_signature)
+
         self.active_snapshot = snapshot
-        self.manual_orders_by_signature.clear()
-        self.manual_progress_by_signature.clear()
+        self.manual_orders_by_signature = previous_orders
+        self.manual_progress_by_signature = previous_progress
         self.layer_signatures = []
         self.signature_to_layers = {}
         self._update_snapshot_summary(snapshot)
-        self._update_slip_checkboxes(snapshot.num_layers or len(snapshot.layers))
+        layer_count = snapshot.num_layers or len(snapshot.layers)
+        self._update_slip_checkboxes(layer_count)
         for idx, var in enumerate(self.pally_slip_vars):
             if idx and idx in snapshot.slips_after:
                 var.set(True)
         self.pally_swap_axes_var.set(snapshot.pallet_w > snapshot.pallet_l)
         self.status_var.set("Pobrano dane z Paletyzacji")
         self._update_weight_summary()
-        self._refresh_preview_layers(len(snapshot.layers))
+        try:
+            ur_config = self._collect_config()
+            preview_config = self._make_pally_config(
+                snapshot, ur_config, name_override="preview"
+            )
+            self._update_signature_context(snapshot, preview_config)
+        except Exception:
+            logger.exception("Failed to refresh signature context for snapshot")
+
+        self._prune_manual_orders()
+        self._refresh_preview_layers(layer_count)
         self._render_layer_preview()
 
     def _update_snapshot_summary(self, snapshot: PalletSnapshot) -> None:
         pallet = f"Paleta: {snapshot.pallet_w} × {snapshot.pallet_l} × {snapshot.pallet_h} mm"
         box = f"Karton: {snapshot.box_w} × {snapshot.box_l} × {snapshot.box_h} mm"
-        layers = f"Warstwy: {len(snapshot.layers)}"
+        layer_count = snapshot.num_layers or len(snapshot.layers)
+        layers = f"Warstwy: {layer_count}"
         self.snapshot_summary_var.set(f"{pallet} | {box} | {layers}")
 
     def _update_weight_summary(self) -> None:
@@ -482,6 +498,13 @@ class TabURCaps(ttk.Frame):
             )
         else:
             self.manual_hint_var.set("")
+
+    def _prune_manual_orders(self) -> None:
+        valid_signatures = set(self.layer_signatures)
+        for signature in list(self.manual_orders_by_signature.keys()):
+            if signature not in valid_signatures:
+                self.manual_orders_by_signature.pop(signature, None)
+                self.manual_progress_by_signature.pop(signature, None)
 
     def _update_signature_context(self, snapshot: PalletSnapshot, config: PallyExportConfig) -> None:
         swap_axes = bool(config.swap_axes_for_pally)
