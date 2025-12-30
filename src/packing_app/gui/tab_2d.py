@@ -247,7 +247,7 @@ class TabPacking2D(ttk.Frame):
         self.use_cushions = tk.BooleanVar(value=False)
         ttk.Checkbutton(
             f_settings,
-            text="Poduszki powietrzne (37×175×110 mm)",
+            text="Poduszki z powietrzem (37×175×110 mm)",
             variable=self.use_cushions,
             command=self.show_packing,
         ).grid(row=0, column=2, columnspan=4, sticky="w", padx=4, pady=(2, 1))

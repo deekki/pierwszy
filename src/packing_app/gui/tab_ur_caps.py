@@ -110,6 +110,15 @@ class TabURCaps(ttk.Frame):
             row=0, column=1
         )
 
+        pattern_frame = ttk.Frame(header_frame)
+        pattern_frame.grid(row=2, column=0, columnspan=2, padx=4, pady=4, sticky="w")
+        ttk.Button(pattern_frame, text="Zapisz wzór", command=self._save_pattern).pack(
+            side=tk.LEFT, padx=(0, 6)
+        )
+        ttk.Button(pattern_frame, text="Wczytaj wzór", command=self._load_pattern).pack(
+            side=tk.LEFT
+        )
+
         basic_frame = ttk.LabelFrame(export_frame, text="BASIC")
         basic_frame.grid(row=1, column=0, sticky="ew", padx=4, pady=(4, 8))
         basic_frame.columnconfigure(1, weight=1)
@@ -157,6 +166,16 @@ class TabURCaps(ttk.Frame):
             state="readonly",
             width=25,
         ).grid(row=3, column=1, padx=4, pady=4, sticky="w")
+
+        ttk.Label(
+            basic_frame,
+            text=(
+                "approach dotyczy prawej palety, altApproach lewej; normal/inverse "
+                "zmienia kierunek budowy warstwy i kolejność odkładania"
+            ),
+            wraplength=360,
+            justify="left",
+        ).grid(row=4, column=0, columnspan=2, padx=4, pady=(0, 4), sticky="w")
 
         ttk.Checkbutton(
             basic_frame,
@@ -295,6 +314,29 @@ class TabURCaps(ttk.Frame):
 
         self._draw_empty_preview("Brak danych do podglądu")
         self._bind_preview_traces()
+
+    def _save_pattern(self) -> None:
+        if not self.pallet_tab:
+            messagebox.showwarning("UR CAPS", "Brak zakładki Paletyzacja.")
+            return
+        try:
+            self.pallet_tab.save_pattern_dialog()
+        except Exception:
+            logger.exception("Failed to save pattern from UR CAPS")
+
+    def _load_pattern(self) -> None:
+        if not self.pallet_tab:
+            messagebox.showwarning("UR CAPS", "Brak zakładki Paletyzacja.")
+            return
+        try:
+            self.pallet_tab.load_pattern_dialog()
+            inputs = getattr(self.pallet_tab, "_read_inputs", None)
+            updater = getattr(self.pallet_tab, "_update_snapshot", None)
+            if callable(inputs) and callable(updater):
+                updater(inputs())
+            self.fetch_from_pallet(quiet_if_missing=True)
+        except Exception:
+            logger.exception("Failed to load pattern from UR CAPS")
 
     def fetch_from_pallet(self, quiet_if_missing: bool = False) -> None:
         snapshot = getattr(self.pallet_tab, "last_snapshot", None)
@@ -688,7 +730,12 @@ class TabURCaps(ttk.Frame):
         self.preview_canvas.draw()
 
     def _draw_layer_pattern(
-        self, payload: dict, pattern: list[dict], layer_idx: int, approach: str
+        self,
+        payload: dict,
+        pattern: list[dict],
+        layer_idx: int,
+        approach: str,
+        side: str,
     ) -> None:
         dimensions = payload.get("dimensions", {})
         product_dims = payload.get("productDimensions", {})
@@ -763,16 +810,20 @@ class TabURCaps(ttk.Frame):
         self.preview_ax.grid(True, linestyle="--", alpha=0.2)
         self.preview_ax.set_xlabel("Szerokość [mm]")
         self.preview_ax.set_ylabel("Długość [mm]")
-        self._draw_approach_arrow(pallet_w, pallet_l, approach)
+        self._draw_approach_arrow(pallet_w, pallet_l, approach, side)
         self.preview_canvas.draw()
 
-    def _draw_approach_arrow(self, pallet_w: float, pallet_l: float, approach: str) -> None:
+    def _draw_approach_arrow(
+        self, pallet_w: float, pallet_l: float, approach: str, side: str
+    ) -> None:
         arrow_color = "#7f3fbf"
-        if approach == "inverse":
-            start_y, end_y = pallet_l * 0.9, pallet_l * 0.1
+        is_inverse = approach == "inverse"
+        if is_inverse:
+            start_y, end_y = pallet_l * 0.85, pallet_l * 0.15
         else:
-            start_y, end_y = pallet_l * 0.1, pallet_l * 0.9
-        x = pallet_w * 0.5
+            start_y, end_y = pallet_l * 0.15, pallet_l * 0.85
+        margin = pallet_w * 0.08
+        x = pallet_w - margin if side == "right" else margin
         self.preview_ax.annotate(
             "",
             xy=(x, end_y),
@@ -782,8 +833,8 @@ class TabURCaps(ttk.Frame):
         self.preview_ax.text(
             x,
             (start_y + end_y) / 2,
-            f"approach: {approach}",
-            ha="center",
+            f"{side.upper()} | {approach}",
+            ha="right" if side == "right" else "left",
             va="center",
             color=arrow_color,
             fontsize=9,
@@ -864,14 +915,15 @@ class TabURCaps(ttk.Frame):
             order = list(range(len(pattern)))
         self._refresh_order_tree(order)
 
+        side = self.preview_side_var.get()
         approach = (
             self.approach_right_var.get()
-            if self.preview_side_var.get() == "right"
+            if side == "right"
             else self.approach_left_var.get()
         )
 
         try:
-            self._draw_layer_pattern(payload, pattern, layer_idx, approach)
+            self._draw_layer_pattern(payload, pattern, layer_idx, approach, side)
         except Exception:  # noqa: BLE001
             logger.exception("Failed to draw UR CAPS layer preview")
             self._draw_empty_preview("Błąd podglądu")

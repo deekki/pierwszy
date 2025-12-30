@@ -126,6 +126,7 @@ class TabPallet(ttk.Frame):
         self._pending_force = False
         self._current_applied_key = None
         self._apply_in_progress = False
+        self.layout_dirty = False
         self._compute_queue: queue.Queue = queue.Queue()
         self._compute_job_id = 0
         self._compute_polling = False
@@ -386,7 +387,8 @@ class TabPallet(ttk.Frame):
             layers_frame, textvariable=self.num_layers_var, width=5
         )
         entry_num_layers.grid(row=1, column=1, padx=5, pady=4, sticky="w")
-        entry_num_layers.bind("<Return>", self.compute_pallet)
+        entry_num_layers.bind("<Return>", lambda *_: self._sync_layers_after_count_change())
+        entry_num_layers.bind("<FocusOut>", lambda *_: self._sync_layers_after_count_change())
 
         ttk.Label(layers_frame, text="Maksymalna wysokość (mm):").grid(
             row=1, column=2, padx=5, pady=4, sticky="w"
@@ -661,16 +663,6 @@ class TabPallet(ttk.Frame):
             text="Ponów",
             command=self.redo,
         ).grid(row=0, column=6, padx=4, pady=2, sticky="w")
-        ttk.Button(
-            control_frame,
-            text="Zapisz wzór",
-            command=self.save_pattern_dialog,
-        ).grid(row=0, column=7, padx=4, pady=2, sticky="w")
-        ttk.Button(
-            control_frame,
-            text="Wczytaj wzór",
-            command=self.load_pattern_dialog,
-        ).grid(row=0, column=8, padx=4, pady=2, sticky="w")
         self.selection_label_var = tk.StringVar(value="Zaznaczono: 0")
         ttk.Label(control_frame, textvariable=self.selection_label_var).grid(
             row=0, column=9, padx=4, pady=2, sticky="e"
@@ -903,6 +895,9 @@ class TabPallet(ttk.Frame):
     def _on_manual_weight_changed(self, *_):
         self.update_summary()
 
+    def _mark_layout_dirty(self) -> None:
+        self.layout_dirty = True
+
     def _set_layer_field(self, var: tk.StringVar, value) -> None:
         formatted = self._format_number(value)
         if var.get() == formatted:
@@ -916,6 +911,13 @@ class TabPallet(ttk.Frame):
     def _on_num_layers_changed(self, *_):
         if not self._suspend_layer_sync:
             self._layer_sync_source = "layers"
+
+    def _sync_layers_after_count_change(self) -> None:
+        try:
+            self.update_layers(draw=True, draw_idle=True)
+            self.update_summary()
+        except Exception:
+            logger.exception("Failed to sync layers after count change")
 
     def _on_max_stack_changed(self, *_):
         if not self._suspend_layer_sync:
@@ -1742,7 +1744,18 @@ class TabPallet(ttk.Frame):
     def _finalize_results(self, inputs: PalletInputs, result: LayoutComputation) -> None:
         """Persist computed layouts and refresh dependent UI elements."""
 
-        apply_layout_result_to_tab_state(self, inputs, result)
+        force_layers = True
+        if self.layout_dirty:
+            overwrite = messagebox.askyesno(
+                "Potwierdzenie",
+                "Masz ręcznie edytowany układ. Nadpisać go nowo obliczonym?",
+            )
+            if overwrite:
+                self.layout_dirty = False
+            else:
+                force_layers = False
+
+        apply_layout_result_to_tab_state(self, inputs, result, force_layers=force_layers)
         self._set_row_by_row_counts(
             result.row_by_row_vertical, result.row_by_row_horizontal
         )
@@ -2145,6 +2158,7 @@ class TabPallet(ttk.Frame):
             self.draw_pallet()
             self.update_summary()
             self.highlight_selection()
+            self._mark_layout_dirty()
             return
         if event.xdata is None or event.ydata is None:
             return
@@ -2197,6 +2211,7 @@ class TabPallet(ttk.Frame):
         self.draw_pallet()
         self.update_summary()
         self.highlight_selection()
+        self._mark_layout_dirty()
 
     def insert_carton(self, layer_idx, pos):
         """Insert a carton into the given layer at `pos`."""
@@ -2225,6 +2240,7 @@ class TabPallet(ttk.Frame):
             self.renumber_layer(other_layer)
         self.draw_pallet()
         self.update_summary()
+        self._mark_layout_dirty()
 
     def insert_carton_button(self):
         self.insert_carton(self.context_layer, self.context_pos)
@@ -2265,6 +2281,7 @@ class TabPallet(ttk.Frame):
         self.draw_pallet()
         self.update_summary()
         self.highlight_selection()
+        self._mark_layout_dirty()
 
     def rotate_selected_carton(self):
         """Rotate all selected cartons by 90° around their centers."""
@@ -2296,6 +2313,7 @@ class TabPallet(ttk.Frame):
         getattr(self, "sort_layers", lambda: None)()
         self.draw_pallet()
         self.update_summary()
+        self._mark_layout_dirty()
 
     @staticmethod
     def _find_axis_limits(boxes, indices, axis, pallet_extent):
@@ -2402,6 +2420,7 @@ class TabPallet(ttk.Frame):
         self.draw_pallet()
         self.update_summary()
         self.highlight_selection()
+        self._mark_layout_dirty()
 
     def auto_space_selected(self):
         selection = self._selection_for_active_layer()
@@ -2519,6 +2538,7 @@ class TabPallet(ttk.Frame):
         getattr(self, "sort_layers", lambda: None)()
         self.draw_pallet()
         self.update_summary()
+        self._mark_layout_dirty()
 
     def distribute_selected_long_side(self):
         selection = self._selection_for_active_layer()
@@ -2544,6 +2564,7 @@ class TabPallet(ttk.Frame):
         self.draw_pallet()
         self.update_summary()
         self.highlight_selection()
+        self._mark_layout_dirty()
 
     def center_selected_cartons(self):
         selection = self._selection_for_active_layer()
@@ -2598,6 +2619,7 @@ class TabPallet(ttk.Frame):
         getattr(self, "sort_layers", lambda: None)()
         self.draw_pallet()
         self.update_summary()
+        self._mark_layout_dirty()
         self.highlight_selection()
 
     def on_right_click(self, event):
@@ -3145,3 +3167,6 @@ class TabPallet(ttk.Frame):
             messagebox.showerror("Błąd", str(exc))
             return
         self.apply_pattern_data(data)
+        self.layout_dirty = False
+        self.draw_pallet(draw_idle=True)
+        self.update_summary()
