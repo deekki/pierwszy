@@ -1768,17 +1768,40 @@ class TabPallet(ttk.Frame):
         self._update_snapshot(inputs)
 
     def _update_snapshot(self, inputs: PalletInputs) -> None:
+        self.last_snapshot = self.get_current_snapshot(inputs=inputs)
+
+    def get_current_snapshot(self, inputs: PalletInputs | None = None) -> PalletSnapshot | None:
+        """Return a fresh snapshot of the current pallet state."""
+
         try:
-            self.last_snapshot = PalletSnapshot.from_layers(
+            inputs = inputs or self._read_inputs()
+        except Exception:
+            logger.exception("Failed to read pallet inputs for snapshot")
+            return None
+
+        layer_count = len(self.layers)
+        if not layer_count:
+            return None
+
+        inputs.num_layers = layer_count
+        transformations = list(self.transformations[:layer_count])
+        if len(transformations) < layer_count:
+            transformations.extend([""] * (layer_count - len(transformations)))
+
+        try:
+            snapshot = PalletSnapshot.from_layers(
                 inputs=inputs,
                 layers=self.layers,
-                transformations=self.transformations,
+                transformations=transformations,
                 slips_after=set(),
                 transform_func=self.apply_transformation,
             )
         except Exception:
             logger.exception("Failed to build pallet snapshot")
-            self.last_snapshot = None
+            return None
+
+        self.last_snapshot = snapshot
+        return snapshot
 
     def draw_pallet(self, draw_idle: bool = False):
         pallet_w = parse_dim(self.pallet_w_var)
@@ -2158,7 +2181,7 @@ class TabPallet(ttk.Frame):
             self.draw_pallet()
             self.update_summary()
             self.highlight_selection()
-            self._mark_layout_dirty()
+            getattr(self, "_mark_layout_dirty", lambda: None)()
             return
         if event.xdata is None or event.ydata is None:
             return
@@ -2211,7 +2234,7 @@ class TabPallet(ttk.Frame):
         self.draw_pallet()
         self.update_summary()
         self.highlight_selection()
-        self._mark_layout_dirty()
+        getattr(self, "_mark_layout_dirty", lambda: None)()
 
     def insert_carton(self, layer_idx, pos):
         """Insert a carton into the given layer at `pos`."""
@@ -2240,7 +2263,7 @@ class TabPallet(ttk.Frame):
             self.renumber_layer(other_layer)
         self.draw_pallet()
         self.update_summary()
-        self._mark_layout_dirty()
+        getattr(self, "_mark_layout_dirty", lambda: None)()
 
     def insert_carton_button(self):
         self.insert_carton(self.context_layer, self.context_pos)
@@ -2281,7 +2304,7 @@ class TabPallet(ttk.Frame):
         self.draw_pallet()
         self.update_summary()
         self.highlight_selection()
-        self._mark_layout_dirty()
+        getattr(self, "_mark_layout_dirty", lambda: None)()
 
     def rotate_selected_carton(self):
         """Rotate all selected cartons by 90° around their centers."""
@@ -2313,7 +2336,7 @@ class TabPallet(ttk.Frame):
         getattr(self, "sort_layers", lambda: None)()
         self.draw_pallet()
         self.update_summary()
-        self._mark_layout_dirty()
+        getattr(self, "_mark_layout_dirty", lambda: None)()
 
     @staticmethod
     def _find_axis_limits(boxes, indices, axis, pallet_extent):
@@ -2420,7 +2443,7 @@ class TabPallet(ttk.Frame):
         self.draw_pallet()
         self.update_summary()
         self.highlight_selection()
-        self._mark_layout_dirty()
+        getattr(self, "_mark_layout_dirty", lambda: None)()
 
     def auto_space_selected(self):
         selection = self._selection_for_active_layer()
@@ -2538,7 +2561,7 @@ class TabPallet(ttk.Frame):
         getattr(self, "sort_layers", lambda: None)()
         self.draw_pallet()
         self.update_summary()
-        self._mark_layout_dirty()
+        getattr(self, "_mark_layout_dirty", lambda: None)()
 
     def distribute_selected_long_side(self):
         selection = self._selection_for_active_layer()
@@ -2564,7 +2587,7 @@ class TabPallet(ttk.Frame):
         self.draw_pallet()
         self.update_summary()
         self.highlight_selection()
-        self._mark_layout_dirty()
+        getattr(self, "_mark_layout_dirty", lambda: None)()
 
     def center_selected_cartons(self):
         selection = self._selection_for_active_layer()
@@ -2619,7 +2642,7 @@ class TabPallet(ttk.Frame):
         getattr(self, "sort_layers", lambda: None)()
         self.draw_pallet()
         self.update_summary()
-        self._mark_layout_dirty()
+        getattr(self, "_mark_layout_dirty", lambda: None)()
         self.highlight_selection()
 
     def on_right_click(self, event):

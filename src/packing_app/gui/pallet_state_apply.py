@@ -21,6 +21,11 @@ def apply_layout_result_to_tab_state(
     tab.update_transform_frame()
     tab.num_layers = inputs.num_layers
     tab.slip_count = inputs.slip_count
-    tab.update_layers(force=force_layers)
+    update_layers = getattr(tab, "update_layers", None)
+    if callable(update_layers):
+        try:
+            update_layers(force=force_layers)
+        except TypeError:
+            update_layers()
     getattr(tab, "sort_layers", lambda: None)()
     tab.update_summary()
