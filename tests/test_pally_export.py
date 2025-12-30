@@ -110,6 +110,29 @@ def test_layers_slips():
     assert data["layers"].count("Shim paper: Default") == 2
 
 
+def test_base_slip_can_be_disabled():
+    rects = [(0.0, 0.0, 100.0, 200.0)]
+    data = build_pally_json(
+        config=PallyExportConfig(
+            name="Test",
+            pallet_w=800,
+            pallet_l=1200,
+            pallet_h=150,
+            box_w=100,
+            box_l=200,
+            box_h=300,
+            box_weight_g=500,
+            overhang_ends=0,
+            overhang_sides=0,
+        ),
+        layer_rects_list=[rects],
+        slips_after=set(),
+        include_base_slip=False,
+    )
+    assert data["layers"][0].startswith("Layer type: ")
+    assert "Shim paper: Default" not in data["layers"]
+
+
 def test_swap_axes_and_mapping():
     rects = [(0.0, 0.0, 300.0, 200.0)]
     data = build_pally_json(
