@@ -503,3 +503,58 @@ def test_manual_permutation_applies_to_alt_pattern():
     layer = next(lt for lt in data_manual["layerTypes"] if lt.get("class") == "layer")
     assert layer["pattern"] == expected_pattern
     assert layer["altPattern"] == expected_alt_pattern
+
+
+def test_manual_permutation_can_differ_for_alt_pattern():
+    rects = [
+        (0.0, 0.0, 100.0, 200.0),
+        (200.0, 0.0, 100.0, 200.0),
+        (400.0, 0.0, 100.0, 200.0),
+    ]
+    config = PallyExportConfig(
+        name="Test",
+        pallet_w=800,
+        pallet_l=1200,
+        pallet_h=150,
+        box_w=100,
+        box_l=200,
+        box_h=300,
+        box_weight_g=500,
+        overhang_ends=0,
+        overhang_sides=0,
+        alt_layout="altPattern",
+    )
+    _, signature_rects = rects_to_pally_pattern(
+        rects,
+        carton_w=config.box_w,
+        carton_l=config.box_l,
+        pallet_w=config.pallet_w,
+        pallet_l=config.pallet_l,
+        quant_step_mm=config.quant_step_mm,
+        label_orientation=config.label_orientation,
+        placement_sequence=config.placement_sequence,
+    )
+    signature = str(layout_signature(signature_rects, eps=config.signature_eps_mm))
+
+    manual_order_right = [2, 0, 1]
+    manual_order_left = [1, 2, 0]
+    data_auto = build_pally_json(
+        config=config,
+        layer_rects_list=[rects],
+        slips_after=set(),
+    )
+    data_manual = build_pally_json(
+        config=config,
+        layer_rects_list=[rects],
+        slips_after=set(),
+        manual_orders_by_signature={signature: manual_order_right},
+        manual_orders_alt_by_signature={signature: manual_order_left},
+    )
+
+    expected_pattern = [data_auto["layerTypes"][1]["pattern"][idx] for idx in manual_order_right]
+    expected_alt_pattern = [
+        data_auto["layerTypes"][1]["altPattern"][idx] for idx in manual_order_left
+    ]
+    layer = next(lt for lt in data_manual["layerTypes"] if lt.get("class") == "layer")
+    assert layer["pattern"] == expected_pattern
+    assert layer["altPattern"] == expected_alt_pattern

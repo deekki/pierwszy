@@ -228,6 +228,7 @@ def build_pally_json(
     slips_after: Set[int],
     include_base_slip: bool = True,
     manual_orders_by_signature: Optional[Dict[str, List[int]]] = None,
+    manual_orders_alt_by_signature: Optional[Dict[str, List[int]]] = None,
 ) -> Dict:
     num_layers = len(layer_rects_list)
     swap_axes = bool(config.swap_axes_for_pally)
@@ -244,6 +245,7 @@ def build_pally_json(
     next_idx = 1
 
     manual_orders_by_signature = manual_orders_by_signature or {}
+    manual_orders_alt_by_signature = manual_orders_alt_by_signature or manual_orders_by_signature
 
     for rects in layer_rects_list:
         rects_to_use = _swap_rect_axes(rects) if swap_axes else rects
@@ -259,6 +261,7 @@ def build_pally_json(
         )
         signature = layout_signature(signature_rects, eps=config.signature_eps_mm)
         manual_order = manual_orders_by_signature.get(str(signature))
+        manual_order_alt = manual_orders_alt_by_signature.get(str(signature))
         if signature not in signature_to_name:
             layer_name = f"Layer type: {next_idx}"
             next_idx += 1
@@ -276,7 +279,16 @@ def build_pally_json(
                     )
                 else:
                     pattern = [pattern[idx] for idx in manual_order]
-                    alt_pattern = [alt_pattern[idx] for idx in manual_order]
+            if manual_order_alt:
+                if len(manual_order_alt) != len(alt_pattern):
+                    logger.warning(
+                        "Manual permutation length mismatch for alt signature %s: %s != %s",  # noqa: TRY400
+                        signature,
+                        len(manual_order_alt),
+                        len(alt_pattern),
+                    )
+                else:
+                    alt_pattern = [alt_pattern[idx] for idx in manual_order_alt]
             layer_types.append(
                 {
                     "name": layer_name,
