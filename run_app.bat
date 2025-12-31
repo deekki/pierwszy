@@ -4,6 +4,8 @@ cd /d "%~dp0"
 
 setlocal
 
+set "PYTHONPATH=%CD%\src;%PYTHONPATH%"
+
 REM Try to locate a usable Python interpreter.
 for %%P in (python python3 py) do (
     where %%P >nul 2>nul && (
@@ -19,9 +21,9 @@ goto :end
 
 :found_python
 if /I "%PYTHON_CMD%"=="py" (
-    %PYTHON_CMD% -3 main.py
+    %PYTHON_CMD% -3 -m packing_app 2>nul || %PYTHON_CMD% -3 main.py
 ) else (
-    %PYTHON_CMD% main.py
+    %PYTHON_CMD% -m packing_app 2>nul || %PYTHON_CMD% main.py
 )
 
 :end
