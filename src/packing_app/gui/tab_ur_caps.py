@@ -20,6 +20,7 @@ from palletizer_core.pally_export import (
 )
 from palletizer_core.signature import layout_signature
 from packing_app.core.pallet_snapshot import PalletSnapshot
+from packing_app.gui.widgets.scrollable_frame import ScrollableFrame
 
 logger = logging.getLogger(__name__)
 
@@ -76,10 +77,17 @@ class TabURCaps(ttk.Frame):
         self.build_ui()
 
     def build_ui(self) -> None:
+        self.rowconfigure(0, weight=1)
         self.columnconfigure(0, weight=1)
-        main_frame = ttk.Frame(self)
-        main_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+
+        scroll = ScrollableFrame(self)
+        scroll.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+
+        main_frame = scroll.interior
         main_frame.columnconfigure(0, weight=1)
+        main_frame.rowconfigure(0, weight=0)
+        main_frame.rowconfigure(1, weight=0)
+        main_frame.rowconfigure(2, weight=1)
 
         fetch_frame = ttk.Frame(main_frame)
         fetch_frame.grid(row=0, column=0, sticky="ew", pady=(0, 8))
@@ -100,7 +108,7 @@ class TabURCaps(ttk.Frame):
         )
 
         export_frame = ttk.LabelFrame(main_frame, text="Eksport UR CAPS")
-        export_frame.grid(row=1, column=0, sticky="nsew")
+        export_frame.grid(row=1, column=0, sticky="ew")
         export_frame.columnconfigure(0, weight=1)
 
         header_frame = ttk.Frame(export_frame)
@@ -211,7 +219,7 @@ class TabURCaps(ttk.Frame):
         self.pally_slip_frame = ttk.Frame(basic_frame)
         self.pally_slip_frame.grid(row=6, column=1, padx=4, pady=4, sticky="w")
 
-        ttk.Label(basic_frame, text="Dimensions.height override (mm):").grid(
+        ttk.Label(basic_frame, text="Nadpisz wysokość całkowitą (mm):").grid(
             row=7, column=0, padx=4, pady=4, sticky="e"
         )
         ttk.Entry(
@@ -220,7 +228,7 @@ class TabURCaps(ttk.Frame):
             width=18,
         ).grid(row=7, column=1, padx=4, pady=4, sticky="w")
 
-        ttk.Label(basic_frame, text="Pallet height override (mm):").grid(
+        ttk.Label(basic_frame, text="Nadpisz wysokość palety (mm):").grid(
             row=8, column=0, padx=4, pady=4, sticky="e"
         )
         ttk.Entry(
@@ -235,6 +243,7 @@ class TabURCaps(ttk.Frame):
             command=self.export_pally_json,
         ).grid(row=2, column=0, padx=4, pady=(8, 4), sticky="ew")
 
+        self.pretty_json_var.set(False)
         ttk.Checkbutton(
             export_frame,
             text="Pretty JSON",
