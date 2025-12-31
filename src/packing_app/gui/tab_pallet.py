@@ -1803,6 +1803,50 @@ class TabPallet(ttk.Frame):
         self.last_snapshot = snapshot
         return snapshot
 
+    def build_ur_caps_snapshot(self) -> PalletSnapshot | None:
+        """Return a snapshot prepared for UR CAPS consumers.
+
+        The method mirrors :meth:`get_current_snapshot` but augments the
+        snapshot with box weight details and keeps ``slips_after`` empty
+        (UR CAPS does not synchronise slip sheets at this stage).
+        """
+
+        try:
+            inputs = self._read_inputs()
+        except Exception:
+            logger.exception("Failed to read pallet inputs for UR CAPS snapshot")
+            return None
+
+        layer_count = len(self.layers)
+        if not layer_count:
+            return None
+
+        inputs.num_layers = layer_count
+        transformations = list(self.transformations[:layer_count])
+        if len(transformations) < layer_count:
+            transformations.extend([""] * (layer_count - len(transformations)))
+
+        box_weight_kg, weight_source = self._get_active_carton_weight()
+        box_weight_g = int(round(max(box_weight_kg, 0.0) * 1000))
+        weight_source = weight_source or "unknown"
+
+        try:
+            snapshot = PalletSnapshot.from_layers(
+                inputs=inputs,
+                layers=self.layers,
+                transformations=transformations,
+                slips_after=set(),
+                box_weight_g=box_weight_g,
+                box_weight_source=weight_source,
+                transform_func=self.apply_transformation,
+            )
+        except Exception:
+            logger.exception("Failed to build UR CAPS snapshot")
+            return None
+
+        self.last_snapshot = snapshot
+        return snapshot
+
     def draw_pallet(self, draw_idle: bool = False):
         pallet_w = parse_dim(self.pallet_w_var)
         pallet_l = parse_dim(self.pallet_l_var)
@@ -3182,14 +3226,27 @@ class TabPallet(ttk.Frame):
             filetypes=[("JSON", "*.json")],
         )
         if not path:
-            return
+            return False
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
         except Exception as exc:
             messagebox.showerror("Błąd", str(exc))
-            return
-        self.apply_pattern_data(data)
-        self.layout_dirty = False
-        self.draw_pallet(draw_idle=True)
-        self.update_summary()
+            return False
+        try:
+            self.apply_pattern_data(data)
+            self.layout_dirty = False
+            self._update_snapshot(self._read_inputs())
+            self.draw_pallet(draw_idle=True)
+            self.update_summary()
+            if self.ur_caps_tab:
+                try:
+                    self.ur_caps_tab.fetch_from_pallet(quiet_if_missing=True)
+                except Exception:
+                    logger.exception(
+                        "Failed to refresh UR CAPS after loading pattern"
+                    )
+            return True
+        except Exception:
+            logger.exception("Failed to apply pattern data")
+            return False

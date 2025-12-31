@@ -351,18 +351,32 @@ class TabURCaps(ttk.Frame):
             messagebox.showwarning("UR CAPS", "Brak zakładki Paletyzacja.")
             return
         try:
-            self.pallet_tab.load_pattern_dialog()
-            inputs = getattr(self.pallet_tab, "_read_inputs", None)
-            updater = getattr(self.pallet_tab, "_update_snapshot", None)
-            if callable(inputs) and callable(updater):
-                updater(inputs())
+            loaded = self.pallet_tab.load_pattern_dialog()
+            if not loaded:
+                self.status_var.set("Anulowano wczytywanie")
+                return
             self.fetch_from_pallet(quiet_if_missing=True)
+            self.status_var.set("Wczytano wzór i odświeżono dane")
         except Exception:
             logger.exception("Failed to load pattern from UR CAPS")
 
     def fetch_from_pallet(self, quiet_if_missing: bool = False) -> None:
-        snapshot_builder = getattr(self.pallet_tab, "get_current_snapshot", None)
-        snapshot = snapshot_builder() if callable(snapshot_builder) else None
+        snapshot = None
+        snapshot_builders = [
+            getattr(self.pallet_tab, "build_ur_caps_snapshot", None),
+            getattr(self.pallet_tab, "get_current_snapshot", None),
+        ]
+
+        for builder in snapshot_builders:
+            if not callable(builder):
+                continue
+            try:
+                snapshot = builder()
+            except Exception:
+                logger.exception("Snapshot builder failed in UR CAPS fetch")
+                snapshot = None
+            if snapshot is not None:
+                break
         if snapshot is None:
             message = "Nie udało się pobrać aktualnego układu z Paletyzacji."
             if quiet_if_missing:
@@ -742,6 +756,9 @@ class TabURCaps(ttk.Frame):
             self.pally_out_dir_var.set(path)
 
     def _get_box_weight_g(self) -> tuple[int, str]:
+        snapshot = self.active_snapshot
+        if snapshot is not None and snapshot.box_weight_g is not None:
+            return max(int(snapshot.box_weight_g), 0), snapshot.box_weight_source
         if hasattr(self.pallet_tab, "_get_active_carton_weight"):
             weight_kg, source = self.pallet_tab._get_active_carton_weight()  # pylint: disable=protected-access
             return int(round(max(weight_kg, 0.0) * 1000)), source

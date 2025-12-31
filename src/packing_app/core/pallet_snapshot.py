@@ -26,6 +26,8 @@ class PalletSnapshot:
     transformations: List[str]
     layer_rects_list: List[LayerLayout]
     slips_after: Set[int]
+    box_weight_g: int | None = None
+    box_weight_source: str = "unknown"
 
     @classmethod
     def from_layers(
@@ -34,6 +36,9 @@ class PalletSnapshot:
         layers: Sequence[LayerLayout],
         transformations: Sequence[str] | None,
         slips_after: Iterable[int],
+        *,
+        box_weight_g: int | None = None,
+        box_weight_source: str = "unknown",
         transform_func: TransformFunc | None = None,
     ) -> "PalletSnapshot":
         transform_func = transform_func or apply_transformation
@@ -59,6 +64,8 @@ class PalletSnapshot:
             spacing=inputs.spacing,
             slip_count=inputs.slip_count,
             num_layers=inputs.num_layers,
+            box_weight_g=box_weight_g if box_weight_g is None else int(box_weight_g),
+            box_weight_source=box_weight_source,
             layers=[list(layer) for layer in layers],
             transformations=list(normalized_transformations),
             layer_rects_list=layer_rects_list,
