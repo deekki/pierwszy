@@ -6,7 +6,7 @@ import queue
 import threading
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, simpledialog
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict, Optional, Callable
 
 import matplotlib
 
@@ -57,16 +57,11 @@ from packing_app.data.repository import (
     load_materials,
     load_slip_sheets,
 )
+from packing_app.gui.pallet_input_parsing import parse_dim
+from packing_app.gui.pallet_snapshot_api import build_snapshot_from_tab
 
 
 logger = logging.getLogger(__name__)
-def parse_dim(var: tk.StringVar) -> float:
-    try:
-        val = parse_float(var.get())
-        return max(0, val)
-    except Exception:
-        messagebox.showwarning("Błąd", "Wprowadzono niepoprawną wartość. Użyto 0.")
-        return 0.0
 
 
 class TabPallet(ttk.Frame):
@@ -151,6 +146,7 @@ class TabPallet(ttk.Frame):
         self.row_by_row_horizontal_var = tk.IntVar(value=0)
         self._row_by_row_user_modified = False
         self._updating_row_by_row = False
+        self.validation_var = tk.StringVar(value="")
         self.build_ui()
 
     @staticmethod
@@ -673,6 +669,12 @@ class TabPallet(ttk.Frame):
         status_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=(2, 6))
         self.status_label = ttk.Label(status_frame, textvariable=self.status_var, anchor="w")
         self.status_label.grid(row=0, column=0, sticky="w")
+        ttk.Label(
+            status_frame,
+            textvariable=self.validation_var,
+            anchor="w",
+            foreground="red",
+        ).grid(row=1, column=0, sticky="w")
 
         ttk.Label(self.summary_frame, text="Kartonów na palecie:").grid(
             row=0, column=0, padx=6, pady=(6, 2), sticky="w"
@@ -1195,6 +1197,15 @@ class TabPallet(ttk.Frame):
 
         return max(int(numeric), 0)
 
+    def _make_error_collector(self) -> tuple[list[str], Callable[[str], None]]:
+        invalid_fields: list[str] = []
+
+        def collector(field: str) -> None:
+            if field and field not in invalid_fields:
+                invalid_fields.append(field)
+
+        return invalid_fields, collector
+
     def _on_row_by_row_change(self, axis: str) -> None:
         if self._updating_row_by_row:
             return
@@ -1610,20 +1621,28 @@ class TabPallet(ttk.Frame):
     def _read_inputs(self) -> PalletInputs:
         """Collect and normalize numeric values from the UI widgets."""
 
+        invalid_fields, collector = self._make_error_collector()
         inputs = PalletInputs(
-            pallet_w=parse_dim(self.pallet_w_var),
-            pallet_l=parse_dim(self.pallet_l_var),
-            pallet_h=parse_dim(self.pallet_h_var),
-            box_w=parse_dim(self.box_w_var),
-            box_l=parse_dim(self.box_l_var),
-            box_h=parse_dim(self.box_h_var),
-            thickness=parse_dim(self.cardboard_thickness_var),
-            spacing=parse_dim(self.spacing_var),
-            slip_count=int(parse_dim(self.slip_count_var)),
-            num_layers=int(parse_dim(self.num_layers_var)),
-            max_stack=parse_dim(self.max_stack_var),
+            pallet_w=parse_dim(self.pallet_w_var, field="Szerokość palety", on_error=collector),
+            pallet_l=parse_dim(self.pallet_l_var, field="Długość palety", on_error=collector),
+            pallet_h=parse_dim(self.pallet_h_var, field="Wysokość palety", on_error=collector),
+            box_w=parse_dim(self.box_w_var, field="Szerokość kartonu", on_error=collector),
+            box_l=parse_dim(self.box_l_var, field="Długość kartonu", on_error=collector),
+            box_h=parse_dim(self.box_h_var, field="Wysokość kartonu", on_error=collector),
+            thickness=parse_dim(
+                self.cardboard_thickness_var, field="Grubość tektury", on_error=collector
+            ),
+            spacing=parse_dim(self.spacing_var, field="Odstęp", on_error=collector),
+            slip_count=int(parse_dim(self.slip_count_var, field="Przekładki", on_error=collector)),
+            num_layers=int(parse_dim(self.num_layers_var, field="Liczba warstw", on_error=collector)),
+            max_stack=parse_dim(self.max_stack_var, field="Wysokość stosu", on_error=collector),
             include_pallet_height=self.include_pallet_height_var.get(),
         )
+
+        if invalid_fields:
+            self.validation_var.set(f"Błędne pola: {', '.join(invalid_fields)}")
+        else:
+            self.validation_var.set("")
 
         layer_height = inputs.box_h + 2 * inputs.thickness
         if layer_height > 0:
@@ -1773,33 +1792,7 @@ class TabPallet(ttk.Frame):
     def get_current_snapshot(self, inputs: PalletInputs | None = None) -> PalletSnapshot | None:
         """Return a fresh snapshot of the current pallet state."""
 
-        try:
-            inputs = inputs or self._read_inputs()
-        except Exception:
-            logger.exception("Failed to read pallet inputs for snapshot")
-            return None
-
-        layer_count = len(self.layers)
-        if not layer_count:
-            return None
-
-        inputs.num_layers = layer_count
-        transformations = list(self.transformations[:layer_count])
-        if len(transformations) < layer_count:
-            transformations.extend([""] * (layer_count - len(transformations)))
-
-        try:
-            snapshot = PalletSnapshot.from_layers(
-                inputs=inputs,
-                layers=self.layers,
-                transformations=transformations,
-                slips_after=set(),
-                transform_func=self.apply_transformation,
-            )
-        except Exception:
-            logger.exception("Failed to build pallet snapshot")
-            return None
-
+        snapshot = build_snapshot_from_tab(self, inputs=inputs)
         self.last_snapshot = snapshot
         return snapshot
 
@@ -1811,45 +1804,14 @@ class TabPallet(ttk.Frame):
         (UR CAPS does not synchronise slip sheets at this stage).
         """
 
-        try:
-            inputs = self._read_inputs()
-        except Exception:
-            logger.exception("Failed to read pallet inputs for UR CAPS snapshot")
-            return None
-
-        layer_count = len(self.layers)
-        if not layer_count:
-            return None
-
-        inputs.num_layers = layer_count
-        transformations = list(self.transformations[:layer_count])
-        if len(transformations) < layer_count:
-            transformations.extend([""] * (layer_count - len(transformations)))
-
-        box_weight_kg, weight_source = self._get_active_carton_weight()
-        box_weight_g = int(round(max(box_weight_kg, 0.0) * 1000))
-        weight_source = weight_source or "unknown"
-
-        try:
-            snapshot = PalletSnapshot.from_layers(
-                inputs=inputs,
-                layers=self.layers,
-                transformations=transformations,
-                slips_after=set(),
-                box_weight_g=box_weight_g,
-                box_weight_source=weight_source,
-                transform_func=self.apply_transformation,
-            )
-        except Exception:
-            logger.exception("Failed to build UR CAPS snapshot")
-            return None
-
+        snapshot = build_snapshot_from_tab(self, include_box_weight=True)
         self.last_snapshot = snapshot
         return snapshot
 
     def draw_pallet(self, draw_idle: bool = False):
-        pallet_w = parse_dim(self.pallet_w_var)
-        pallet_l = parse_dim(self.pallet_l_var)
+        silent_error = lambda _field: None
+        pallet_w = parse_dim(self.pallet_w_var, on_error=silent_error)
+        pallet_l = parse_dim(self.pallet_l_var, on_error=silent_error)
         axes = [self.ax_odd, self.ax_even, self.ax_overlay]
         labels = ["Warstwa nieparzysta", "Warstwa parzysta", "Nakładanie"]
         self.patches = [[] for _ in axes[:2]]
