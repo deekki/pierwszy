@@ -35,6 +35,8 @@ class PallyExportConfig:
     approach: str = "normal"
     alt_approach: str = "normal"
     placement_sequence: str = "default"
+    pallet_height_override: Optional[int] = None
+    dimensions_height_override: Optional[int] = None
 
     def __post_init__(self) -> None:
         if self.swap_axes_for_pally is None:
@@ -87,21 +89,6 @@ def _label_direction(label_orientation: int, rotation: int) -> int:
     return _normalize_angle(label_orientation + rotation)
 
 
-def _nearest_edge(pallet_w: float, pallet_l: float, x: float, y: float) -> str:
-    distances = [
-        (x, "left"),
-        (pallet_w - x, "right"),
-        (y, "front"),
-        (pallet_l - y, "back"),
-    ]
-    return min(distances, key=lambda item: (item[0], item[1]))[1]
-
-
-def _expected_orientation_for_edge(edge: str) -> int:
-    mapping = {"front": 0, "left": 270, "right": 90, "back": 180}
-    return mapping[edge]
-
-
 def _sort_pattern_items(
     items: List[Tuple[Dict, Tuple[float, float, float, float]]],
     placement_sequence: str,
@@ -152,32 +139,47 @@ def rects_to_pally_pattern(
     pallet_w: float,
     pallet_l: float,
     quant_step_mm: float,
-    label_orientation: int,
+    label_orientation: Optional[int],
     placement_sequence: str = "default",
 ) -> Tuple[List[Dict], List[Tuple[float, float, float, float]]]:
     pattern_with_signatures: List[Tuple[Dict, Tuple[float, float, float, float]]] = []
 
-    for x, y, w, length in rects:
-        x_center = _quantize(x + w / 2.0, quant_step_mm)
-        y_center = _quantize(y + length / 2.0, quant_step_mm)
-
+    def _rotation_for_rect(
+        x_center: float, y_center: float, w: float, length: float
+    ) -> int:
         orientation_error_0 = abs(w - carton_w) + abs(length - carton_l)
         orientation_error_90 = abs(w - carton_l) + abs(length - carton_w)
         base_rot = 0 if orientation_error_0 <= orientation_error_90 else 90
         flipped_rot = (base_rot + 180) % 360
 
-        nearest_edge = _nearest_edge(pallet_w, pallet_l, x_center, y_center)
-        expected_orientation = _expected_orientation_for_edge(nearest_edge)
+        if label_orientation is None:
+            return base_rot
+
+        is_y_aligned = base_rot in (0, 180)
+        pallet_half_x = pallet_w / 2.0
+        pallet_half_y = pallet_l / 2.0
+
+        if is_y_aligned:
+            desired_dir = 0 if y_center <= pallet_half_y else 180
+        else:
+            desired_dir = 270 if x_center <= pallet_half_x else 90
+
         base_dir = _label_direction(label_orientation, base_rot)
         flipped_dir = _label_direction(label_orientation, flipped_rot)
 
-        if (base_dir == expected_orientation) != (flipped_dir == expected_orientation):
-            rot = base_rot if base_dir == expected_orientation else flipped_rot
-        elif base_dir == flipped_dir:
-            rot = base_rot
-        else:
-            rot = base_rot
+        if base_dir == flipped_dir:
+            return base_rot
+        if desired_dir == base_dir:
+            return base_rot
+        if desired_dir == flipped_dir:
+            return flipped_rot
+        return base_rot
 
+    for x, y, w, length in rects:
+        x_center = _quantize(x + w / 2.0, quant_step_mm)
+        y_center = _quantize(y + length / 2.0, quant_step_mm)
+
+        rot = _rotation_for_rect(x_center, y_center, w, length)
         w_eff, l_eff = (carton_w, carton_l) if rot in (0, 180) else (carton_l, carton_w)
         w_eff = _quantize(w_eff, quant_step_mm)
         l_eff = _quantize(l_eff, quant_step_mm)
@@ -325,14 +327,25 @@ def build_pally_json(
         if idx in slips_after:
             layers.append("Shim paper: Default")
 
+    pallet_height = (
+        config.pallet_height_override
+        if config.pallet_height_override is not None
+        else config.pallet_h
+    )
+    dimensions_height = (
+        config.dimensions_height_override
+        if config.dimensions_height_override is not None
+        else num_layers * config.box_h
+    )
+
     return {
         "name": config.name,
         "description": "",
         "dimensions": {
-            "height": num_layers * config.box_h,
+            "height": dimensions_height,
             "width": pallet_width,
             "length": pallet_length,
-            "palletHeight": config.pallet_h,
+            "palletHeight": pallet_height,
         },
         "productDimensions": {
             "weight": config.box_weight_g,
