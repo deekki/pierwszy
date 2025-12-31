@@ -31,7 +31,12 @@ def main() -> None:
 
     root = tk.Tk()
     root.title(f"INŻYNIER 2.0 v{app_version}")
-    root.geometry("1920x1080")
+    screen_w = root.winfo_screenwidth()
+    screen_h = root.winfo_screenheight()
+    width = min(int(screen_w * 0.9), 1920)
+    height = min(int(screen_h * 0.9), 1080)
+    root.geometry(f"{width}x{height}")
+    root.minsize(1200, 800)
 
     style = ttk.Style()
     style.configure("TLabel", padding=(2, 1))
