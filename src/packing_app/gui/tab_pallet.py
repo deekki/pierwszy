@@ -26,6 +26,7 @@ from palletizer_core.transformations import (
     inverse_transformation as inverse_transformation_core,
 )
 from packing_app.gui.editor_controller import EditorController
+from packing_app.gui.layer_propagation import propagate_carton_delta
 from packing_app.gui.pallet_helpers import (
     apply_pattern_selection_after_restore,
     filter_selection_for_layer,
@@ -62,6 +63,14 @@ from packing_app.gui.pallet_snapshot_api import build_snapshot_from_tab
 
 
 logger = logging.getLogger(__name__)
+
+
+def _matching_layers_for_pattern(obj, layer_idx: int) -> list[int]:
+    patterns = getattr(obj, "layer_patterns", [])
+    if layer_idx < 0 or layer_idx >= len(patterns):
+        return []
+    pattern = patterns[layer_idx]
+    return [i for i, value in enumerate(patterns) if value == pattern]
 
 
 class TabPallet(ttk.Frame):
@@ -162,6 +171,9 @@ class TabPallet(ttk.Frame):
             return bool(odd_key and even_key and odd_key == even_key)
         except Exception:
             return False
+
+    def _layers_with_same_pattern(self, layer_idx: int) -> list[int]:
+        return _matching_layers_for_pattern(self, layer_idx)
 
     def set_ur_caps_tab(self, tab) -> None:
         self.ur_caps_tab = tab
@@ -1809,7 +1821,8 @@ class TabPallet(ttk.Frame):
         return snapshot
 
     def draw_pallet(self, draw_idle: bool = False):
-        silent_error = lambda _field: None
+        def silent_error(_field):
+            return None
         pallet_w = parse_dim(self.pallet_w_var, on_error=silent_error)
         pallet_l = parse_dim(self.pallet_l_var, on_error=silent_error)
         axes = [self.ax_odd, self.ax_even, self.ax_overlay]
@@ -2085,6 +2098,7 @@ class TabPallet(ttk.Frame):
 
         dx, dy = result["delta"]
         layers_to_check = set()
+        patch_updates: dict[int, set[int]] = {}
         for layer_idx, idx in list(selection):
             if layer_idx >= len(self.layers) or idx >= len(self.layers[layer_idx]):
                 continue
@@ -2101,36 +2115,45 @@ class TabPallet(ttk.Frame):
                     pallet_w,
                     pallet_l,
                 )[0]
+                delta_logical = (orig_x - x, orig_y - y)
                 self.layers[layer_idx][idx] = (orig_x, orig_y, w, h)
                 layers_to_check.add(layer_idx)
-                if self.layers_linked():
-                    other_layer = 1 - layer_idx
-                    if (
-                        other_layer < len(self.layers)
-                        and idx < len(self.layers[other_layer])
-                        and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
-                    ):
-                        self.layers[other_layer][idx] = (orig_x, orig_y, w, h)
-                        layers_to_check.add(other_layer)
-                        for p, j2 in self.patches[other_layer]:
-                            if j2 == idx:
-                                tx, ty, tw, th = self.apply_transformation(
-                                    [(orig_x, orig_y, w, h)],
-                                    self.transformations[other_layer],
-                                    pallet_w,
-                                    pallet_l,
-                                )[0]
-                                p.set_xy((tx, ty))
-                                p.set_width(tw)
-                                p.set_height(th)
-                                break
+
+                allowed_layers = _matching_layers_for_pattern(self, layer_idx)
+                if not self.layers_linked():
+                    allowed_layers = [
+                        i for i in allowed_layers if i % 2 == layer_idx % 2
+                    ]
+                updated_pairs = propagate_carton_delta(
+                    self.layers,
+                    self.layer_patterns,
+                    layer_idx,
+                    idx,
+                    delta_logical,
+                    allowed_layers=allowed_layers,
+                    reference_box=(x, y, w, h),
+                )
+                for target_layer, target_idx in updated_pairs:
+                    if target_layer < len(self.patches):
+                        patch_updates.setdefault(target_layer, set()).add(target_idx)
+                    layers_to_check.add(target_layer)
                 break
 
-        if self.layers_linked():
-            layers_to_check |= {
-                1 - idx for idx in layers_to_check if 1 - idx < len(self.layers)
-            }
-        for layer_idx in layers_to_check:
+        for layer_idx, indices in patch_updates.items():
+            for patch, patch_idx in self.patches[layer_idx]:
+                if patch_idx not in indices:
+                    continue
+                tx, ty, tw, th = self.apply_transformation(
+                    [self.layers[layer_idx][patch_idx]],
+                    self.transformations[layer_idx],
+                    pallet_w,
+                    pallet_l,
+                )[0]
+                patch.set_xy((tx, ty))
+                patch.set_width(tw)
+                patch.set_height(th)
+
+        for layer_idx in {idx for idx in layers_to_check if idx < len(self.patches)}:
             coords = self.apply_transformation(
                 list(self.layers[layer_idx]),
                 self.transformations[layer_idx],
@@ -2174,15 +2197,23 @@ class TabPallet(ttk.Frame):
                 snap_x, snap_y = self.snap_position(
                     orig_x, orig_y, w, h, pallet_w, pallet_l, other_boxes
                 )
+                delta_logical = (snap_x - x, snap_y - y)
                 self.layers[layer_idx][idx] = (snap_x, snap_y, w, h)
-                other_layer = 1 - layer_idx
-                if (
-                    other_layer < len(self.layers)
-                    and idx < len(self.layers[other_layer])
-                    and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
-                    and self.layers_linked()
-                ):
-                    self.layers[other_layer][idx] = (snap_x, snap_y, w, h)
+
+                allowed_layers = _matching_layers_for_pattern(self, layer_idx)
+                if not self.layers_linked():
+                    allowed_layers = [
+                        i for i in allowed_layers if i % 2 == layer_idx % 2
+                    ]
+                propagate_carton_delta(
+                    self.layers,
+                    self.layer_patterns,
+                    layer_idx,
+                    idx,
+                    delta_logical,
+                    allowed_layers=allowed_layers,
+                    reference_box=(x, y, w, h),
+                )
             getattr(self, "sort_layers", lambda: None)()
             self.draw_pallet()
             self.update_summary()
@@ -2225,15 +2256,23 @@ class TabPallet(ttk.Frame):
             snap_x, snap_y = self.snap_position(
                 orig_x, orig_y, w, h, pallet_w, pallet_l, other_boxes
             )
+            delta_logical = (snap_x - x, snap_y - y)
             self.layers[layer_idx][idx] = (snap_x, snap_y, w, h)
-            other_layer = 1 - layer_idx
-            if (
-                other_layer < len(self.layers)
-                and idx < len(self.layers[other_layer])
-                and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
-                and self.layers_linked()
-            ):
-                self.layers[other_layer][idx] = (snap_x, snap_y, w, h)
+
+            allowed_layers = _matching_layers_for_pattern(self, layer_idx)
+            if not self.layers_linked():
+                allowed_layers = [
+                    i for i in allowed_layers if i % 2 == layer_idx % 2
+                ]
+            propagate_carton_delta(
+                self.layers,
+                self.layer_patterns,
+                layer_idx,
+                idx,
+                delta_logical,
+                allowed_layers=allowed_layers,
+                reference_box=(x, y, w, h),
+            )
 
         self.drag_snapshot_saved = False
         getattr(self, "sort_layers", lambda: None)()
