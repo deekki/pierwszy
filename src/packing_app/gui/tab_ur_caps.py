@@ -46,9 +46,15 @@ class TabURCaps(ttk.Frame):
         self.approach_left_var = tk.StringVar(value="inverse")
         self.placement_sequence_var = tk.StringVar(value="default")
         self.manual_mode_var = tk.BooleanVar(value=False)
-        self.preview_side_var = tk.StringVar(value="right")
-        self.manual_orders_by_signature: dict[str, list[int]] = {}
-        self.manual_progress_by_signature: dict[str, int] = {}
+        self.manual_edit_target_var = tk.StringVar(value="both")
+        self.manual_orders_by_side: dict[str, dict[str, list[int]]] = {
+            "right": {},
+            "left": {},
+        }
+        self.manual_progress_by_side: dict[str, dict[str, int]] = {
+            "right": {},
+            "left": {},
+        }
         self.layer_signatures: list[str] = []
         self.signature_to_layers: dict[str, list[int]] = {}
         self.status_var = tk.StringVar(value="")
@@ -57,7 +63,10 @@ class TabURCaps(ttk.Frame):
         self.preview_layer_var = tk.StringVar(value="1")
         self.manual_hint_var = tk.StringVar(value="")
         self.manual_move_target_var = tk.StringVar(value="")
-        self.preview_boxes_info: list[tuple[int, tuple[float, float, float, float]]] = []
+        self.preview_boxes_info: dict[str, list[tuple[int, tuple[float, float, float, float]]]] = {
+            "right": [],
+            "left": [],
+        }
         self.current_preview_signature: str | None = None
 
         self.build_ui()
@@ -221,35 +230,17 @@ class TabURCaps(ttk.Frame):
         self.preview_layer_combo.grid(row=0, column=1, padx=4, pady=4, sticky="w")
         self.preview_layer_combo.bind("<<ComboboxSelected>>", self._render_layer_preview)
 
-        ttk.Label(controls_frame, text="Podgląd palety:").grid(
-            row=0, column=2, padx=4, pady=4, sticky="e"
-        )
-        ttk.Radiobutton(
-            controls_frame,
-            text="Prawa",
-            value="right",
-            variable=self.preview_side_var,
-            command=self._render_layer_preview,
-        ).grid(row=0, column=3, padx=2, pady=4, sticky="w")
-        ttk.Radiobutton(
-            controls_frame,
-            text="Lewa",
-            value="left",
-            variable=self.preview_side_var,
-            command=self._render_layer_preview,
-        ).grid(row=0, column=4, padx=2, pady=4, sticky="w")
-
         canvas_frame = ttk.Frame(preview_frame)
         canvas_frame.grid(row=1, column=0, sticky="nsew", padx=4, pady=(0, 4))
         canvas_frame.columnconfigure(0, weight=1)
         canvas_frame.rowconfigure(0, weight=1)
 
-        self.preview_fig = plt.Figure(figsize=(6, 3.5))
-        self.preview_ax = self.preview_fig.add_subplot(111)
-        self.preview_canvas = FigureCanvasTkAgg(self.preview_fig, master=canvas_frame)
-        self.preview_canvas.get_tk_widget().grid(
-            row=0, column=0, sticky="nsew"
+        self.preview_fig, (self.preview_ax_right, self.preview_ax_left) = plt.subplots(
+            1, 2, figsize=(8.5, 3.8)
         )
+        self.preview_axes = {"right": self.preview_ax_right, "left": self.preview_ax_left}
+        self.preview_canvas = FigureCanvasTkAgg(self.preview_fig, master=canvas_frame)
+        self.preview_canvas.get_tk_widget().grid(row=0, column=0, sticky="nsew")
         self.preview_canvas.mpl_connect("button_press_event", self._on_canvas_click)
 
         manual_frame = ttk.LabelFrame(preview_frame, text="Tryb ręczny")
@@ -275,13 +266,40 @@ class TabURCaps(ttk.Frame):
             command=self._reverse_manual_order,
         ).grid(row=0, column=2, padx=(0, 6))
 
+        target_row = ttk.Frame(manual_frame)
+        target_row.grid(row=1, column=0, sticky="ew", pady=(0, 6))
+        ttk.Label(target_row, text="Edytuj kolejność dla:").grid(
+            row=0, column=0, padx=(0, 6), sticky="w"
+        )
+        ttk.Radiobutton(
+            target_row,
+            text="Prawa",
+            value="right",
+            variable=self.manual_edit_target_var,
+            command=self._render_layer_preview,
+        ).grid(row=0, column=1, padx=2, sticky="w")
+        ttk.Radiobutton(
+            target_row,
+            text="Lewa",
+            value="left",
+            variable=self.manual_edit_target_var,
+            command=self._render_layer_preview,
+        ).grid(row=0, column=2, padx=2, sticky="w")
+        ttk.Radiobutton(
+            target_row,
+            text="Obie",
+            value="both",
+            variable=self.manual_edit_target_var,
+            command=self._render_layer_preview,
+        ).grid(row=0, column=3, padx=2, sticky="w")
+
         self.manual_hint_label = ttk.Label(
             manual_frame,
             textvariable=self.manual_hint_var,
             wraplength=220,
             justify="left",
         )
-        self.manual_hint_label.grid(row=1, column=0, sticky="w", pady=(0, 6))
+        self.manual_hint_label.grid(row=2, column=0, sticky="w", pady=(0, 6))
 
         self.order_tree = ttk.Treeview(
             manual_frame,
@@ -292,10 +310,10 @@ class TabURCaps(ttk.Frame):
         )
         self.order_tree.heading("pozycja", text="Kolejność")
         self.order_tree.column("pozycja", width=80, anchor="center")
-        self.order_tree.grid(row=2, column=0, sticky="nsew")
+        self.order_tree.grid(row=3, column=0, sticky="nsew")
 
         controls_row = ttk.Frame(manual_frame)
-        controls_row.grid(row=3, column=0, sticky="ew", pady=6)
+        controls_row.grid(row=4, column=0, sticky="ew", pady=6)
         controls_row.columnconfigure(2, weight=1)
         ttk.Button(controls_row, text="Góra", command=self._move_selected_up).grid(
             row=0, column=0, padx=2
@@ -310,7 +328,7 @@ class TabURCaps(ttk.Frame):
             row=0, column=3, padx=2
         )
 
-        manual_frame.rowconfigure(2, weight=1)
+        manual_frame.rowconfigure(3, weight=1)
 
         self._draw_empty_preview("Brak danych do podglądu")
         self._bind_preview_traces()
@@ -351,12 +369,17 @@ class TabURCaps(ttk.Frame):
         self.apply_snapshot(snapshot)
 
     def apply_snapshot(self, snapshot: PalletSnapshot) -> None:
-        previous_orders = dict(self.manual_orders_by_signature)
-        previous_progress = dict(self.manual_progress_by_signature)
+        previous_orders = {
+            side: dict(orders) for side, orders in self.manual_orders_by_side.items()
+        }
+        previous_progress = {
+            side: dict(progress)
+            for side, progress in self.manual_progress_by_side.items()
+        }
 
         self.active_snapshot = snapshot
-        self.manual_orders_by_signature = previous_orders
-        self.manual_progress_by_signature = previous_progress
+        self.manual_orders_by_side = previous_orders
+        self.manual_progress_by_side = previous_progress
         self.layer_signatures = []
         self.signature_to_layers = {}
         self._update_snapshot_summary(snapshot)
@@ -440,12 +463,22 @@ class TabURCaps(ttk.Frame):
             self.pally_swap_axes_var,
             self.approach_left_var,
             self.approach_right_var,
-            self.preview_side_var,
         ):
             var.trace_add("write", self._render_layer_preview)
 
     def _manual_mode_enabled(self) -> bool:
         return bool(self.manual_mode_var.get())
+
+    def _edit_target_sides(self) -> list[str]:
+        target = self.manual_edit_target_var.get()
+        if target == "left":
+            return ["left"]
+        if target == "right":
+            return ["right"]
+        return ["right", "left"]
+
+    def _display_side(self) -> str:
+        return "left" if self.manual_edit_target_var.get() == "left" else "right"
 
     def _on_manual_mode_toggle(self) -> None:
         snapshot = self.active_snapshot
@@ -453,9 +486,9 @@ class TabURCaps(ttk.Frame):
             layer_idx = self._selected_layer_index(len(snapshot.layer_rects_list))
             signature = self._current_signature(layer_idx)
             if signature:
-                self._ensure_manual_order_for_signature(
-                    signature, len(snapshot.layer_rects_list[layer_idx - 1])
-                )
+                rect_count = len(snapshot.layer_rects_list[layer_idx - 1])
+                for side in ("right", "left"):
+                    self._ensure_manual_order_for_signature(signature, rect_count, side)
         self._render_layer_preview()
 
     def _current_signature(self, layer_idx: int) -> str | None:
@@ -463,28 +496,39 @@ class TabURCaps(ttk.Frame):
             return None
         return self.layer_signatures[layer_idx - 1]
 
-    def _ensure_manual_order_for_signature(self, signature: str, rect_count: int) -> list[int]:
-        order = self.manual_orders_by_signature.get(signature)
+    def _ensure_manual_order_for_signature(
+        self, signature: str, rect_count: int, side: str
+    ) -> list[int]:
+        side_orders = self.manual_orders_by_side.setdefault(side, {})
+        side_progress = self.manual_progress_by_side.setdefault(side, {})
+        order = side_orders.get(signature)
         if not order or len(order) != rect_count:
             order = list(range(rect_count))
-            self.manual_orders_by_signature[signature] = order
-            self.manual_progress_by_signature[signature] = 0
+            side_orders[signature] = order
+            side_progress[signature] = 0
         else:
-            self.manual_progress_by_signature.setdefault(signature, rect_count)
+            side_progress.setdefault(signature, rect_count)
         return order
 
-    def _manual_orders_payload(self, snapshot: PalletSnapshot) -> dict[str, list[int]] | None:
+    def _manual_orders_payload(
+        self, snapshot: PalletSnapshot
+    ) -> tuple[dict[str, list[int]], dict[str, list[int]]] | None:
         if not self._manual_mode_enabled():
             return None
-        orders: dict[str, list[int]] = {}
+        orders_right: dict[str, list[int]] = {}
+        orders_left: dict[str, list[int]] = {}
         for idx, rects in enumerate(snapshot.layer_rects_list, start=1):
             signature = self._current_signature(idx)
             if not signature:
                 continue
-            orders[signature] = list(
-                self._ensure_manual_order_for_signature(signature, len(rects))
+            rect_count = len(rects)
+            orders_right[signature] = list(
+                self._ensure_manual_order_for_signature(signature, rect_count, "right")
             )
-        return orders
+            orders_left[signature] = list(
+                self._ensure_manual_order_for_signature(signature, rect_count, "left")
+            )
+        return orders_right, orders_left
 
     def _update_manual_hint(self, signature: str | None, layer_idx: int) -> None:
         if not signature:
@@ -501,10 +545,11 @@ class TabURCaps(ttk.Frame):
 
     def _prune_manual_orders(self) -> None:
         valid_signatures = set(self.layer_signatures)
-        for signature in list(self.manual_orders_by_signature.keys()):
-            if signature not in valid_signatures:
-                self.manual_orders_by_signature.pop(signature, None)
-                self.manual_progress_by_signature.pop(signature, None)
+        for side in ("right", "left"):
+            for signature in list(self.manual_orders_by_side.get(side, {}).keys()):
+                if signature not in valid_signatures:
+                    self.manual_orders_by_side[side].pop(signature, None)
+                    self.manual_progress_by_side[side].pop(signature, None)
 
     def _update_signature_context(self, snapshot: PalletSnapshot, config: PallyExportConfig) -> None:
         swap_axes = bool(config.swap_axes_for_pally)
@@ -565,9 +610,10 @@ class TabURCaps(ttk.Frame):
         signature = self._current_signature(layer_idx)
         if not signature:
             return
-        order = self._ensure_manual_order_for_signature(
-            signature, len(snapshot.layer_rects_list[layer_idx - 1])
-        )
+        rect_count = len(snapshot.layer_rects_list[layer_idx - 1])
+        target_sides = self._edit_target_sides()
+        base_side = self._display_side() if self._display_side() in target_sides else target_sides[0]
+        order = self._ensure_manual_order_for_signature(signature, rect_count, base_side)
         selection = self.order_tree.selection()
         if not selection:
             return
@@ -577,8 +623,9 @@ class TabURCaps(ttk.Frame):
             return
         value = order.pop(selected_index)
         order.insert(target, value)
-        self.manual_orders_by_signature[signature] = order
-        self.manual_progress_by_signature[signature] = len(order)
+        for side in target_sides:
+            self.manual_orders_by_side[side][signature] = list(order)
+            self.manual_progress_by_side[side][signature] = len(order)
         self._render_layer_preview()
 
     def _move_selected_to(self) -> None:
@@ -591,9 +638,10 @@ class TabURCaps(ttk.Frame):
         signature = self._current_signature(layer_idx)
         if not signature:
             return
-        order = self._ensure_manual_order_for_signature(
-            signature, len(snapshot.layer_rects_list[layer_idx - 1])
-        )
+        rect_count = len(snapshot.layer_rects_list[layer_idx - 1])
+        target_sides = self._edit_target_sides()
+        base_side = self._display_side() if self._display_side() in target_sides else target_sides[0]
+        order = self._ensure_manual_order_for_signature(signature, rect_count, base_side)
         selection = self.order_tree.selection()
         if not selection:
             return
@@ -606,8 +654,9 @@ class TabURCaps(ttk.Frame):
         selected_index = self.order_tree.index(selection[0])
         value = order.pop(selected_index)
         order.insert(target, value)
-        self.manual_orders_by_signature[signature] = order
-        self.manual_progress_by_signature[signature] = len(order)
+        for side in target_sides:
+            self.manual_orders_by_side[side][signature] = list(order)
+            self.manual_progress_by_side[side][signature] = len(order)
         self._render_layer_preview()
 
     def _reverse_manual_order(self) -> None:
@@ -620,12 +669,14 @@ class TabURCaps(ttk.Frame):
         signature = self._current_signature(layer_idx)
         if not signature:
             return
-        order = self._ensure_manual_order_for_signature(
-            signature, len(snapshot.layer_rects_list[layer_idx - 1])
-        )
+        rect_count = len(snapshot.layer_rects_list[layer_idx - 1])
+        target_sides = self._edit_target_sides()
+        base_side = self._display_side() if self._display_side() in target_sides else target_sides[0]
+        order = self._ensure_manual_order_for_signature(signature, rect_count, base_side)
         order.reverse()
-        self.manual_orders_by_signature[signature] = order
-        self.manual_progress_by_signature[signature] = len(order)
+        for side in target_sides:
+            self.manual_orders_by_side[side][signature] = list(order)
+            self.manual_progress_by_side[side][signature] = len(order)
         self._render_layer_preview()
 
     def _reset_manual_order(self) -> None:
@@ -637,8 +688,10 @@ class TabURCaps(ttk.Frame):
         if not signature:
             return
         rect_count = len(snapshot.layer_rects_list[layer_idx - 1])
-        self.manual_orders_by_signature[signature] = list(range(rect_count))
-        self.manual_progress_by_signature[signature] = 0
+        target_sides = self._edit_target_sides()
+        for side in target_sides:
+            self.manual_orders_by_side[side][signature] = list(range(rect_count))
+            self.manual_progress_by_side[side][signature] = 0
         self._render_layer_preview()
 
     def _collect_config(self) -> URCapsConfig:
@@ -714,6 +767,7 @@ class TabURCaps(ttk.Frame):
         config = self._make_pally_config(snapshot, ur_config, name_override="preview")
         self._update_signature_context(snapshot, config)
         manual_orders = self._manual_orders_payload(snapshot)
+        orders_right, orders_left = manual_orders if manual_orders else (None, None)
 
         return build_pally_json(
             config=config,
@@ -722,10 +776,13 @@ class TabURCaps(ttk.Frame):
             include_base_slip=(
                 bool(self.pally_slip_vars[0].get()) if self.pally_slip_vars else True
             ),
-            manual_orders_by_signature=manual_orders,
+            manual_orders_by_signature=orders_right,
+            manual_orders_alt_by_signature=orders_left,
         )
 
-    def _extract_layer_pattern(self, payload: dict, layer_idx: int) -> list[dict] | None:
+    def _extract_layer_patterns(
+        self, payload: dict, layer_idx: int
+    ) -> tuple[list[dict], list[dict]] | None:
         layer_types = {lt.get("name"): lt for lt in payload.get("layerTypes", [])}
         layer_counter = 0
         for layer_name in payload.get("layers", []):
@@ -734,26 +791,30 @@ class TabURCaps(ttk.Frame):
                 continue
             layer_counter += 1
             if layer_counter == layer_idx:
-                return layer_type.get("pattern") or []
+                pattern = layer_type.get("pattern") or []
+                alt_pattern = layer_type.get("altPattern") or list(pattern)
+                return pattern, alt_pattern
         return None
 
     def _draw_empty_preview(self, message: str) -> None:
-        self.preview_ax.clear()
-        self.preview_ax.axis("off")
-        self.preview_boxes_info = []
+        for side, ax in self.preview_axes.items():
+            ax.clear()
+            ax.axis("off")
+            self.preview_boxes_info[side] = []
+            ax.text(
+                0.5,
+                0.5,
+                message,
+                ha="center",
+                va="center",
+                transform=ax.transAxes,
+            )
         self.current_preview_signature = None
-        self.preview_ax.text(
-            0.5,
-            0.5,
-            message,
-            ha="center",
-            va="center",
-            transform=self.preview_ax.transAxes,
-        )
         self.preview_canvas.draw()
 
     def _draw_layer_pattern(
         self,
+        ax,
         payload: dict,
         pattern: list[dict],
         layer_idx: int,
@@ -771,13 +832,11 @@ class TabURCaps(ttk.Frame):
             self._draw_empty_preview("Brak danych do podglądu")
             return
 
-        self.preview_ax.clear()
-        side_label = "prawa" if self.preview_side_var.get() == "right" else "lewa"
-        self.preview_ax.set_title(f"Warstwa {layer_idx} ({side_label})")
-        self.preview_ax.set_aspect("equal")
-        self.preview_ax.add_patch(
-            Rectangle((0, 0), pallet_w, pallet_l, fill=False, edgecolor="black", lw=1.5)
-        )
+        ax.clear()
+        side_label = "prawa" if side == "right" else "lewa"
+        ax.set_title(f"Warstwa {layer_idx} ({side_label})")
+        ax.set_aspect("equal")
+        ax.add_patch(Rectangle((0, 0), pallet_w, pallet_l, fill=False, edgecolor="black", lw=1.5))
 
         centers: list[tuple[float, float]] = []
         boxes: list[tuple[int, tuple[float, float, float, float]]] = []
@@ -791,7 +850,7 @@ class TabURCaps(ttk.Frame):
             x_left = x_center - width / 2.0
             y_bottom = y_center - length / 2.0
             boxes.append((idx - 1, (x_left, x_left + width, y_bottom, y_bottom + length)))
-            self.preview_ax.add_patch(
+            ax.add_patch(
                 Rectangle(
                     (x_left, y_bottom),
                     width,
@@ -803,7 +862,7 @@ class TabURCaps(ttk.Frame):
                     alpha=0.9,
                 )
             )
-            self.preview_ax.text(
+            ax.text(
                 x_center,
                 y_center,
                 str(idx),
@@ -814,7 +873,7 @@ class TabURCaps(ttk.Frame):
                 fontweight="bold",
             )
             if centers:
-                self.preview_ax.annotate(
+                ax.annotate(
                     "",
                     xy=(x_center, y_center),
                     xytext=centers[-1],
@@ -822,22 +881,18 @@ class TabURCaps(ttk.Frame):
                 )
             centers.append((x_center, y_center))
 
-        self.preview_boxes_info = boxes
+        self.preview_boxes_info[side] = boxes
 
-        self.preview_ax.set_xlim(
-            0, max(pallet_w, max((c[0] for c in centers), default=0))
-        )
-        self.preview_ax.set_ylim(
-            0, max(pallet_l, max((c[1] for c in centers), default=0))
-        )
-        self.preview_ax.grid(True, linestyle="--", alpha=0.2)
-        self.preview_ax.set_xlabel("Szerokość [mm]")
-        self.preview_ax.set_ylabel("Długość [mm]")
-        self._draw_approach_arrow(pallet_w, pallet_l, approach, side)
+        ax.set_xlim(0, max(pallet_w, max((c[0] for c in centers), default=0)))
+        ax.set_ylim(0, max(pallet_l, max((c[1] for c in centers), default=0)))
+        ax.grid(True, linestyle="--", alpha=0.2)
+        ax.set_xlabel("Szerokość [mm]")
+        ax.set_ylabel("Długość [mm]")
+        self._draw_approach_arrow(ax, pallet_w, pallet_l, approach, side)
         self.preview_canvas.draw()
 
     def _draw_approach_arrow(
-        self, pallet_w: float, pallet_l: float, approach: str, side: str
+        self, ax, pallet_w: float, pallet_l: float, approach: str, side: str
     ) -> None:
         arrow_color = "#7f3fbf"
         is_inverse = approach == "inverse"
@@ -847,13 +902,13 @@ class TabURCaps(ttk.Frame):
             start_y, end_y = pallet_l * 0.15, pallet_l * 0.85
         margin = pallet_w * 0.08
         x = pallet_w - margin if side == "right" else margin
-        self.preview_ax.annotate(
+        ax.annotate(
             "",
             xy=(x, end_y),
             xytext=(x, start_y),
             arrowprops={"arrowstyle": "simple", "color": arrow_color, "alpha": 0.4},
         )
-        self.preview_ax.text(
+        ax.text(
             x,
             (start_y + end_y) / 2,
             f"{side.upper()} | {approach}",
@@ -863,16 +918,25 @@ class TabURCaps(ttk.Frame):
             fontsize=9,
         )
 
-    def _box_index_from_event(self, x: float | None, y: float | None) -> int | None:
+    def _box_index_from_event(
+        self, side: str, x: float | None, y: float | None
+    ) -> int | None:
         if x is None or y is None:
             return None
-        for idx, (x_left, x_right, y_bottom, y_top) in self.preview_boxes_info:
+        for idx, (x_left, x_right, y_bottom, y_top) in self.preview_boxes_info.get(
+            side, []
+        ):
             if x_left <= x <= x_right and y_bottom <= y <= y_top:
                 return idx
         return None
 
     def _on_canvas_click(self, event) -> None:  # noqa: ANN001
-        if not self._manual_mode_enabled() or event.inaxes != self.preview_ax:
+        if not self._manual_mode_enabled() or event.inaxes not in self.preview_axes.values():
+            return
+        side_clicked = next(
+            (name for name, ax in self.preview_axes.items() if ax == event.inaxes), None
+        )
+        if side_clicked is None:
             return
         snapshot = self.active_snapshot
         signature = self.current_preview_signature
@@ -880,33 +944,43 @@ class TabURCaps(ttk.Frame):
             return
         layer_idx = self._selected_layer_index(len(snapshot.layer_rects_list))
         rect_count = len(snapshot.layer_rects_list[layer_idx - 1])
-        order = self._ensure_manual_order_for_signature(signature, rect_count)
-        progress = self.manual_progress_by_signature.get(signature, 0)
+        target_sides = self._edit_target_sides()
+        if side_clicked not in target_sides and len(target_sides) == 1:
+            return
+        base_side = side_clicked if side_clicked in target_sides else target_sides[0]
 
-        box_idx = self._box_index_from_event(event.xdata, event.ydata)
+        orders = {
+            side: self._ensure_manual_order_for_signature(signature, rect_count, side)
+            for side in target_sides
+        }
+        base_order = orders[base_side]
+        progress = self.manual_progress_by_side.get(base_side, {}).get(signature, 0)
+
+        box_idx = self._box_index_from_event(side_clicked, event.xdata, event.ydata)
         if box_idx is None:
             return
 
         if event.button == 1:
-            if box_idx in order[:progress]:
+            if box_idx in base_order[:progress]:
                 return
-            if box_idx in order:
-                order.remove(box_idx)
-            order.insert(progress, box_idx)
-            progress = min(progress + 1, len(order))
+            if box_idx in base_order:
+                base_order.remove(box_idx)
+            base_order.insert(progress, box_idx)
+            progress = min(progress + 1, len(base_order))
         elif event.button == 3:
             if progress > 0:
-                removed = order.pop(progress - 1)
-                order.append(removed)
+                removed = base_order.pop(progress - 1)
+                base_order.append(removed)
                 progress -= 1
             else:
-                order[:] = list(range(len(order)))
+                base_order[:] = list(range(len(base_order)))
                 progress = 0
         else:
             return
 
-        self.manual_orders_by_signature[signature] = order
-        self.manual_progress_by_signature[signature] = progress
+        for side in target_sides:
+            self.manual_orders_by_side[side][signature] = list(base_order)
+            self.manual_progress_by_side[side][signature] = progress
         self._render_layer_preview()
 
     def _render_layer_preview(self, *args) -> None:  # noqa: ARG002
@@ -921,32 +995,47 @@ class TabURCaps(ttk.Frame):
             self._draw_empty_preview("Brak danych do podglądu")
             return
 
-        pattern = self._extract_layer_pattern(payload, layer_idx)
-        if not pattern:
+        patterns = self._extract_layer_patterns(payload, layer_idx)
+        if not patterns:
             self._draw_empty_preview("Brak wzoru warstwy")
             return
+        pattern, alt_pattern = patterns
 
         signature = self._current_signature(layer_idx)
         self.current_preview_signature = signature
         self._update_manual_hint(signature, layer_idx)
 
         if self._manual_mode_enabled() and signature:
-            order = self._ensure_manual_order_for_signature(
-                signature, len(pattern)
+            order_right = self._ensure_manual_order_for_signature(
+                signature, len(pattern), "right"
+            )
+            order_left = self._ensure_manual_order_for_signature(
+                signature, len(alt_pattern), "left"
             )
         else:
-            order = list(range(len(pattern)))
-        self._refresh_order_tree(order)
+            order_right = list(range(len(pattern)))
+            order_left = list(range(len(alt_pattern)))
 
-        side = self.preview_side_var.get()
-        approach = (
-            self.approach_right_var.get()
-            if side == "right"
-            else self.approach_left_var.get()
-        )
+        display_order = order_left if self._display_side() == "left" else order_right
+        self._refresh_order_tree(display_order)
 
         try:
-            self._draw_layer_pattern(payload, pattern, layer_idx, approach, side)
+            self._draw_layer_pattern(
+                self.preview_ax_right,
+                payload,
+                pattern,
+                layer_idx,
+                self.approach_right_var.get(),
+                "right",
+            )
+            self._draw_layer_pattern(
+                self.preview_ax_left,
+                payload,
+                alt_pattern,
+                layer_idx,
+                self.approach_left_var.get(),
+                "left",
+            )
         except Exception:  # noqa: BLE001
             logger.exception("Failed to draw UR CAPS layer preview")
             self._draw_empty_preview("Błąd podglądu")
@@ -981,13 +1070,15 @@ class TabURCaps(ttk.Frame):
         config = self._make_pally_config(snapshot, ur_config)
         self._update_signature_context(snapshot, config)
         manual_orders = self._manual_orders_payload(snapshot)
+        orders_right, orders_left = manual_orders if manual_orders else (None, None)
 
         payload = build_pally_json(
             config=config,
             layer_rects_list=layer_rects_list,
             slips_after=ur_config.slips_after,
             include_base_slip=bool(self.pally_slip_vars[0].get()) if self.pally_slip_vars else True,
-            manual_orders_by_signature=manual_orders,
+            manual_orders_by_signature=orders_right,
+            manual_orders_alt_by_signature=orders_left,
         )
 
         warnings = find_out_of_bounds(payload)
