@@ -176,13 +176,17 @@ class TabURCaps(ttk.Frame):
             width=25,
         ).grid(row=3, column=1, padx=4, pady=4, sticky="w")
 
+        approach_help = (
+            "Approach (prawa) steruje kierunkiem odkładania dla prawej palety, "
+            "altApproach dla lewej.\n"
+            "normal – start od frontu palety.\n"
+            "inverse – start od tyłu i bez ręcznej kolejności odwróci domyślną sekwencję.\n"
+            "Strzałki w podglądzie pokazują kierunek, który trafi do eksportu."
+        )
         ttk.Label(
             basic_frame,
-            text=(
-                "approach dotyczy prawej palety, altApproach lewej; normal/inverse "
-                "zmienia kierunek budowy warstwy i kolejność odkładania"
-            ),
-            wraplength=360,
+            text=approach_help,
+            wraplength=380,
             justify="left",
         ).grid(row=4, column=0, columnspan=2, padx=4, pady=(0, 4), sticky="w")
 
@@ -776,8 +780,8 @@ class TabURCaps(ttk.Frame):
             include_base_slip=(
                 bool(self.pally_slip_vars[0].get()) if self.pally_slip_vars else True
             ),
-            manual_orders_by_signature=orders_right,
-            manual_orders_alt_by_signature=orders_left,
+            manual_orders_by_signature_right=orders_right,
+            manual_orders_by_signature_left=orders_left,
         )
 
     def _extract_layer_patterns(
@@ -906,16 +910,21 @@ class TabURCaps(ttk.Frame):
             "",
             xy=(x, end_y),
             xytext=(x, start_y),
-            arrowprops={"arrowstyle": "simple", "color": arrow_color, "alpha": 0.4},
+            arrowprops={"arrowstyle": "-|>", "color": arrow_color, "alpha": 0.7, "lw": 2},
         )
+        ax.plot([x], [start_y], marker="o", color=arrow_color, markersize=4, alpha=0.9)
+        direction_label = "inverse (od tyłu)" if is_inverse else "normal (od frontu)"
+        ha = "right" if side == "right" else "left"
+        x_offset = -margin * 0.3 if side == "right" else margin * 0.3
         ax.text(
-            x,
+            x + x_offset,
             (start_y + end_y) / 2,
-            f"{side.upper()} | {approach}",
-            ha="right" if side == "right" else "left",
+            f"{side.upper()}: {direction_label}",
+            ha=ha,
             va="center",
-            color=arrow_color,
+            color="black",
             fontsize=9,
+            bbox={"boxstyle": "round,pad=0.2", "fc": "#f3e6ff", "ec": "none", "alpha": 0.7},
         )
 
     def _box_index_from_event(
@@ -1077,8 +1086,8 @@ class TabURCaps(ttk.Frame):
             layer_rects_list=layer_rects_list,
             slips_after=ur_config.slips_after,
             include_base_slip=bool(self.pally_slip_vars[0].get()) if self.pally_slip_vars else True,
-            manual_orders_by_signature=orders_right,
-            manual_orders_alt_by_signature=orders_left,
+            manual_orders_by_signature_right=orders_right,
+            manual_orders_by_signature_left=orders_left,
         )
 
         warnings = find_out_of_bounds(payload)

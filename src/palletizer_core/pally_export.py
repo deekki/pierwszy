@@ -32,8 +32,8 @@ class PallyExportConfig:
     swap_axes_for_pally: Optional[bool] = None
     quant_step_mm: float = 0.5
     signature_eps_mm: float = 0.5
-    approach: str = "inverse"
-    alt_approach: str = "inverse"
+    approach: str = "normal"
+    alt_approach: str = "normal"
     placement_sequence: str = "default"
 
     def __post_init__(self) -> None:
@@ -229,6 +229,8 @@ def build_pally_json(
     include_base_slip: bool = True,
     manual_orders_by_signature: Optional[Dict[str, List[int]]] = None,
     manual_orders_alt_by_signature: Optional[Dict[str, List[int]]] = None,
+    manual_orders_by_signature_right: Optional[Dict[str, List[int]]] = None,
+    manual_orders_by_signature_left: Optional[Dict[str, List[int]]] = None,
 ) -> Dict:
     num_layers = len(layer_rects_list)
     swap_axes = bool(config.swap_axes_for_pally)
@@ -244,8 +246,35 @@ def build_pally_json(
     layer_type_names: List[str] = []
     next_idx = 1
 
-    manual_orders_by_signature = manual_orders_by_signature or {}
-    manual_orders_alt_by_signature = manual_orders_alt_by_signature or manual_orders_by_signature
+    manual_orders_right = (
+        manual_orders_by_signature_right
+        or manual_orders_by_signature
+        or {}
+    )
+    manual_orders_left = (
+        manual_orders_by_signature_left
+        if manual_orders_by_signature_left is not None
+        else manual_orders_alt_by_signature
+    )
+    if manual_orders_left is None:
+        manual_orders_left = manual_orders_right
+
+    def _apply_order(
+        pattern: List[Dict], manual_order: Optional[List[int]], approach: str, label: str
+    ) -> List[Dict]:
+        if manual_order:
+            if len(manual_order) != len(pattern):
+                logger.warning(
+                    "Manual permutation length mismatch for %s: %s != %s",  # noqa: TRY400
+                    label,
+                    len(manual_order),
+                    len(pattern),
+                )
+            else:
+                return [pattern[idx] for idx in manual_order]
+        if approach == "inverse":
+            return list(reversed(pattern))
+        return pattern
 
     for rects in layer_rects_list:
         rects_to_use = _swap_rect_axes(rects) if swap_axes else rects
@@ -260,8 +289,8 @@ def build_pally_json(
             placement_sequence=config.placement_sequence,
         )
         signature = layout_signature(signature_rects, eps=config.signature_eps_mm)
-        manual_order = manual_orders_by_signature.get(str(signature))
-        manual_order_alt = manual_orders_alt_by_signature.get(str(signature))
+        manual_order = manual_orders_right.get(str(signature))
+        manual_order_alt = manual_orders_left.get(str(signature))
         if signature not in signature_to_name:
             layer_name = f"Layer type: {next_idx}"
             next_idx += 1
@@ -269,26 +298,13 @@ def build_pally_json(
             alt_pattern = (
                 list(pattern) if config.alt_layout == "altPattern" else mirror_pattern(pattern, pallet_width)
             )
-            if manual_order:
-                if len(manual_order) != len(pattern):
-                    logger.warning(
-                        "Manual permutation length mismatch for signature %s: %s != %s",  # noqa: TRY400
-                        signature,
-                        len(manual_order),
-                        len(pattern),
-                    )
-                else:
-                    pattern = [pattern[idx] for idx in manual_order]
-            if manual_order_alt:
-                if len(manual_order_alt) != len(alt_pattern):
-                    logger.warning(
-                        "Manual permutation length mismatch for alt signature %s: %s != %s",  # noqa: TRY400
-                        signature,
-                        len(manual_order_alt),
-                        len(alt_pattern),
-                    )
-                else:
-                    alt_pattern = [alt_pattern[idx] for idx in manual_order_alt]
+            pattern = _apply_order(pattern, manual_order, config.approach, f"signature {signature}")
+            alt_pattern = _apply_order(
+                alt_pattern,
+                manual_order_alt,
+                config.alt_approach,
+                f"alt signature {signature}",
+            )
             layer_types.append(
                 {
                     "name": layer_name,

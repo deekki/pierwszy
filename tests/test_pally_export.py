@@ -1,4 +1,5 @@
 import re
+from dataclasses import replace
 
 from palletizer_core.pally_export import (
     PallyExportConfig,
@@ -404,7 +405,7 @@ def test_alt_pattern_uses_configured_mode():
         slips_after=set(),
     )
     layer = next(lt for lt in data["layerTypes"] if lt.get("class") == "layer")
-    assert layer["pattern"] == layer["altPattern"]
+    assert layer["altPattern"] == list(reversed(layer["pattern"]))
     assert layer["approach"] == "normal"
     assert layer["altApproach"] == "inverse"
 
@@ -547,8 +548,8 @@ def test_manual_permutation_can_differ_for_alt_pattern():
         config=config,
         layer_rects_list=[rects],
         slips_after=set(),
-        manual_orders_by_signature={signature: manual_order_right},
-        manual_orders_alt_by_signature={signature: manual_order_left},
+        manual_orders_by_signature_right={signature: manual_order_right},
+        manual_orders_by_signature_left={signature: manual_order_left},
     )
 
     expected_pattern = [data_auto["layerTypes"][1]["pattern"][idx] for idx in manual_order_right]
@@ -558,3 +559,106 @@ def test_manual_permutation_can_differ_for_alt_pattern():
     layer = next(lt for lt in data_manual["layerTypes"] if lt.get("class") == "layer")
     assert layer["pattern"] == expected_pattern
     assert layer["altPattern"] == expected_alt_pattern
+
+
+def test_inverse_approach_reverses_pattern_without_manual_order():
+    rects = [
+        (0.0, 0.0, 100.0, 200.0),
+        (150.0, 0.0, 100.0, 200.0),
+        (0.0, 250.0, 100.0, 200.0),
+    ]
+    config_normal = PallyExportConfig(
+        name="Test",
+        pallet_w=800,
+        pallet_l=1200,
+        pallet_h=150,
+        box_w=100,
+        box_l=200,
+        box_h=300,
+        box_weight_g=500,
+        overhang_ends=0,
+        overhang_sides=0,
+        approach="normal",
+        alt_approach="normal",
+    )
+    config_inverse = PallyExportConfig(
+        name="Test",
+        pallet_w=800,
+        pallet_l=1200,
+        pallet_h=150,
+        box_w=100,
+        box_l=200,
+        box_h=300,
+        box_weight_g=500,
+        overhang_ends=0,
+        overhang_sides=0,
+        approach="inverse",
+        alt_approach="inverse",
+    )
+
+    normal = build_pally_json(config=config_normal, layer_rects_list=[rects], slips_after=set())
+    inverse = build_pally_json(config=config_inverse, layer_rects_list=[rects], slips_after=set())
+
+    normal_pattern = next(lt for lt in normal["layerTypes"] if lt.get("class") == "layer")[
+        "pattern"
+    ]
+    inverse_pattern = next(lt for lt in inverse["layerTypes"] if lt.get("class") == "layer")[
+        "pattern"
+    ]
+
+    assert inverse_pattern == list(reversed(normal_pattern))
+
+
+def test_manual_order_has_priority_over_inverse_approach():
+    rects = [
+        (0.0, 0.0, 100.0, 200.0),
+        (150.0, 0.0, 100.0, 200.0),
+        (0.0, 250.0, 100.0, 200.0),
+    ]
+    base_config = PallyExportConfig(
+        name="Test",
+        pallet_w=800,
+        pallet_l=1200,
+        pallet_h=150,
+        box_w=100,
+        box_l=200,
+        box_h=300,
+        box_weight_g=500,
+        overhang_ends=0,
+        overhang_sides=0,
+    )
+    _, signature_rects = rects_to_pally_pattern(
+        rects,
+        carton_w=base_config.box_w,
+        carton_l=base_config.box_l,
+        pallet_w=base_config.pallet_w,
+        pallet_l=base_config.pallet_l,
+        quant_step_mm=base_config.quant_step_mm,
+        label_orientation=base_config.label_orientation,
+        placement_sequence=base_config.placement_sequence,
+    )
+    signature = str(layout_signature(signature_rects, eps=base_config.signature_eps_mm))
+
+    manual_order = [2, 0, 1]
+    normal = build_pally_json(
+        config=replace(base_config, approach="normal", alt_approach="normal"),
+        layer_rects_list=[rects],
+        slips_after=set(),
+    )
+    manual_override = build_pally_json(
+        config=replace(base_config, approach="inverse", alt_approach="inverse"),
+        layer_rects_list=[rects],
+        slips_after=set(),
+        manual_orders_by_signature_right={signature: manual_order},
+        manual_orders_by_signature_left={signature: manual_order},
+    )
+
+    expected_pattern = [
+        next(lt for lt in normal["layerTypes"] if lt.get("class") == "layer")["pattern"][idx]
+        for idx in manual_order
+    ]
+    result_pattern = next(
+        lt for lt in manual_override["layerTypes"] if lt.get("class") == "layer"
+    )["pattern"]
+
+    assert result_pattern == expected_pattern
