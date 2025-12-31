@@ -212,6 +212,57 @@ def test_quantization_prevents_noise():
     assert pattern["y"] == 170.0
 
 
+def test_rotation_selection_with_label_orientation():
+    rects = [
+        (50.0, 50.0, 100.0, 200.0),
+        (50.0, 900.0, 100.0, 200.0),
+        (50.0, 50.0, 200.0, 100.0),
+        (600.0, 50.0, 200.0, 100.0),
+    ]
+    pattern, _ = rects_to_pally_pattern(
+        rects=rects,
+        carton_w=100.0,
+        carton_l=200.0,
+        pallet_w=800.0,
+        pallet_l=1200.0,
+        quant_step_mm=1.0,
+        label_orientation=180,
+        placement_sequence="default",
+    )
+
+    rotations = {(item["x"], item["y"]): item["r"][0] for item in pattern}
+    assert rotations[(100.0, 150.0)] == 180
+    assert rotations[(100.0, 1000.0)] == 0
+    assert rotations[(150.0, 100.0)] == 90
+    assert rotations[(700.0, 100.0)] == 270
+
+
+def test_layer_types_are_reused_for_repeating_patterns():
+    rects_a = [(0.0, 0.0, 100.0, 200.0)]
+    rects_b = [(0.0, 0.0, 200.0, 100.0)]
+    payload = build_pally_json(
+        config=PallyExportConfig(
+            name="Test",
+            pallet_w=800,
+            pallet_l=1200,
+            pallet_h=150,
+            box_w=100,
+            box_l=200,
+            box_h=300,
+            box_weight_g=500,
+            overhang_ends=0,
+            overhang_sides=0,
+        ),
+        layer_rects_list=[rects_a, rects_b, rects_a, rects_b, rects_a],
+        slips_after=set(),
+    )
+
+    assert len(payload["layerTypes"]) == 3
+    used_layers = set(payload["layers"])
+    assert "Layer type: 3" not in used_layers
+    assert "Layer type: 4" not in used_layers
+
+
 def test_dedupe_tolerant_signature():
     base_layer = [(0.0, 0.0, 100.0, 200.0)]
     noisy_layer = [(0.0001, 0.0, 100.0002, 199.9999)]

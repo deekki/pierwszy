@@ -68,6 +68,10 @@ class TabURCaps(ttk.Frame):
             "left": [],
         }
         self.current_preview_signature: str | None = None
+        self.loaded_payload: dict | None = None
+        self.pallet_height_override_var = tk.StringVar(value="")
+        self.dimensions_height_override_var = tk.StringVar(value="")
+        self.pretty_json_var = tk.BooleanVar(value=False)
 
         self.build_ui()
 
@@ -127,6 +131,11 @@ class TabURCaps(ttk.Frame):
         ttk.Button(pattern_frame, text="Wczytaj wzór", command=self._load_pattern).pack(
             side=tk.LEFT
         )
+        ttk.Button(
+            pattern_frame,
+            text="Wczytaj PPB / PALLY JSON",
+            command=self.import_pally_json,
+        ).pack(side=tk.LEFT, padx=(6, 0))
 
         basic_frame = ttk.LabelFrame(export_frame, text="BASIC")
         basic_frame.grid(row=1, column=0, sticky="ew", padx=4, pady=(4, 8))
@@ -202,14 +211,38 @@ class TabURCaps(ttk.Frame):
         self.pally_slip_frame = ttk.Frame(basic_frame)
         self.pally_slip_frame.grid(row=6, column=1, padx=4, pady=4, sticky="w")
 
+        ttk.Label(basic_frame, text="Dimensions.height override (mm):").grid(
+            row=7, column=0, padx=4, pady=4, sticky="e"
+        )
+        ttk.Entry(
+            basic_frame,
+            textvariable=self.dimensions_height_override_var,
+            width=18,
+        ).grid(row=7, column=1, padx=4, pady=4, sticky="w")
+
+        ttk.Label(basic_frame, text="Pallet height override (mm):").grid(
+            row=8, column=0, padx=4, pady=4, sticky="e"
+        )
+        ttk.Entry(
+            basic_frame,
+            textvariable=self.pallet_height_override_var,
+            width=18,
+        ).grid(row=8, column=1, padx=4, pady=4, sticky="w")
+
         ttk.Button(
             export_frame,
             text="Eksportuj PALLY JSON",
             command=self.export_pally_json,
         ).grid(row=2, column=0, padx=4, pady=(8, 4), sticky="ew")
 
+        ttk.Checkbutton(
+            export_frame,
+            text="Pretty JSON",
+            variable=self.pretty_json_var,
+        ).grid(row=3, column=0, padx=4, pady=(0, 4), sticky="w")
+
         ttk.Label(export_frame, textvariable=self.status_var, justify="left").grid(
-            row=3, column=0, padx=4, pady=(2, 0), sticky="w"
+            row=4, column=0, padx=4, pady=(2, 0), sticky="w"
         )
 
         preview_frame = ttk.LabelFrame(main_frame, text="Podgląd warstwy")
@@ -360,6 +393,60 @@ class TabURCaps(ttk.Frame):
         except Exception:
             logger.exception("Failed to load pattern from UR CAPS")
 
+    def import_pally_json(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Wczytaj PPB / PALLY JSON",
+            filetypes=[("JSON", "*.json"), ("All files", "*.*")],
+        )
+        if not path:
+            self.status_var.set("Anulowano wczytywanie")
+            return
+
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Failed to load PALLY JSON")
+            messagebox.showerror(
+                "Błąd wczytywania", f"Nie udało się wczytać pliku: {exc}"
+            )
+            return
+
+        if not self._validate_pally_payload(payload):
+            messagebox.showerror("Nieprawidłowy plik", "Brak wymaganych pól PPB.")
+            return
+
+        self.loaded_payload = payload
+        layer_count = self._payload_layer_count(payload)
+        self._refresh_preview_layers(layer_count)
+        self._render_layer_preview()
+        self.status_var.set(f"Wczytano PPB: {os.path.basename(path)}")
+
+    @staticmethod
+    def _validate_pally_payload(payload: dict) -> bool:
+        if not payload:
+            return False
+        has_version = "PPB_VERSION_NO" in payload or "PPB_VERSION_NO" in payload.get(
+            "guiSettings", {}
+        )
+        if not has_version:
+            return False
+        for key in ("dimensions", "productDimensions", "layerTypes", "layers"):
+            if key not in payload:
+                return False
+        return True
+
+    @staticmethod
+    def _payload_layer_count(payload: dict) -> int:
+        layer_types = {lt.get("name"): lt for lt in payload.get("layerTypes", [])}
+        count = 0
+        for layer_name in payload.get("layers", []):
+            layer_type = layer_types.get(layer_name)
+            if not layer_type or layer_type.get("class") == "separator":
+                continue
+            count += 1
+        return count
+
     def fetch_from_pallet(self, quiet_if_missing: bool = False) -> None:
         snapshot = None
         snapshot_builders = [
@@ -400,6 +487,7 @@ class TabURCaps(ttk.Frame):
         self.manual_progress_by_side = previous_progress
         self.layer_signatures = []
         self.signature_to_layers = {}
+        self.loaded_payload = None
         self._update_snapshot_summary(snapshot)
         layer_count = snapshot.num_layers or len(snapshot.layers)
         self._update_slip_checkboxes(layer_count)
@@ -468,6 +556,16 @@ class TabURCaps(ttk.Frame):
             if var.get():
                 slips.add(idx)
         return slips
+
+    @staticmethod
+    def _parse_optional_int(value: str) -> int | None:
+        value = value.strip()
+        if not value:
+            return None
+        try:
+            return int(value)
+        except ValueError:
+            return None
 
     @staticmethod
     def _slugify_filename(value: str) -> str:
@@ -723,6 +821,12 @@ class TabURCaps(ttk.Frame):
             approach_right=self.approach_right_var.get(),
             approach_left=self.approach_left_var.get(),
             placement_sequence=self.placement_sequence_var.get(),
+            pallet_height_override=self._parse_optional_int(
+                self.pallet_height_override_var.get()
+            ),
+            dimensions_height_override=self._parse_optional_int(
+                self.dimensions_height_override_var.get()
+            ),
         )
 
     def _make_pally_config(
@@ -748,6 +852,8 @@ class TabURCaps(ttk.Frame):
             approach=ur_config.approach_right,
             alt_approach=ur_config.approach_left,
             placement_sequence=ur_config.placement_sequence,
+            pallet_height_override=ur_config.pallet_height_override,
+            dimensions_height_override=ur_config.dimensions_height_override,
         )
 
     def _choose_directory(self) -> None:
@@ -803,7 +909,7 @@ class TabURCaps(ttk.Frame):
 
     def _extract_layer_patterns(
         self, payload: dict, layer_idx: int
-    ) -> tuple[list[dict], list[dict]] | None:
+    ) -> tuple[list[dict], list[dict], str, str] | None:
         layer_types = {lt.get("name"): lt for lt in payload.get("layerTypes", [])}
         layer_counter = 0
         for layer_name in payload.get("layers", []):
@@ -814,7 +920,9 @@ class TabURCaps(ttk.Frame):
             if layer_counter == layer_idx:
                 pattern = layer_type.get("pattern") or []
                 alt_pattern = layer_type.get("altPattern") or list(pattern)
-                return pattern, alt_pattern
+                approach = layer_type.get("approach", "normal")
+                alt_approach = layer_type.get("altApproach", approach)
+                return pattern, alt_pattern, approach, alt_approach
         return None
 
     def _draw_empty_preview(self, message: str) -> None:
@@ -892,6 +1000,15 @@ class TabURCaps(ttk.Frame):
                 fontsize=9,
                 color="#0b5394",
                 fontweight="bold",
+            )
+            ax.text(
+                x_center,
+                y_center + min(length, width) * 0.18,
+                f"{rotation}",
+                ha="center",
+                va="center",
+                fontsize=7,
+                color="#0b5394",
             )
             if centers:
                 ax.annotate(
@@ -1010,28 +1127,42 @@ class TabURCaps(ttk.Frame):
         self._render_layer_preview()
 
     def _render_layer_preview(self, *args) -> None:  # noqa: ARG002
-        snapshot = self.active_snapshot
-        if snapshot is None or not snapshot.layer_rects_list:
-            self._draw_empty_preview("Brak danych do podglądu")
-            return
+        payload: dict | None
+        layer_count: int
+        signature: str | None = None
 
-        layer_idx = self._selected_layer_index(len(snapshot.layer_rects_list))
-        payload = self._build_preview_payload(snapshot)
+        if self.loaded_payload:
+            payload = self.loaded_payload
+            layer_count = self._payload_layer_count(payload)
+            self.manual_mode_var.set(False)
+        else:
+            snapshot = self.active_snapshot
+            if snapshot is None or not snapshot.layer_rects_list:
+                self._draw_empty_preview("Brak danych do podglądu")
+                return
+            layer_count = len(snapshot.layer_rects_list)
+            payload = self._build_preview_payload(snapshot)
+            signature = self._current_signature(
+                self._selected_layer_index(layer_count)
+            )
+
         if not payload:
             self._draw_empty_preview("Brak danych do podglądu")
             return
+
+        layer_idx = self._selected_layer_index(max(layer_count, 1))
+        self._refresh_preview_layers(layer_count)
 
         patterns = self._extract_layer_patterns(payload, layer_idx)
         if not patterns:
             self._draw_empty_preview("Brak wzoru warstwy")
             return
-        pattern, alt_pattern = patterns
+        pattern, alt_pattern, approach_right, approach_left = patterns
 
-        signature = self._current_signature(layer_idx)
         self.current_preview_signature = signature
         self._update_manual_hint(signature, layer_idx)
 
-        if self._manual_mode_enabled() and signature:
+        if signature and self._manual_mode_enabled():
             order_right = self._ensure_manual_order_for_signature(
                 signature, len(pattern), "right"
             )
@@ -1051,7 +1182,7 @@ class TabURCaps(ttk.Frame):
                 payload,
                 pattern,
                 layer_idx,
-                self.approach_right_var.get(),
+                approach_right,
                 "right",
             )
             self._draw_layer_pattern(
@@ -1059,7 +1190,7 @@ class TabURCaps(ttk.Frame):
                 payload,
                 alt_pattern,
                 layer_idx,
-                self.approach_left_var.get(),
+                approach_left,
                 "left",
             )
         except Exception:  # noqa: BLE001
@@ -1116,7 +1247,10 @@ class TabURCaps(ttk.Frame):
         filename = f"{self._slugify_filename(ur_config.name)}.json"
         path = os.path.join(ur_config.output_dir, filename)
         with open(path, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle, indent=4, ensure_ascii=False)
+            if self.pretty_json_var.get():
+                json.dump(payload, handle, indent=4, ensure_ascii=False)
+            else:
+                json.dump(payload, handle, ensure_ascii=False, separators=(",", ":"))
         self.status_var.set(f"Zapisano PALLY JSON: {path}")
 
 @dataclass
@@ -1130,6 +1264,8 @@ class URCapsConfig:
     approach_right: str = "inverse"
     approach_left: str = "inverse"
     placement_sequence: str = "default"
+    pallet_height_override: int | None = None
+    dimensions_height_override: int | None = None
 
     def to_dict(self) -> dict:
         data = asdict(self)
