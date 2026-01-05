@@ -216,8 +216,8 @@ class TabPallet(ttk.Frame):
 
         body_frame = ttk.Frame(content_panel)
         body_frame.grid(row=1, column=0, sticky="nsew", padx=PAD_X, pady=(0, 0))
-        body_frame.columnconfigure(0, weight=1)
-        body_frame.columnconfigure(1, weight=1)
+        body_frame.columnconfigure(0, weight=3, minsize=680)
+        body_frame.columnconfigure(1, weight=2, minsize=520)
         body_frame.rowconfigure(0, weight=1)
 
         left_col = ttk.Frame(body_frame)
@@ -241,7 +241,7 @@ class TabPallet(ttk.Frame):
 
         advanced_frame = ttk.LabelFrame(left_col, text="Zaawansowane")
         advanced_frame.grid(row=2, column=0, sticky="ew", padx=0, pady=(0, 0))
-        advanced_frame.columnconfigure(7, weight=1)
+        advanced_frame.columnconfigure(6, weight=1)
 
         self.pattern_stats_frame = ttk.LabelFrame(
             right_col, text="Ocena stabilności"
@@ -266,8 +266,12 @@ class TabPallet(ttk.Frame):
 
         layers_row1 = ttk.Frame(layers_frame)
         layers_row1.grid(row=0, column=0, sticky="nsew", padx=PAD_X, pady=(PAD_Y, PAD_Y))
-        for col in range(6):
-            layers_row1.columnconfigure(col, weight=1 if col in (1, 3, 5) else 0)
+        layers_row1.columnconfigure(0, weight=0)
+        layers_row1.columnconfigure(1, weight=1, minsize=150)
+        layers_row1.columnconfigure(2, weight=0)
+        layers_row1.columnconfigure(3, weight=1, minsize=180)
+        layers_row1.columnconfigure(4, weight=0)
+        layers_row1.columnconfigure(5, weight=1, minsize=150)
 
         ttk.Label(layers_row1, text="Paleta:").grid(
             row=0, column=0, padx=PAD_X, pady=PAD_Y, sticky="w"
@@ -485,8 +489,12 @@ class TabPallet(ttk.Frame):
 
         layers_row2 = ttk.Frame(layers_frame)
         layers_row2.grid(row=1, column=0, sticky="nsew", padx=PAD_X, pady=(0, PAD_Y))
-        for col in range(6):
-            layers_row2.columnconfigure(col, weight=1 if col in (1, 3) else 0)
+        layers_row2.columnconfigure(0, weight=0)
+        layers_row2.columnconfigure(1, weight=0, minsize=80)
+        layers_row2.columnconfigure(2, weight=1, minsize=240)
+        layers_row2.columnconfigure(3, weight=1, minsize=240)
+        layers_row2.columnconfigure(4, weight=1, minsize=200)
+        layers_row2.columnconfigure(5, weight=0)
 
         ttk.Label(layers_row2, text="Centrowanie:").grid(
             row=0, column=0, padx=PAD_X, pady=PAD_Y, sticky="w"
@@ -767,11 +775,13 @@ class TabPallet(ttk.Frame):
             "grip",
             "risk",
         )
+        display_cols = tuple(c for c in columns if c != "grip")
         self.pattern_tree = ttk.Treeview(
             self.pattern_stats_frame,
             columns=columns,
             show="headings",
             height=6,
+            displaycolumns=display_cols,
         )
         headings = {
             "pattern": "Wzór",
@@ -788,11 +798,33 @@ class TabPallet(ttk.Frame):
         }
         for col in columns:
             anchor = "w" if col == "pattern" else "e"
-            width = 180 if col == "pattern" else 110
-            min_width = 140 if col == "pattern" else 90
+            if col == "pattern":
+                width = 160
+                min_width = 120
+                stretch = True
+            elif col == "cartons":
+                width = 60
+                min_width = 50
+                stretch = False
+            elif col == "risk":
+                width = 60
+                min_width = 50
+                stretch = False
+            elif col == "grip":
+                width = 70
+                min_width = 50
+                stretch = False
+            else:
+                width = 80
+                min_width = 60
+                stretch = False
             self.pattern_tree.heading(col, text=headings[col])
             self.pattern_tree.column(
-                col, anchor=anchor, stretch=True, width=width, minwidth=min_width
+                col,
+                anchor=anchor,
+                stretch=stretch,
+                width=width,
+                minwidth=min_width,
             )
 
         scroll = ttk.Scrollbar(
