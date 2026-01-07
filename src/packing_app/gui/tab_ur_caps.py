@@ -34,6 +34,8 @@ class TabURCaps(ttk.Frame):
         self.pally_name_var = tk.StringVar(value="export")
         self.pally_out_dir_var = tk.StringVar(value=os.path.join(base_dir, "pally_exports"))
         self.pally_slip_vars: list[tk.BooleanVar] = []
+        self.box_weight_override_var = tk.StringVar(value="")
+        self.slip_summary_var = tk.StringVar(value="Przekładki (eksport): -")
         self.pally_label_orientation_map = {
             "Przód": 0,
             "Lewy bok": -90,
@@ -73,6 +75,7 @@ class TabURCaps(ttk.Frame):
         self.pallet_height_override_var = tk.StringVar(value="")
         self.dimensions_height_override_var = tk.StringVar(value="")
         self.pretty_json_var = tk.BooleanVar(value=False)
+        self.box_weight_override_var.trace_add("write", self._on_weight_override_changed)
 
         self.build_ui()
 
@@ -147,51 +150,68 @@ class TabURCaps(ttk.Frame):
 
         basic_frame = ttk.LabelFrame(export_frame, text="BASIC")
         basic_frame.grid(row=1, column=0, sticky="ew", padx=4, pady=(4, 8))
-        basic_frame.columnconfigure(1, weight=1)
+        basic_frame.columnconfigure(0, weight=1)
 
-        ttk.Label(basic_frame, text="Kierunek etykiety:").grid(
+        basic_grid = ttk.Frame(basic_frame)
+        basic_grid.grid(row=0, column=0, sticky="ew", padx=4, pady=4)
+        basic_grid.columnconfigure(0, weight=1)
+        basic_grid.columnconfigure(1, weight=1)
+
+        basic_left = ttk.Frame(basic_grid)
+        basic_left.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
+        basic_left.columnconfigure(1, weight=1)
+
+        basic_right = ttk.Frame(basic_grid)
+        basic_right.grid(row=0, column=1, sticky="nsew")
+        basic_right.columnconfigure(1, weight=1)
+
+        ttk.Label(basic_left, text="Kierunek etykiety:").grid(
             row=0, column=0, padx=4, pady=4, sticky="e"
         )
         ttk.Combobox(
-            basic_frame,
+            basic_left,
             textvariable=self.pally_label_orientation_display_var,
             values=list(self.pally_label_orientation_map.keys()),
             state="readonly",
             width=25,
         ).grid(row=0, column=1, padx=4, pady=4, sticky="w")
 
-        ttk.Label(basic_frame, text="Lewa paleta:").grid(
+        ttk.Label(basic_left, text="Swap axes for PALLY (EUR):").grid(
             row=1, column=0, padx=4, pady=4, sticky="e"
         )
+        ttk.Checkbutton(
+            basic_left,
+            variable=self.pally_swap_axes_var,
+        ).grid(row=1, column=1, padx=4, pady=4, sticky="w")
+
+        ttk.Label(basic_left, text="Nadpisz wysokość całkowitą (mm):").grid(
+            row=2, column=0, padx=4, pady=4, sticky="e"
+        )
+        ttk.Entry(
+            basic_left,
+            textvariable=self.dimensions_height_override_var,
+            width=18,
+        ).grid(row=2, column=1, padx=4, pady=4, sticky="w")
+
+        ttk.Label(basic_left, text="Nadpisz wysokość palety (mm):").grid(
+            row=3, column=0, padx=4, pady=4, sticky="e"
+        )
+        ttk.Entry(
+            basic_left,
+            textvariable=self.pallet_height_override_var,
+            width=18,
+        ).grid(row=3, column=1, padx=4, pady=4, sticky="w")
+
+        ttk.Label(basic_right, text="Lewa paleta:").grid(
+            row=0, column=0, padx=4, pady=4, sticky="e"
+        )
         ttk.Combobox(
-            basic_frame,
+            basic_right,
             textvariable=self.left_palette_mode_var,
             values=["mirror", "altPattern"],
             state="readonly",
             width=25,
-        ).grid(row=1, column=1, padx=4, pady=4, sticky="w")
-
-        ttk.Label(basic_frame, text="Approach (prawa):").grid(
-            row=2, column=0, padx=4, pady=4, sticky="e"
-        )
-        ttk.Combobox(
-            basic_frame,
-            textvariable=self.approach_right_var,
-            values=["normal", "inverse"],
-            state="readonly",
-            width=25,
-        ).grid(row=2, column=1, padx=4, pady=4, sticky="w")
-
-        ttk.Label(basic_frame, text="Approach (lewa):").grid(
-            row=3, column=0, padx=4, pady=4, sticky="e"
-        )
-        ttk.Combobox(
-            basic_frame,
-            textvariable=self.approach_left_var,
-            values=["normal", "inverse"],
-            state="readonly",
-            width=25,
-        ).grid(row=3, column=1, padx=4, pady=4, sticky="w")
+        ).grid(row=0, column=1, padx=4, pady=4, sticky="w")
 
         approach_help = (
             "Approach (prawa) steruje kierunkiem odkładania dla prawej palety, "
@@ -200,42 +220,70 @@ class TabURCaps(ttk.Frame):
             "inverse – start od tyłu i bez ręcznej kolejności odwróci domyślną sekwencję.\n"
             "Strzałki w podglądzie pokazują kierunek, który trafi do eksportu."
         )
-        ttk.Label(
-            basic_frame,
-            text=approach_help,
-            wraplength=380,
-            justify="left",
-        ).grid(row=4, column=0, columnspan=2, padx=4, pady=(0, 4), sticky="w")
+        approach_label_frame = ttk.Frame(basic_right)
+        approach_label_frame.grid(row=1, column=0, padx=4, pady=4, sticky="e")
+        ttk.Label(approach_label_frame, text="Approach (prawa):").pack(side=tk.LEFT)
+        ttk.Button(
+            approach_label_frame,
+            text="?",
+            width=3,
+            command=lambda: messagebox.showinfo("Approach", approach_help),
+        ).pack(side=tk.LEFT, padx=(6, 0))
+        ttk.Combobox(
+            basic_right,
+            textvariable=self.approach_right_var,
+            values=["normal", "inverse"],
+            state="readonly",
+            width=25,
+        ).grid(row=1, column=1, padx=4, pady=4, sticky="w")
 
-        ttk.Checkbutton(
-            basic_frame,
-            text="Swap axes for PALLY (EUR)",
-            variable=self.pally_swap_axes_var,
-        ).grid(row=5, column=0, columnspan=2, padx=4, pady=4, sticky="w")
-
-        ttk.Label(basic_frame, text="Przekładka po warstwie:").grid(
-            row=6, column=0, padx=4, pady=4, sticky="ne"
+        ttk.Label(basic_right, text="Approach (lewa):").grid(
+            row=2, column=0, padx=4, pady=4, sticky="e"
         )
-        self.pally_slip_frame = ttk.Frame(basic_frame)
-        self.pally_slip_frame.grid(row=6, column=1, padx=4, pady=4, sticky="w")
+        ttk.Combobox(
+            basic_right,
+            textvariable=self.approach_left_var,
+            values=["normal", "inverse"],
+            state="readonly",
+            width=25,
+        ).grid(row=2, column=1, padx=4, pady=4, sticky="w")
 
-        ttk.Label(basic_frame, text="Nadpisz wysokość całkowitą (mm):").grid(
-            row=7, column=0, padx=4, pady=4, sticky="e"
+        slips_frame = ttk.LabelFrame(basic_right, text="Przekładki + masa")
+        slips_frame.grid(row=3, column=0, columnspan=2, padx=4, pady=(8, 4), sticky="ew")
+        slips_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(slips_frame, text="Przekładki po warstwie:").grid(
+            row=0, column=0, columnspan=2, pady=(2, 0), sticky="w"
+        )
+        self.pally_slip_frame = ttk.Frame(slips_frame)
+        self.pally_slip_frame.grid(row=1, column=0, columnspan=2, sticky="w")
+
+        slip_buttons = ttk.Frame(slips_frame)
+        slip_buttons.grid(row=2, column=0, columnspan=2, pady=(4, 0), sticky="w")
+        ttk.Button(slip_buttons, text="Wszystkie", command=self._slips_select_all).pack(
+            side=tk.LEFT, padx=(0, 6)
+        )
+        ttk.Button(slip_buttons, text="Wyczyść", command=self._slips_clear_all).pack(
+            side=tk.LEFT
+        )
+
+        ttk.Label(slips_frame, textvariable=self.slip_summary_var, justify="left").grid(
+            row=3, column=0, columnspan=2, pady=(4, 0), sticky="w"
+        )
+
+        ttk.Label(slips_frame, text="Masa kartonu (kg):").grid(
+            row=4, column=0, padx=4, pady=(6, 0), sticky="e"
         )
         ttk.Entry(
-            basic_frame,
-            textvariable=self.dimensions_height_override_var,
-            width=18,
-        ).grid(row=7, column=1, padx=4, pady=4, sticky="w")
-
-        ttk.Label(basic_frame, text="Nadpisz wysokość palety (mm):").grid(
-            row=8, column=0, padx=4, pady=4, sticky="e"
+            slips_frame,
+            textvariable=self.box_weight_override_var,
+            width=8,
+            validate="key",
+            validatecommand=(self.register(self._validate_weight_override), "%P"),
+        ).grid(row=4, column=1, padx=4, pady=(6, 0), sticky="w")
+        ttk.Label(slips_frame, text="(puste = z Paletyzacji)").grid(
+            row=5, column=0, columnspan=2, padx=4, pady=(2, 0), sticky="w"
         )
-        ttk.Entry(
-            basic_frame,
-            textvariable=self.pallet_height_override_var,
-            width=18,
-        ).grid(row=8, column=1, padx=4, pady=4, sticky="w")
 
         ttk.Button(
             export_frame,
@@ -250,9 +298,12 @@ class TabURCaps(ttk.Frame):
             variable=self.pretty_json_var,
         ).grid(row=3, column=0, padx=4, pady=(0, 4), sticky="w")
 
-        ttk.Label(export_frame, textvariable=self.status_var, justify="left").grid(
-            row=4, column=0, padx=4, pady=(2, 0), sticky="w"
-        )
+        ttk.Label(
+            export_frame,
+            textvariable=self.status_var,
+            justify="left",
+            wraplength=900,
+        ).grid(row=4, column=0, padx=4, pady=(2, 0), sticky="w")
 
         preview_frame = ttk.LabelFrame(main_frame, text="Podgląd warstwy")
         preview_frame.grid(row=2, column=0, sticky="nsew", pady=(8, 0))
@@ -430,6 +481,7 @@ class TabURCaps(ttk.Frame):
         self._refresh_preview_layers(layer_count)
         self._render_layer_preview()
         self.status_var.set(f"Wczytano PPB: {os.path.basename(path)}")
+        self._update_slip_summary()
 
     @staticmethod
     def _validate_pally_payload(payload: dict) -> bool:
@@ -503,6 +555,7 @@ class TabURCaps(ttk.Frame):
         for idx, var in enumerate(self.pally_slip_vars):
             if idx and idx in snapshot.slips_after:
                 var.set(True)
+        self._update_slip_summary()
         self.pally_swap_axes_var.set(snapshot.pallet_w > snapshot.pallet_l)
         self.status_var.set("Pobrano dane z Paletyzacji")
         self._update_weight_summary()
@@ -528,8 +581,16 @@ class TabURCaps(ttk.Frame):
 
     def _update_weight_summary(self) -> None:
         weight_g, source = self._get_box_weight_g()
+        if source == "invalid_override":
+            self.weight_summary_var.set("Masa kartonu: nieprawidłowa (UR CAPS)")
+            return
         if weight_g:
-            source_label = "ręcznie" if source == "manual" else "katalog"
+            if source == "ur_caps_override":
+                source_label = "UR CAPS"
+            elif source == "manual":
+                source_label = "Paletyzacja ręcznie"
+            else:
+                source_label = "katalog"
             self.weight_summary_var.set(
                 f"Masa kartonu: {weight_g / 1000:.3f} kg ({source_label})"
             )
@@ -541,6 +602,7 @@ class TabURCaps(ttk.Frame):
             widget.destroy()
         self.pally_slip_vars.clear()
         base_var = tk.BooleanVar(value=True)
+        base_var.trace_add("write", self._update_slip_summary)
         self.pally_slip_vars.append(base_var)
         ttk.Checkbutton(
             self.pally_slip_frame,
@@ -548,14 +610,20 @@ class TabURCaps(ttk.Frame):
             variable=base_var,
         ).grid(row=0, column=0, padx=2, pady=0, sticky="w")
 
+        per_row = 10
         for idx in range(1, layer_count + 1):
             var = tk.BooleanVar(value=False)
+            var.trace_add("write", self._update_slip_summary)
             self.pally_slip_vars.append(var)
+            disp_idx = idx
+            row = disp_idx // per_row
+            col = disp_idx % per_row
             ttk.Checkbutton(
                 self.pally_slip_frame,
                 text=str(idx),
                 variable=var,
-            ).grid(row=0, column=idx, padx=2, pady=0, sticky="w")
+            ).grid(row=row, column=col, padx=2, pady=0, sticky="w")
+        self._update_slip_summary()
 
     def _selected_slip_layers(self) -> set[int]:
         slips: set[int] = set()
@@ -565,6 +633,38 @@ class TabURCaps(ttk.Frame):
             if var.get():
                 slips.add(idx)
         return slips
+
+    def _update_slip_summary(self, *_: object) -> None:
+        if not self.pally_slip_vars:
+            self.slip_summary_var.set("Przekładki (eksport): -")
+            return
+        base = "TAK" if self.pally_slip_vars[0].get() else "NIE"
+        layers = sorted(self._selected_slip_layers())
+        if layers:
+            layers_text = ", ".join(map(str, layers))
+        else:
+            layers_text = "brak"
+        self.slip_summary_var.set(
+            f"Przekładki (eksport): baza={base} | warstwy: {layers_text}"
+        )
+
+    def _slips_select_all(self) -> None:
+        for var in self.pally_slip_vars[1:]:
+            var.set(True)
+
+    def _slips_clear_all(self) -> None:
+        for var in self.pally_slip_vars[1:]:
+            var.set(False)
+
+    @staticmethod
+    def _validate_weight_override(value: str) -> bool:
+        if value == "":
+            return True
+        try:
+            float_value = float(value.replace(",", "."))
+        except ValueError:
+            return False
+        return float_value >= 0
 
     @staticmethod
     def _parse_optional_int(value: str) -> int | None:
@@ -871,6 +971,13 @@ class TabURCaps(ttk.Frame):
             self.pally_out_dir_var.set(path)
 
     def _get_box_weight_g(self) -> tuple[int, str]:
+        override_raw = self.box_weight_override_var.get().strip()
+        if override_raw:
+            try:
+                weight_kg = float(override_raw.replace(",", "."))
+            except ValueError:
+                return 0, "invalid_override"
+            return int(round(weight_kg * 1000)), "ur_caps_override"
         snapshot = self.active_snapshot
         if snapshot is not None and snapshot.box_weight_g is not None:
             return max(int(snapshot.box_weight_g), 0), snapshot.box_weight_source
@@ -878,6 +985,40 @@ class TabURCaps(ttk.Frame):
             weight_kg, source = self.pallet_tab._get_active_carton_weight()  # pylint: disable=protected-access
             return int(round(max(weight_kg, 0.0) * 1000)), source
         return 0, "unknown"
+
+    def _on_weight_override_changed(self, *_: object) -> None:
+        raw = self.box_weight_override_var.get().strip()
+        if not raw:
+            self._update_weight_summary()
+            return
+        try:
+            weight_kg = float(raw.replace(",", "."))
+        except ValueError:
+            self.status_var.set("Nieprawidłowa masa kartonu w UR CAPS.")
+            self._update_weight_summary()
+            return
+        if weight_kg < 0:
+            self.status_var.set("Nieprawidłowa masa kartonu w UR CAPS.")
+            self._update_weight_summary()
+            return
+        if hasattr(self.pallet_tab, "manual_carton_weight_var"):
+            manual_var = getattr(self.pallet_tab, "manual_carton_weight_var", None)
+            if manual_var is not None and hasattr(manual_var, "set"):
+                manual_var.set(f"{weight_kg:.3f}")
+                if hasattr(self.pallet_tab, "update_summary"):
+                    try:
+                        self.pallet_tab.update_summary()
+                    except Exception:
+                        logger.exception("Failed to update pallet summary after override sync")
+                elif hasattr(self.pallet_tab, "_on_manual_weight_changed"):
+                    try:
+                        self.pallet_tab._on_manual_weight_changed()  # pylint: disable=protected-access
+                    except Exception:
+                        logger.exception("Failed to update pallet manual weight after override sync")
+        if self.active_snapshot is not None:
+            self.active_snapshot.box_weight_g = int(round(weight_kg * 1000))
+            self.active_snapshot.box_weight_source = "manual"
+        self._update_weight_summary()
 
     def _refresh_preview_layers(self, layer_count: int) -> None:
         values = [str(idx) for idx in range(1, layer_count + 1)]
@@ -1220,11 +1361,17 @@ class TabURCaps(ttk.Frame):
             messagebox.showwarning("Brak folderu", "Podaj folder zapisu.")
             return
 
-        box_weight_g, _ = self._get_box_weight_g()
+        box_weight_g, source = self._get_box_weight_g()
+        if source == "invalid_override":
+            messagebox.showwarning(
+                "UR CAPS",
+                "Nieprawidłowa masa kartonu w polu override.",
+            )
+            return
         if not box_weight_g:
             messagebox.showwarning(
                 "Brak masy",
-                "Brak masy kartonu. Uzupełnij pole w zakładce Paletyzacja.",
+                "Brak masy kartonu — uzupełnij w Paletyzacji lub wpisz override w UR CAPS.",
             )
             return
 
@@ -1260,7 +1407,12 @@ class TabURCaps(ttk.Frame):
                 json.dump(payload, handle, indent=4, ensure_ascii=False)
             else:
                 json.dump(payload, handle, ensure_ascii=False, separators=(",", ":"))
-        self.status_var.set(f"Zapisano PALLY JSON: {path}")
+        self._update_slip_summary()
+        self._update_weight_summary()
+        self.status_var.set(
+            f"Zapisano PALLY JSON: {path} | {self.slip_summary_var.get()} | "
+            f"{self.weight_summary_var.get()}"
+        )
 
 @dataclass
 class URCapsConfig:
