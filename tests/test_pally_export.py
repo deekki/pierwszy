@@ -612,7 +612,7 @@ def test_manual_permutation_can_differ_for_alt_pattern():
     assert layer["altPattern"] == expected_alt_pattern
 
 
-def test_inverse_approach_reverses_pattern_without_manual_order():
+def test_inverse_approach_does_not_reorder_pattern_without_manual_order():
     rects = [
         (0.0, 0.0, 100.0, 200.0),
         (150.0, 0.0, 100.0, 200.0),
@@ -650,14 +650,11 @@ def test_inverse_approach_reverses_pattern_without_manual_order():
     normal = build_pally_json(config=config_normal, layer_rects_list=[rects], slips_after=set())
     inverse = build_pally_json(config=config_inverse, layer_rects_list=[rects], slips_after=set())
 
-    normal_pattern = next(lt for lt in normal["layerTypes"] if lt.get("class") == "layer")[
-        "pattern"
-    ]
-    inverse_pattern = next(lt for lt in inverse["layerTypes"] if lt.get("class") == "layer")[
-        "pattern"
-    ]
+    normal_layer = next(lt for lt in normal["layerTypes"] if lt.get("class") == "layer")
+    inverse_layer = next(lt for lt in inverse["layerTypes"] if lt.get("class") == "layer")
 
-    assert inverse_pattern == list(reversed(normal_pattern))
+    assert inverse_layer["pattern"] == normal_layer["pattern"]
+    assert inverse_layer["approach"] == "inverse"
 
 
 def test_manual_order_has_priority_over_inverse_approach():
@@ -708,8 +705,8 @@ def test_manual_order_has_priority_over_inverse_approach():
         next(lt for lt in normal["layerTypes"] if lt.get("class") == "layer")["pattern"][idx]
         for idx in manual_order
     ]
-    result_pattern = next(
-        lt for lt in manual_override["layerTypes"] if lt.get("class") == "layer"
-    )["pattern"]
+    manual_layer = next(lt for lt in manual_override["layerTypes"] if lt.get("class") == "layer")
+    result_pattern = manual_layer["pattern"]
 
     assert result_pattern == expected_pattern
+    assert manual_layer["approach"] == "inverse"

@@ -262,29 +262,26 @@ def build_pally_json(
     if manual_orders_left is None:
         manual_orders_left = manual_orders_right
 
-    def _apply_sequence(
+    def _apply_manual_order(
         pattern: List[Dict],
         manual_order: Optional[List[int]],
-        approach: str,
         label: str,
     ) -> List[Dict]:
-        if manual_order:
-            if len(manual_order) != len(pattern):
-                logger.warning(
-                    "Manual permutation length mismatch for %s: %s != %s",  # noqa: TRY400
-                    label,
-                    len(manual_order),
-                    len(pattern),
-                )
-            else:
-                return [pattern[idx] for idx in manual_order]
-        if approach == "inverse":
-            return list(reversed(pattern))
-        return pattern
+        if not manual_order:
+            return pattern
+        if len(manual_order) != len(pattern):
+            logger.warning(
+                "Manual permutation length mismatch for %s: %s != %s",  # noqa: TRY400
+                label,
+                len(manual_order),
+                len(pattern),
+            )
+            return pattern
+        return [pattern[idx] for idx in manual_order]
 
     for rects in layer_rects_list:
         rects_to_use = _swap_rect_axes(rects) if swap_axes else rects
-        pattern, signature_rects = rects_to_pally_pattern(
+        base_pattern, signature_rects = rects_to_pally_pattern(
             rects_to_use,
             carton_w,
             carton_l,
@@ -304,8 +301,8 @@ def build_pally_json(
             omit_altpattern = (
                 config.alt_layout == "mirror" and config.omit_altpattern_when_mirror
             )
-            pattern = _apply_sequence(
-                pattern, manual_order, config.approach, f"signature {signature}"
+            pattern = _apply_manual_order(
+                base_pattern, manual_order, f"signature {signature}"
             )
             if omit_altpattern:
                 layer_type = {
@@ -316,16 +313,12 @@ def build_pally_json(
                     "altApproach": config.alt_approach,
                 }
             else:
-                alt_pattern = (
-                    list(pattern)
-                    if config.alt_layout == "altPattern"
-                    else mirror_pattern(pattern, pallet_width)
-                )
-                alt_pattern = _apply_sequence(
-                    alt_pattern,
-                    manual_order_alt,
-                    config.alt_approach,
-                    f"alt signature {signature}",
+                if config.alt_layout == "altPattern":
+                    base_alt = list(base_pattern)
+                else:
+                    base_alt = mirror_pattern(pattern, pallet_width)
+                alt_pattern = _apply_manual_order(
+                    base_alt, manual_order_alt, f"alt signature {signature}"
                 )
                 layer_type = {
                     "name": layer_name,
