@@ -1656,8 +1656,8 @@ class TabURCaps(ttk.Frame):
             else:
                 base_order[:] = list(range(len(base_order)))
                 progress = 0
-            else:
-                return
+        else:
+            return
 
         self._apply_manual_order_update(
             signature,
