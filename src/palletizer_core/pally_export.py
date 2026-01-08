@@ -262,8 +262,11 @@ def build_pally_json(
     if manual_orders_left is None:
         manual_orders_left = manual_orders_right
 
-    def _apply_order(
-        pattern: List[Dict], manual_order: Optional[List[int]], label: str
+    def _apply_sequence(
+        pattern: List[Dict],
+        manual_order: Optional[List[int]],
+        approach: str,
+        label: str,
     ) -> List[Dict]:
         if manual_order:
             if len(manual_order) != len(pattern):
@@ -275,6 +278,8 @@ def build_pally_json(
                 )
             else:
                 return [pattern[idx] for idx in manual_order]
+        if approach == "inverse":
+            return list(reversed(pattern))
         return pattern
 
     for rects in layer_rects_list:
@@ -299,7 +304,9 @@ def build_pally_json(
             omit_altpattern = (
                 config.alt_layout == "mirror" and config.omit_altpattern_when_mirror
             )
-            pattern = _apply_order(pattern, manual_order, f"signature {signature}")
+            pattern = _apply_sequence(
+                pattern, manual_order, config.approach, f"signature {signature}"
+            )
             if omit_altpattern:
                 layer_type = {
                     "name": layer_name,
@@ -314,9 +321,10 @@ def build_pally_json(
                     if config.alt_layout == "altPattern"
                     else mirror_pattern(pattern, pallet_width)
                 )
-                alt_pattern = _apply_order(
+                alt_pattern = _apply_sequence(
                     alt_pattern,
                     manual_order_alt,
+                    config.alt_approach,
                     f"alt signature {signature}",
                 )
                 layer_type = {
