@@ -3167,7 +3167,13 @@ class TabPallet(ttk.Frame):
 
     def gather_pattern_data(self, name: str = "") -> dict:
         """Collect current pallet layout as a JSON-serialisable dict."""
-        return gather_pattern_data_core(self, name=name, parse_dim=parse_dim)
+        data = gather_pattern_data_core(self, name=name, parse_dim=parse_dim)
+        if self.ur_caps_tab:
+            try:
+                data["ur_caps"] = self.ur_caps_tab.export_ui_state()
+            except Exception:
+                logger.exception("Failed to export UR CAPS state for pattern")
+        return data
 
     def apply_pattern_data(self, data: dict) -> None:
         """Load pallet layout from a dictionary."""
@@ -3297,6 +3303,7 @@ class TabPallet(ttk.Frame):
             if self.ur_caps_tab:
                 try:
                     self.ur_caps_tab.fetch_from_pallet(quiet_if_missing=True)
+                    self.ur_caps_tab.apply_ui_state(data.get("ur_caps", {}))
                 except Exception:
                     logger.exception(
                         "Failed to refresh UR CAPS after loading pattern"

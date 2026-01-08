@@ -16,12 +16,11 @@ from palletizer_core.pally_export import (
     PallyExportConfig,
     build_pally_json,
     find_out_of_bounds,
+    mirror_pattern,
     rects_to_pally_pattern,
 )
 from palletizer_core.signature import layout_signature
 from packing_app.core.pallet_snapshot import PalletSnapshot
-from packing_app.gui.widgets.scrollable_frame import ScrollableFrame
-
 logger = logging.getLogger(__name__)
 
 
@@ -74,7 +73,9 @@ class TabURCaps(ttk.Frame):
         self.loaded_payload: dict | None = None
         self.pallet_height_override_var = tk.StringVar(value="")
         self.dimensions_height_override_var = tk.StringVar(value="")
-        self.pretty_json_var = tk.BooleanVar(value=False)
+        self.pretty_json_var = tk.BooleanVar(value=True)
+        self.omit_altpattern_when_mirror_var = tk.BooleanVar(value=False)
+        self.manual_sync_parity_var = tk.BooleanVar(value=False)
         self.box_weight_override_var.trace_add("write", self._on_weight_override_changed)
 
         self.build_ui()
@@ -83,17 +84,15 @@ class TabURCaps(ttk.Frame):
         self.rowconfigure(0, weight=1)
         self.columnconfigure(0, weight=1)
 
-        scroll = ScrollableFrame(self)
-        scroll.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
-
-        main_frame = scroll.interior
+        main_frame = ttk.Frame(self)
+        main_frame.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
         main_frame.columnconfigure(0, weight=1)
         main_frame.rowconfigure(0, weight=0)
         main_frame.rowconfigure(1, weight=0)
         main_frame.rowconfigure(2, weight=1)
 
         fetch_frame = ttk.Frame(main_frame)
-        fetch_frame.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        fetch_frame.grid(row=0, column=0, sticky="ew", pady=(0, 6))
         fetch_frame.columnconfigure(1, weight=1)
 
         ttk.Button(
@@ -118,14 +117,14 @@ class TabURCaps(ttk.Frame):
         header_frame.grid(row=0, column=0, sticky="ew")
         header_frame.columnconfigure(1, weight=1)
 
-        ttk.Label(header_frame, text="Nazwa:").grid(row=0, column=0, padx=4, pady=4, sticky="e")
+        ttk.Label(header_frame, text="Nazwa:").grid(row=0, column=0, padx=4, pady=2, sticky="e")
         ttk.Entry(header_frame, textvariable=self.pally_name_var, width=28).grid(
-            row=0, column=1, padx=4, pady=4, sticky="ew"
+            row=0, column=1, padx=4, pady=2, sticky="ew"
         )
 
-        ttk.Label(header_frame, text="Folder:").grid(row=1, column=0, padx=4, pady=4, sticky="e")
+        ttk.Label(header_frame, text="Folder:").grid(row=1, column=0, padx=4, pady=2, sticky="e")
         folder_frame = ttk.Frame(header_frame)
-        folder_frame.grid(row=1, column=1, padx=4, pady=4, sticky="ew")
+        folder_frame.grid(row=1, column=1, padx=4, pady=2, sticky="ew")
         folder_frame.columnconfigure(0, weight=1)
         ttk.Entry(folder_frame, textvariable=self.pally_out_dir_var).grid(
             row=0, column=0, padx=(0, 4), sticky="ew"
@@ -135,7 +134,7 @@ class TabURCaps(ttk.Frame):
         )
 
         pattern_frame = ttk.Frame(header_frame)
-        pattern_frame.grid(row=2, column=0, columnspan=2, padx=4, pady=4, sticky="w")
+        pattern_frame.grid(row=2, column=0, columnspan=2, padx=4, pady=2, sticky="w")
         ttk.Button(pattern_frame, text="Zapisz wzór", command=self._save_pattern).pack(
             side=tk.LEFT, padx=(0, 6)
         )
@@ -149,12 +148,12 @@ class TabURCaps(ttk.Frame):
         ).pack(side=tk.LEFT, padx=(6, 0))
 
         basic_frame = ttk.LabelFrame(export_frame, text="BASIC")
-        basic_frame.grid(row=1, column=0, sticky="ew", padx=4, pady=(4, 8))
+        basic_frame.grid(row=1, column=0, sticky="ew", padx=4, pady=(4, 6))
         basic_frame.columnconfigure(0, weight=1)
 
         basic_grid = ttk.Frame(basic_frame)
-        basic_grid.grid(row=0, column=0, sticky="ew", padx=4, pady=4)
-        basic_grid.columnconfigure(0, weight=1)
+        basic_grid.grid(row=0, column=0, sticky="ew", padx=4, pady=2)
+        basic_grid.columnconfigure(0, weight=0)
         basic_grid.columnconfigure(1, weight=1)
 
         basic_left = ttk.Frame(basic_grid)
@@ -166,7 +165,7 @@ class TabURCaps(ttk.Frame):
         basic_right.columnconfigure(1, weight=1)
 
         ttk.Label(basic_left, text="Kierunek etykiety:").grid(
-            row=0, column=0, padx=4, pady=4, sticky="e"
+            row=0, column=0, padx=4, pady=2, sticky="e"
         )
         ttk.Combobox(
             basic_left,
@@ -174,36 +173,36 @@ class TabURCaps(ttk.Frame):
             values=list(self.pally_label_orientation_map.keys()),
             state="readonly",
             width=25,
-        ).grid(row=0, column=1, padx=4, pady=4, sticky="w")
+        ).grid(row=0, column=1, padx=4, pady=2, sticky="w")
 
         ttk.Label(basic_left, text="Swap axes for PALLY (EUR):").grid(
-            row=1, column=0, padx=4, pady=4, sticky="e"
+            row=1, column=0, padx=4, pady=2, sticky="e"
         )
         ttk.Checkbutton(
             basic_left,
             variable=self.pally_swap_axes_var,
-        ).grid(row=1, column=1, padx=4, pady=4, sticky="w")
+        ).grid(row=1, column=1, padx=4, pady=2, sticky="w")
 
         ttk.Label(basic_left, text="Nadpisz wysokość całkowitą (mm):").grid(
-            row=2, column=0, padx=4, pady=4, sticky="e"
+            row=2, column=0, padx=4, pady=2, sticky="e"
         )
         ttk.Entry(
             basic_left,
             textvariable=self.dimensions_height_override_var,
             width=18,
-        ).grid(row=2, column=1, padx=4, pady=4, sticky="w")
+        ).grid(row=2, column=1, padx=4, pady=2, sticky="w")
 
         ttk.Label(basic_left, text="Nadpisz wysokość palety (mm):").grid(
-            row=3, column=0, padx=4, pady=4, sticky="e"
+            row=3, column=0, padx=4, pady=2, sticky="e"
         )
         ttk.Entry(
             basic_left,
             textvariable=self.pallet_height_override_var,
             width=18,
-        ).grid(row=3, column=1, padx=4, pady=4, sticky="w")
+        ).grid(row=3, column=1, padx=4, pady=2, sticky="w")
 
         ttk.Label(basic_right, text="Lewa paleta:").grid(
-            row=0, column=0, padx=4, pady=4, sticky="e"
+            row=0, column=0, padx=4, pady=2, sticky="e"
         )
         ttk.Combobox(
             basic_right,
@@ -211,17 +210,23 @@ class TabURCaps(ttk.Frame):
             values=["mirror", "altPattern"],
             state="readonly",
             width=25,
-        ).grid(row=0, column=1, padx=4, pady=4, sticky="w")
+        ).grid(row=0, column=1, padx=4, pady=2, sticky="w")
+
+        ttk.Checkbutton(
+            basic_right,
+            text="Auto-mirror PALLY (bez altPattern)",
+            variable=self.omit_altpattern_when_mirror_var,
+        ).grid(row=1, column=1, padx=4, pady=2, sticky="w")
 
         approach_help = (
             "Approach (prawa) steruje kierunkiem odkładania dla prawej palety, "
             "altApproach dla lewej.\n"
-            "normal – start od frontu palety.\n"
-            "inverse – start od tyłu i bez ręcznej kolejności odwróci domyślną sekwencję.\n"
-            "Strzałki w podglądzie pokazują kierunek, który trafi do eksportu."
+            "normal – od dalszej strony palety do środka.\n"
+            "inverse – od bliższej strony palety na zewnątrz.\n"
+            "Strzałki w podglądzie pokazują kierunek podejścia."
         )
         approach_label_frame = ttk.Frame(basic_right)
-        approach_label_frame.grid(row=1, column=0, padx=4, pady=4, sticky="e")
+        approach_label_frame.grid(row=2, column=0, padx=4, pady=2, sticky="e")
         ttk.Label(approach_label_frame, text="Approach (prawa):").pack(side=tk.LEFT)
         ttk.Button(
             approach_label_frame,
@@ -235,10 +240,10 @@ class TabURCaps(ttk.Frame):
             values=["normal", "inverse"],
             state="readonly",
             width=25,
-        ).grid(row=1, column=1, padx=4, pady=4, sticky="w")
+        ).grid(row=2, column=1, padx=4, pady=2, sticky="w")
 
         ttk.Label(basic_right, text="Approach (lewa):").grid(
-            row=2, column=0, padx=4, pady=4, sticky="e"
+            row=3, column=0, padx=4, pady=2, sticky="e"
         )
         ttk.Combobox(
             basic_right,
@@ -246,10 +251,17 @@ class TabURCaps(ttk.Frame):
             values=["normal", "inverse"],
             state="readonly",
             width=25,
-        ).grid(row=2, column=1, padx=4, pady=4, sticky="w")
+        ).grid(row=3, column=1, padx=4, pady=2, sticky="w")
+
+        robot_frame = ttk.LabelFrame(basic_right, text="Orientacja robota")
+        robot_frame.grid(row=4, column=0, columnspan=2, padx=4, pady=(4, 4), sticky="ew")
+        robot_frame.columnconfigure(0, weight=1)
+        self.robot_canvas = tk.Canvas(robot_frame, width=220, height=110, highlightthickness=0)
+        self.robot_canvas.grid(row=0, column=0, sticky="ew")
+        self._draw_robot_orientation()
 
         slips_frame = ttk.LabelFrame(basic_right, text="Przekładki + masa")
-        slips_frame.grid(row=3, column=0, columnspan=2, padx=4, pady=(8, 4), sticky="ew")
+        slips_frame.grid(row=5, column=0, columnspan=2, padx=4, pady=(4, 4), sticky="ew")
         slips_frame.columnconfigure(1, weight=1)
 
         ttk.Label(slips_frame, text="Przekładki po warstwie:").grid(
@@ -259,7 +271,7 @@ class TabURCaps(ttk.Frame):
         self.pally_slip_frame.grid(row=1, column=0, columnspan=2, sticky="w")
 
         slip_buttons = ttk.Frame(slips_frame)
-        slip_buttons.grid(row=2, column=0, columnspan=2, pady=(4, 0), sticky="w")
+        slip_buttons.grid(row=2, column=0, columnspan=2, pady=(2, 0), sticky="w")
         ttk.Button(slip_buttons, text="Wszystkie", command=self._slips_select_all).pack(
             side=tk.LEFT, padx=(0, 6)
         )
@@ -268,11 +280,11 @@ class TabURCaps(ttk.Frame):
         )
 
         ttk.Label(slips_frame, textvariable=self.slip_summary_var, justify="left").grid(
-            row=3, column=0, columnspan=2, pady=(4, 0), sticky="w"
+            row=3, column=0, columnspan=2, pady=(2, 0), sticky="w"
         )
 
         ttk.Label(slips_frame, text="Masa kartonu (kg):").grid(
-            row=4, column=0, padx=4, pady=(6, 0), sticky="e"
+            row=4, column=0, padx=4, pady=(4, 0), sticky="e"
         )
         ttk.Entry(
             slips_frame,
@@ -289,34 +301,33 @@ class TabURCaps(ttk.Frame):
             export_frame,
             text="Eksportuj PALLY JSON",
             command=self.export_pally_json,
-        ).grid(row=2, column=0, padx=4, pady=(8, 4), sticky="ew")
+        ).grid(row=2, column=0, padx=4, pady=(6, 2), sticky="ew")
 
-        self.pretty_json_var.set(False)
         ttk.Checkbutton(
             export_frame,
             text="Pretty JSON",
             variable=self.pretty_json_var,
-        ).grid(row=3, column=0, padx=4, pady=(0, 4), sticky="w")
+        ).grid(row=3, column=0, padx=4, pady=(0, 2), sticky="w")
 
         ttk.Label(
             export_frame,
             textvariable=self.status_var,
             justify="left",
-            wraplength=900,
+            wraplength=780,
         ).grid(row=4, column=0, padx=4, pady=(2, 0), sticky="w")
 
         preview_frame = ttk.LabelFrame(main_frame, text="Podgląd warstwy")
-        preview_frame.grid(row=2, column=0, sticky="nsew", pady=(8, 0))
+        preview_frame.grid(row=2, column=0, sticky="nsew", pady=(6, 0))
         preview_frame.columnconfigure(0, weight=3)
         preview_frame.columnconfigure(1, weight=2)
         preview_frame.rowconfigure(1, weight=1)
 
         controls_frame = ttk.Frame(preview_frame)
-        controls_frame.grid(row=0, column=0, sticky="ew", padx=4, pady=4)
+        controls_frame.grid(row=0, column=0, sticky="ew", padx=4, pady=2)
         controls_frame.columnconfigure(1, weight=1)
 
         ttk.Label(controls_frame, text="Warstwa:").grid(
-            row=0, column=0, padx=4, pady=4, sticky="e"
+            row=0, column=0, padx=4, pady=2, sticky="e"
         )
         self.preview_layer_combo = ttk.Combobox(
             controls_frame,
@@ -324,16 +335,16 @@ class TabURCaps(ttk.Frame):
             state="readonly",
             width=10,
         )
-        self.preview_layer_combo.grid(row=0, column=1, padx=4, pady=4, sticky="w")
+        self.preview_layer_combo.grid(row=0, column=1, padx=4, pady=2, sticky="w")
         self.preview_layer_combo.bind("<<ComboboxSelected>>", self._render_layer_preview)
 
         canvas_frame = ttk.Frame(preview_frame)
-        canvas_frame.grid(row=1, column=0, sticky="nsew", padx=4, pady=(0, 4))
+        canvas_frame.grid(row=1, column=0, sticky="nsew", padx=4, pady=(0, 2))
         canvas_frame.columnconfigure(0, weight=1)
         canvas_frame.rowconfigure(0, weight=1)
 
         self.preview_fig, (self.preview_ax_right, self.preview_ax_left) = plt.subplots(
-            1, 2, figsize=(8.5, 3.8)
+            1, 2, figsize=(7.2, 3.1)
         )
         self.preview_axes = {"right": self.preview_ax_right, "left": self.preview_ax_left}
         self.preview_canvas = FigureCanvasTkAgg(self.preview_fig, master=canvas_frame)
@@ -341,11 +352,11 @@ class TabURCaps(ttk.Frame):
         self.preview_canvas.mpl_connect("button_press_event", self._on_canvas_click)
 
         manual_frame = ttk.LabelFrame(preview_frame, text="Tryb ręczny")
-        manual_frame.grid(row=1, column=1, sticky="nsew", padx=4, pady=(0, 4))
+        manual_frame.grid(row=1, column=1, sticky="nsew", padx=4, pady=(0, 2))
         manual_frame.columnconfigure(0, weight=1)
 
         mode_row = ttk.Frame(manual_frame)
-        mode_row.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+        mode_row.grid(row=0, column=0, sticky="ew", pady=(0, 4))
         ttk.Checkbutton(
             mode_row,
             text="Tryb ręczny",
@@ -364,7 +375,7 @@ class TabURCaps(ttk.Frame):
         ).grid(row=0, column=2, padx=(0, 6))
 
         target_row = ttk.Frame(manual_frame)
-        target_row.grid(row=1, column=0, sticky="ew", pady=(0, 6))
+        target_row.grid(row=1, column=0, sticky="ew", pady=(0, 2))
         ttk.Label(target_row, text="Edytuj kolejność dla:").grid(
             row=0, column=0, padx=(0, 6), sticky="w"
         )
@@ -390,27 +401,35 @@ class TabURCaps(ttk.Frame):
             command=self._render_layer_preview,
         ).grid(row=0, column=3, padx=2, sticky="w")
 
+        sync_row = ttk.Frame(manual_frame)
+        sync_row.grid(row=2, column=0, sticky="ew", pady=(0, 4))
+        ttk.Checkbutton(
+            sync_row,
+            text="Parzyste + nieparzyste razem",
+            variable=self.manual_sync_parity_var,
+        ).grid(row=0, column=0, sticky="w")
+
         self.manual_hint_label = ttk.Label(
             manual_frame,
             textvariable=self.manual_hint_var,
             wraplength=220,
             justify="left",
         )
-        self.manual_hint_label.grid(row=2, column=0, sticky="w", pady=(0, 6))
+        self.manual_hint_label.grid(row=3, column=0, sticky="w", pady=(0, 4))
 
         self.order_tree = ttk.Treeview(
             manual_frame,
             columns=("pozycja",),
             show="headings",
             selectmode="browse",
-            height=8,
+            height=7,
         )
         self.order_tree.heading("pozycja", text="Kolejność")
         self.order_tree.column("pozycja", width=80, anchor="center")
-        self.order_tree.grid(row=3, column=0, sticky="nsew")
+        self.order_tree.grid(row=4, column=0, sticky="nsew")
 
         controls_row = ttk.Frame(manual_frame)
-        controls_row.grid(row=4, column=0, sticky="ew", pady=6)
+        controls_row.grid(row=5, column=0, sticky="ew", pady=4)
         controls_row.columnconfigure(2, weight=1)
         ttk.Button(controls_row, text="Góra", command=self._move_selected_up).grid(
             row=0, column=0, padx=2
@@ -425,7 +444,7 @@ class TabURCaps(ttk.Frame):
             row=0, column=3, padx=2
         )
 
-        manual_frame.rowconfigure(3, weight=1)
+        manual_frame.rowconfigure(4, weight=1)
 
         self._draw_empty_preview("Brak danych do podglądu")
         self._bind_preview_traces()
@@ -477,6 +496,7 @@ class TabURCaps(ttk.Frame):
             return
 
         self.loaded_payload = payload
+        self._apply_pally_payload_to_controls(payload)
         layer_count = self._payload_layer_count(payload)
         self._refresh_preview_layers(layer_count)
         self._render_layer_preview()
@@ -507,6 +527,192 @@ class TabURCaps(ttk.Frame):
                 continue
             count += 1
         return count
+
+    def _apply_pally_payload_to_controls(self, payload: dict) -> None:
+        self.pally_name_var.set(payload.get("name") or "export")
+        dimensions = payload.get("dimensions", {})
+        height_val = dimensions.get("height")
+        pallet_height_val = dimensions.get("palletHeight")
+        self.dimensions_height_override_var.set(
+            "" if height_val is None else str(height_val)
+        )
+        self.pallet_height_override_var.set(
+            "" if pallet_height_val is None else str(pallet_height_val)
+        )
+        product_dims = payload.get("productDimensions", {})
+        weight_g = product_dims.get("weight")
+        if weight_g is not None:
+            self.box_weight_override_var.set(f"{float(weight_g) / 1000:.3f}")
+        else:
+            self.box_weight_override_var.set("")
+        gui_settings = payload.get("guiSettings", {})
+        self.left_palette_mode_var.set(gui_settings.get("altLayout", "mirror"))
+
+        label_orientation = payload.get("labelOrientation")
+        if label_orientation is not None:
+            display_map = {
+                value: name for name, value in self.pally_label_orientation_map.items()
+            }
+            self.pally_label_orientation_display_var.set(
+                display_map.get(int(label_orientation), self.pally_label_orientation_display_var.get())
+            )
+
+        approach_right = "normal"
+        approach_left = "normal"
+        for layer_type in payload.get("layerTypes", []):
+            if layer_type.get("class") == "layer":
+                approach_right = layer_type.get("approach", approach_right)
+                approach_left = layer_type.get("altApproach", approach_right)
+                break
+        self.approach_right_var.set(approach_right)
+        self.approach_left_var.set(approach_left)
+
+        layer_count = self._payload_layer_count(payload)
+        self._update_slip_checkboxes(layer_count)
+        layer_types = {lt.get("name"): lt for lt in payload.get("layerTypes", [])}
+        layers = payload.get("layers", [])
+        base_slip = False
+        if layers:
+            first_type = layer_types.get(layers[0], {})
+            base_slip = first_type.get("class") == "separator"
+        if self.pally_slip_vars:
+            self.pally_slip_vars[0].set(base_slip)
+        product_idx = 0
+        for idx, layer_name in enumerate(layers):
+            layer_type = layer_types.get(layer_name)
+            if not layer_type or layer_type.get("class") == "separator":
+                continue
+            product_idx += 1
+            next_name = layers[idx + 1] if idx + 1 < len(layers) else None
+            next_type = layer_types.get(next_name, {})
+            slip_after = next_type.get("class") == "separator"
+            if product_idx < len(self.pally_slip_vars):
+                self.pally_slip_vars[product_idx].set(slip_after)
+
+        self.omit_altpattern_when_mirror_var.set(False)
+        self.pretty_json_var.set(True)
+        self._update_weight_summary()
+        self._update_slip_summary()
+
+    def export_ui_state(self) -> dict:
+        return {
+            "name": self.pally_name_var.get(),
+            "output_dir": self.pally_out_dir_var.get(),
+            "label_orientation_display": self.pally_label_orientation_display_var.get(),
+            "swap_axes_for_pally": bool(self.pally_swap_axes_var.get()),
+            "left_palette_mode": self.left_palette_mode_var.get(),
+            "approach_right": self.approach_right_var.get(),
+            "approach_left": self.approach_left_var.get(),
+            "placement_sequence": self.placement_sequence_var.get(),
+            "pallet_height_override": self.pallet_height_override_var.get(),
+            "dimensions_height_override": self.dimensions_height_override_var.get(),
+            "slips_base": bool(self.pally_slip_vars[0].get()) if self.pally_slip_vars else True,
+            "slips_after": sorted(self._selected_slip_layers()),
+            "box_weight_override": self.box_weight_override_var.get(),
+            "omit_altpattern_when_mirror": bool(self.omit_altpattern_when_mirror_var.get()),
+            "pretty_json": bool(self.pretty_json_var.get()),
+            "manual_mode": bool(self.manual_mode_var.get()),
+            "manual_edit_target": self.manual_edit_target_var.get(),
+            "manual_sync_parity": bool(self.manual_sync_parity_var.get()),
+            "manual_orders_by_side": self.manual_orders_by_side,
+            "manual_progress_by_side": self.manual_progress_by_side,
+        }
+
+    def apply_ui_state(self, state: dict) -> None:
+        if not state:
+            return
+        self.pally_name_var.set(state.get("name", self.pally_name_var.get()))
+        self.pally_out_dir_var.set(
+            state.get("output_dir", self.pally_out_dir_var.get())
+        )
+        self.pally_label_orientation_display_var.set(
+            state.get("label_orientation_display", self.pally_label_orientation_display_var.get())
+        )
+        self.pally_swap_axes_var.set(
+            bool(state.get("swap_axes_for_pally", self.pally_swap_axes_var.get()))
+        )
+        self.left_palette_mode_var.set(
+            state.get("left_palette_mode", self.left_palette_mode_var.get())
+        )
+        self.approach_right_var.set(
+            state.get("approach_right", self.approach_right_var.get())
+        )
+        self.approach_left_var.set(
+            state.get("approach_left", self.approach_left_var.get())
+        )
+        self.placement_sequence_var.set(
+            state.get("placement_sequence", self.placement_sequence_var.get())
+        )
+        self.pallet_height_override_var.set(state.get("pallet_height_override", ""))
+        self.dimensions_height_override_var.set(
+            state.get("dimensions_height_override", "")
+        )
+        self.box_weight_override_var.set(state.get("box_weight_override", ""))
+        self.omit_altpattern_when_mirror_var.set(
+            bool(state.get("omit_altpattern_when_mirror", False))
+        )
+        self.pretty_json_var.set(bool(state.get("pretty_json", True)))
+        if self.pally_slip_vars:
+            self.pally_slip_vars[0].set(bool(state.get("slips_base", True)))
+            slips_after = {int(x) for x in state.get("slips_after", []) if isinstance(x, int)}
+            for idx, var in enumerate(self.pally_slip_vars):
+                if idx == 0:
+                    continue
+                var.set(idx in slips_after)
+
+        snapshot = self.active_snapshot
+        if snapshot is not None:
+            try:
+                ur_config = self._collect_config()
+                preview_config = self._make_pally_config(snapshot, ur_config, name_override="preview")
+                self._update_signature_context(snapshot, preview_config)
+            except Exception:
+                logger.exception("Failed to refresh signature context from UR CAPS state")
+
+        self.manual_mode_var.set(bool(state.get("manual_mode", False)))
+        self.manual_edit_target_var.set(
+            state.get("manual_edit_target", self.manual_edit_target_var.get())
+        )
+        self.manual_sync_parity_var.set(
+            bool(state.get("manual_sync_parity", False))
+        )
+        manual_orders = state.get("manual_orders_by_side") or {}
+        manual_progress = state.get("manual_progress_by_side") or {}
+        if manual_orders:
+            if snapshot is not None:
+                pruned_orders: dict[str, dict[str, list[int]]] = {"right": {}, "left": {}}
+                pruned_progress: dict[str, dict[str, int]] = {"right": {}, "left": {}}
+                dropped = False
+                for side in ("right", "left"):
+                    side_orders = manual_orders.get(side, {})
+                    for signature, order in side_orders.items():
+                        if signature not in self.signature_to_layers:
+                            dropped = True
+                            continue
+                        rect_count = self._signature_rect_count(snapshot, signature)
+                        if rect_count and len(order) == rect_count:
+                            pruned_orders[side][signature] = list(order)
+                            progress_value = manual_progress.get(side, {}).get(
+                                signature, rect_count
+                            )
+                            pruned_progress[side][signature] = min(
+                                max(int(progress_value), 0), rect_count
+                            )
+                        else:
+                            dropped = True
+                self.manual_orders_by_side = pruned_orders
+                self.manual_progress_by_side = pruned_progress
+                if dropped:
+                    self.status_var.set(
+                        "Część zapisanych kolejności ręcznych nie pasuje do aktualnego wzoru."
+                    )
+            else:
+                self.manual_orders_by_side = manual_orders
+                self.manual_progress_by_side = manual_progress
+
+        self._update_weight_summary()
+        self._update_slip_summary()
+        self._render_layer_preview()
 
     def fetch_from_pallet(self, quiet_if_missing: bool = False) -> None:
         snapshot = None
@@ -686,8 +892,10 @@ class TabURCaps(ttk.Frame):
         for var in (
             self.pally_label_orientation_display_var,
             self.pally_swap_axes_var,
+            self.left_palette_mode_var,
             self.approach_left_var,
             self.approach_right_var,
+            self.omit_altpattern_when_mirror_var,
         ):
             var.trace_add("write", self._render_layer_preview)
 
@@ -704,6 +912,80 @@ class TabURCaps(ttk.Frame):
 
     def _display_side(self) -> str:
         return "left" if self.manual_edit_target_var.get() == "left" else "right"
+
+    def _signature_rect_count(self, snapshot: PalletSnapshot, signature: str) -> int:
+        for layer_idx in self.signature_to_layers.get(signature, []):
+            if 0 < layer_idx <= len(snapshot.layer_rects_list):
+                return len(snapshot.layer_rects_list[layer_idx - 1])
+        return 0
+
+    def _parity_signature_sets(self) -> tuple[set[str], set[str]]:
+        odd_signatures: set[str] = set()
+        even_signatures: set[str] = set()
+        for idx, signature in enumerate(self.layer_signatures, start=1):
+            if idx % 2:
+                odd_signatures.add(signature)
+            else:
+                even_signatures.add(signature)
+        return odd_signatures, even_signatures
+
+    def _find_parity_pair_signature(
+        self, signature: str, layer_idx: int
+    ) -> tuple[str | None, str | None]:
+        odd_signatures, even_signatures = self._parity_signature_sets()
+        if layer_idx % 2:
+            current_set = odd_signatures
+            other_set = even_signatures
+            parity_label = "parzystych"
+        else:
+            current_set = even_signatures
+            other_set = odd_signatures
+            parity_label = "nieparzystych"
+        if signature not in current_set:
+            return None, "Nie można sparować warstw parzystych/nieparzystych."
+        if len(current_set) != 1:
+            return None, "Synchronizacja wyłączona: brak jednoznacznego układu warstw."
+        if len(other_set) != 1:
+            return (
+                None,
+                f"Synchronizacja wyłączona: różne układy warstw {parity_label}.",
+            )
+        return next(iter(other_set)), None
+
+    def _apply_manual_order_update(
+        self,
+        signature: str,
+        order: list[int],
+        progress: int,
+        target_sides: list[str],
+        layer_idx: int,
+        rect_count: int,
+    ) -> None:
+        for side in target_sides:
+            self.manual_orders_by_side[side][signature] = list(order)
+            self.manual_progress_by_side[side][signature] = progress
+        if self.manual_sync_parity_var.get():
+            snapshot = self.active_snapshot
+            if snapshot is None:
+                return
+            pair_signature, reason = self._find_parity_pair_signature(
+                signature, layer_idx
+            )
+            if pair_signature is None:
+                self.manual_sync_parity_var.set(False)
+                if reason:
+                    self.status_var.set(reason)
+                return
+            pair_count = self._signature_rect_count(snapshot, pair_signature)
+            if not pair_count or pair_count != rect_count:
+                self.manual_sync_parity_var.set(False)
+                self.status_var.set(
+                    "Synchronizacja wyłączona: różna liczba kartonów w parach."
+                )
+                return
+            for side in target_sides:
+                self.manual_orders_by_side[side][pair_signature] = list(order)
+                self.manual_progress_by_side[side][pair_signature] = progress
 
     def _on_manual_mode_toggle(self) -> None:
         snapshot = self.active_snapshot
@@ -848,9 +1130,14 @@ class TabURCaps(ttk.Frame):
             return
         value = order.pop(selected_index)
         order.insert(target, value)
-        for side in target_sides:
-            self.manual_orders_by_side[side][signature] = list(order)
-            self.manual_progress_by_side[side][signature] = len(order)
+        self._apply_manual_order_update(
+            signature,
+            order,
+            len(order),
+            target_sides,
+            layer_idx,
+            rect_count,
+        )
         self._render_layer_preview()
 
     def _move_selected_to(self) -> None:
@@ -879,9 +1166,14 @@ class TabURCaps(ttk.Frame):
         selected_index = self.order_tree.index(selection[0])
         value = order.pop(selected_index)
         order.insert(target, value)
-        for side in target_sides:
-            self.manual_orders_by_side[side][signature] = list(order)
-            self.manual_progress_by_side[side][signature] = len(order)
+        self._apply_manual_order_update(
+            signature,
+            order,
+            len(order),
+            target_sides,
+            layer_idx,
+            rect_count,
+        )
         self._render_layer_preview()
 
     def _reverse_manual_order(self) -> None:
@@ -899,9 +1191,14 @@ class TabURCaps(ttk.Frame):
         base_side = self._display_side() if self._display_side() in target_sides else target_sides[0]
         order = self._ensure_manual_order_for_signature(signature, rect_count, base_side)
         order.reverse()
-        for side in target_sides:
-            self.manual_orders_by_side[side][signature] = list(order)
-            self.manual_progress_by_side[side][signature] = len(order)
+        self._apply_manual_order_update(
+            signature,
+            order,
+            len(order),
+            target_sides,
+            layer_idx,
+            rect_count,
+        )
         self._render_layer_preview()
 
     def _reset_manual_order(self) -> None:
@@ -914,9 +1211,15 @@ class TabURCaps(ttk.Frame):
             return
         rect_count = len(snapshot.layer_rects_list[layer_idx - 1])
         target_sides = self._edit_target_sides()
-        for side in target_sides:
-            self.manual_orders_by_side[side][signature] = list(range(rect_count))
-            self.manual_progress_by_side[side][signature] = 0
+        order = list(range(rect_count))
+        self._apply_manual_order_update(
+            signature,
+            order,
+            0,
+            target_sides,
+            layer_idx,
+            rect_count,
+        )
         self._render_layer_preview()
 
     def _collect_config(self) -> URCapsConfig:
@@ -930,6 +1233,9 @@ class TabURCaps(ttk.Frame):
             approach_right=self.approach_right_var.get(),
             approach_left=self.approach_left_var.get(),
             placement_sequence=self.placement_sequence_var.get(),
+            omit_altpattern_when_mirror=bool(
+                self.omit_altpattern_when_mirror_var.get()
+            ),
             pallet_height_override=self._parse_optional_int(
                 self.pallet_height_override_var.get()
             ),
@@ -963,6 +1269,7 @@ class TabURCaps(ttk.Frame):
             placement_sequence=ur_config.placement_sequence,
             pallet_height_override=ur_config.pallet_height_override,
             dimensions_height_override=ur_config.dimensions_height_override,
+            omit_altpattern_when_mirror=ur_config.omit_altpattern_when_mirror,
         )
 
     def _choose_directory(self) -> None:
@@ -1061,6 +1368,8 @@ class TabURCaps(ttk.Frame):
         self, payload: dict, layer_idx: int
     ) -> tuple[list[dict], list[dict], str, str] | None:
         layer_types = {lt.get("name"): lt for lt in payload.get("layerTypes", [])}
+        gui_settings = payload.get("guiSettings", {})
+        alt_layout = gui_settings.get("altLayout", "mirror")
         layer_counter = 0
         for layer_name in payload.get("layers", []):
             layer_type = layer_types.get(layer_name)
@@ -1069,7 +1378,13 @@ class TabURCaps(ttk.Frame):
             layer_counter += 1
             if layer_counter == layer_idx:
                 pattern = layer_type.get("pattern") or []
-                alt_pattern = layer_type.get("altPattern") or list(pattern)
+                alt_pattern = layer_type.get("altPattern")
+                if alt_pattern is None:
+                    if alt_layout == "mirror":
+                        pallet_w = float(payload.get("dimensions", {}).get("width", 0) or 0)
+                        alt_pattern = mirror_pattern(pattern, pallet_w)
+                    else:
+                        alt_pattern = list(pattern)
                 approach = layer_type.get("approach", "normal")
                 alt_approach = layer_type.get("altApproach", approach)
                 return pattern, alt_pattern, approach, alt_approach
@@ -1090,6 +1405,79 @@ class TabURCaps(ttk.Frame):
             )
         self.current_preview_signature = None
         self.preview_canvas.draw()
+
+    def _draw_robot_orientation(self) -> None:
+        if not hasattr(self, "robot_canvas"):
+            return
+        canvas = self.robot_canvas
+        canvas.delete("all")
+        width = int(canvas.winfo_reqwidth())
+        height = int(canvas.winfo_reqheight())
+        margin = 10
+        pallet_w = (width - 3 * margin) // 2
+        pallet_h = height - 2 * margin - 20
+        left_x = margin
+        right_x = margin * 2 + pallet_w
+        top_y = margin
+        bottom_y = top_y + pallet_h
+
+        canvas.create_rectangle(
+            left_x,
+            top_y,
+            left_x + pallet_w,
+            bottom_y,
+            outline="#2d3436",
+            width=2,
+        )
+        canvas.create_rectangle(
+            right_x,
+            top_y,
+            right_x + pallet_w,
+            bottom_y,
+            outline="#2d3436",
+            width=2,
+        )
+        robot_size = 26
+        robot_x = width // 2
+        robot_y = top_y + pallet_h // 2
+        canvas.create_oval(
+            robot_x - robot_size // 2,
+            robot_y - robot_size // 2,
+            robot_x + robot_size // 2,
+            robot_y + robot_size // 2,
+            fill="#74b9ff",
+            outline="#0984e3",
+            width=2,
+        )
+        canvas.create_text(
+            left_x + pallet_w / 2,
+            bottom_y + 8,
+            text="Paleta lewa",
+            font=("TkDefaultFont", 8),
+        )
+        canvas.create_text(
+            right_x + pallet_w / 2,
+            bottom_y + 8,
+            text="Paleta prawa",
+            font=("TkDefaultFont", 8),
+        )
+        arrow_y = bottom_y + 14
+        canvas.create_line(
+            width / 2,
+            arrow_y + 10,
+            width / 2,
+            arrow_y,
+            arrow=tk.LAST,
+            width=2,
+            fill="#d63031",
+        )
+        canvas.create_text(
+            width / 2,
+            arrow_y + 16,
+            text="PRZÓD ROBOTA",
+            font=("TkDefaultFont", 8, "bold"),
+            fill="#d63031",
+        )
 
     def _draw_layer_pattern(
         self,
@@ -1268,12 +1656,17 @@ class TabURCaps(ttk.Frame):
             else:
                 base_order[:] = list(range(len(base_order)))
                 progress = 0
-        else:
-            return
+            else:
+                return
 
-        for side in target_sides:
-            self.manual_orders_by_side[side][signature] = list(base_order)
-            self.manual_progress_by_side[side][signature] = progress
+        self._apply_manual_order_update(
+            signature,
+            base_order,
+            progress,
+            target_sides,
+            layer_idx,
+            rect_count,
+        )
         self._render_layer_preview()
 
     def _render_layer_preview(self, *args) -> None:  # noqa: ARG002
@@ -1425,6 +1818,7 @@ class URCapsConfig:
     approach_right: str = "inverse"
     approach_left: str = "inverse"
     placement_sequence: str = "default"
+    omit_altpattern_when_mirror: bool = False
     pallet_height_override: int | None = None
     dimensions_height_override: int | None = None
 

@@ -37,6 +37,7 @@ class PallyExportConfig:
     placement_sequence: str = "default"
     pallet_height_override: Optional[int] = None
     dimensions_height_override: Optional[int] = None
+    omit_altpattern_when_mirror: bool = False
 
     def __post_init__(self) -> None:
         if self.swap_axes_for_pally is None:
@@ -262,7 +263,7 @@ def build_pally_json(
         manual_orders_left = manual_orders_right
 
     def _apply_order(
-        pattern: List[Dict], manual_order: Optional[List[int]], approach: str, label: str
+        pattern: List[Dict], manual_order: Optional[List[int]], label: str
     ) -> List[Dict]:
         if manual_order:
             if len(manual_order) != len(pattern):
@@ -274,8 +275,6 @@ def build_pally_json(
                 )
             else:
                 return [pattern[idx] for idx in manual_order]
-        if approach == "inverse":
-            return list(reversed(pattern))
         return pattern
 
     for rects in layer_rects_list:
@@ -297,18 +296,30 @@ def build_pally_json(
             layer_name = f"Layer type: {next_idx}"
             next_idx += 1
             signature_to_name[signature] = layer_name
-            alt_pattern = (
-                list(pattern) if config.alt_layout == "altPattern" else mirror_pattern(pattern, pallet_width)
+            omit_altpattern = (
+                config.alt_layout == "mirror" and config.omit_altpattern_when_mirror
             )
-            pattern = _apply_order(pattern, manual_order, config.approach, f"signature {signature}")
-            alt_pattern = _apply_order(
-                alt_pattern,
-                manual_order_alt,
-                config.alt_approach,
-                f"alt signature {signature}",
-            )
-            layer_types.append(
-                {
+            pattern = _apply_order(pattern, manual_order, f"signature {signature}")
+            if omit_altpattern:
+                layer_type = {
+                    "name": layer_name,
+                    "class": "layer",
+                    "pattern": pattern,
+                    "approach": config.approach,
+                    "altApproach": config.alt_approach,
+                }
+            else:
+                alt_pattern = (
+                    list(pattern)
+                    if config.alt_layout == "altPattern"
+                    else mirror_pattern(pattern, pallet_width)
+                )
+                alt_pattern = _apply_order(
+                    alt_pattern,
+                    manual_order_alt,
+                    f"alt signature {signature}",
+                )
+                layer_type = {
                     "name": layer_name,
                     "class": "layer",
                     "pattern": pattern,
@@ -316,7 +327,7 @@ def build_pally_json(
                     "approach": config.approach,
                     "altApproach": config.alt_approach,
                 }
-            )
+            layer_types.append(layer_type)
         layer_type_names.append(signature_to_name[signature])
 
     layers: List[str] = []
