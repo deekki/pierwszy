@@ -10,7 +10,7 @@ from tkinter import filedialog, messagebox, ttk
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.patches import Rectangle
+from matplotlib.patches import Circle, Rectangle
 
 from palletizer_core.pally_export import (
     PallyExportConfig,
@@ -70,6 +70,7 @@ class TabURCaps(ttk.Frame):
             "left": [],
         }
         self.current_preview_signature: str | None = None
+        self.preview_overlay_artists: list = []
         self.loaded_payload: dict | None = None
         self.pallet_height_override_var = tk.StringVar(value="")
         self.dimensions_height_override_var = tk.StringVar(value="")
@@ -103,10 +104,6 @@ class TabURCaps(ttk.Frame):
 
         ttk.Label(fetch_frame, textvariable=self.snapshot_summary_var, justify="left").grid(
             row=0, column=1, sticky="w"
-        )
-
-        ttk.Label(fetch_frame, textvariable=self.weight_summary_var, justify="left").grid(
-            row=1, column=0, columnspan=2, sticky="w", pady=(4, 0)
         )
 
         export_frame = ttk.LabelFrame(main_frame, text="Eksport UR CAPS")
@@ -253,15 +250,8 @@ class TabURCaps(ttk.Frame):
             width=25,
         ).grid(row=3, column=1, padx=4, pady=2, sticky="w")
 
-        robot_frame = ttk.LabelFrame(basic_right, text="Orientacja robota")
-        robot_frame.grid(row=4, column=0, columnspan=2, padx=4, pady=(4, 4), sticky="ew")
-        robot_frame.columnconfigure(0, weight=1)
-        self.robot_canvas = tk.Canvas(robot_frame, width=220, height=110, highlightthickness=0)
-        self.robot_canvas.grid(row=0, column=0, sticky="ew")
-        self._draw_robot_orientation()
-
         slips_frame = ttk.LabelFrame(basic_right, text="Przekładki + masa")
-        slips_frame.grid(row=5, column=0, columnspan=2, padx=4, pady=(4, 4), sticky="ew")
+        slips_frame.grid(row=4, column=0, columnspan=2, padx=4, pady=(4, 4), sticky="ew")
         slips_frame.columnconfigure(1, weight=1)
 
         ttk.Label(slips_frame, text="Przekładki po warstwie:").grid(
@@ -293,9 +283,6 @@ class TabURCaps(ttk.Frame):
             validate="key",
             validatecommand=(self.register(self._validate_weight_override), "%P"),
         ).grid(row=4, column=1, padx=4, pady=(6, 0), sticky="w")
-        ttk.Label(slips_frame, text="(puste = z Paletyzacji)").grid(
-            row=5, column=0, columnspan=2, padx=4, pady=(2, 0), sticky="w"
-        )
 
         ttk.Button(
             export_frame,
@@ -756,6 +743,13 @@ class TabURCaps(ttk.Frame):
         self.signature_to_layers = {}
         self.loaded_payload = None
         self._update_snapshot_summary(snapshot)
+        if snapshot.box_weight_g is not None:
+            weight_kg = float(snapshot.box_weight_g) / 1000
+            weight_text = f"{weight_kg:.3f}"
+        else:
+            weight_text = ""
+        if self.box_weight_override_var.get() != weight_text:
+            self.box_weight_override_var.set(weight_text)
         layer_count = snapshot.num_layers or len(snapshot.layers)
         self._update_slip_checkboxes(layer_count)
         for idx, var in enumerate(self.pally_slip_vars):
@@ -763,7 +757,7 @@ class TabURCaps(ttk.Frame):
                 var.set(True)
         self._update_slip_summary()
         self.pally_swap_axes_var.set(snapshot.pallet_w > snapshot.pallet_l)
-        self.status_var.set("Pobrano dane z Paletyzacji")
+        self.status_var.set("Dane z Paletyzacji odświeżone")
         self._update_weight_summary()
         try:
             ur_config = self._collect_config()
@@ -788,18 +782,10 @@ class TabURCaps(ttk.Frame):
     def _update_weight_summary(self) -> None:
         weight_g, source = self._get_box_weight_g()
         if source == "invalid_override":
-            self.weight_summary_var.set("Masa kartonu: nieprawidłowa (UR CAPS)")
+            self.weight_summary_var.set("Masa kartonu: nieprawidłowa")
             return
         if weight_g:
-            if source == "ur_caps_override":
-                source_label = "UR CAPS"
-            elif source == "manual":
-                source_label = "Paletyzacja ręcznie"
-            else:
-                source_label = "katalog"
-            self.weight_summary_var.set(
-                f"Masa kartonu: {weight_g / 1000:.3f} kg ({source_label})"
-            )
+            self.weight_summary_var.set(f"Masa kartonu: {weight_g / 1000:.3f} kg")
         else:
             self.weight_summary_var.set("Masa kartonu: brak danych")
 
@@ -1014,7 +1000,8 @@ class TabURCaps(ttk.Frame):
             side_orders[signature] = order
             side_progress[signature] = 0
         else:
-            side_progress.setdefault(signature, rect_count)
+            progress_value = side_progress.get(signature, 0)
+            side_progress[signature] = min(max(int(progress_value), 0), rect_count)
         return order
 
     def _manual_orders_payload(
@@ -1092,8 +1079,8 @@ class TabURCaps(ttk.Frame):
     def _refresh_order_tree(self, order: list[int]) -> None:
         for item in self.order_tree.get_children():
             self.order_tree.delete(item)
-        for idx, _ in enumerate(order, start=1):
-            self.order_tree.insert("", "end", values=(idx,))
+        for box_idx in order:
+            self.order_tree.insert("", "end", values=(box_idx + 1,))
         if self._manual_mode_enabled():
             self.order_tree.state(("!disabled",))
             self.manual_hint_label.state(("!disabled",))
@@ -1130,10 +1117,11 @@ class TabURCaps(ttk.Frame):
             return
         value = order.pop(selected_index)
         order.insert(target, value)
+        progress = self.manual_progress_by_side.get(base_side, {}).get(signature, 0)
         self._apply_manual_order_update(
             signature,
             order,
-            len(order),
+            min(progress, len(order)),
             target_sides,
             layer_idx,
             rect_count,
@@ -1166,10 +1154,11 @@ class TabURCaps(ttk.Frame):
         selected_index = self.order_tree.index(selection[0])
         value = order.pop(selected_index)
         order.insert(target, value)
+        progress = self.manual_progress_by_side.get(base_side, {}).get(signature, 0)
         self._apply_manual_order_update(
             signature,
             order,
-            len(order),
+            min(progress, len(order)),
             target_sides,
             layer_idx,
             rect_count,
@@ -1194,7 +1183,7 @@ class TabURCaps(ttk.Frame):
         self._apply_manual_order_update(
             signature,
             order,
-            len(order),
+            0,
             target_sides,
             layer_idx,
             rect_count,
@@ -1404,80 +1393,102 @@ class TabURCaps(ttk.Frame):
                 transform=ax.transAxes,
             )
         self.current_preview_signature = None
+        self._clear_preview_overlay()
         self.preview_canvas.draw()
 
-    def _draw_robot_orientation(self) -> None:
-        if not hasattr(self, "robot_canvas"):
-            return
-        canvas = self.robot_canvas
-        canvas.delete("all")
-        width = int(canvas.winfo_reqwidth())
-        height = int(canvas.winfo_reqheight())
-        margin = 10
-        pallet_w = (width - 3 * margin) // 2
-        pallet_h = height - 2 * margin - 20
-        left_x = margin
-        right_x = margin * 2 + pallet_w
-        top_y = margin
-        bottom_y = top_y + pallet_h
+    def _clear_preview_overlay(self) -> None:
+        for artist in self.preview_overlay_artists:
+            try:
+                artist.remove()
+            except ValueError:
+                pass
+        self.preview_overlay_artists.clear()
 
-        canvas.create_rectangle(
-            left_x,
+    def _draw_preview_orientation_overlay(self) -> None:
+        self._clear_preview_overlay()
+        axes = [self.preview_ax_right, self.preview_ax_left]
+        positions = sorted([ax.get_position() for ax in axes], key=lambda pos: pos.x0)
+        left_pos, right_pos = positions
+        gap = max(right_pos.x0 - left_pos.x1, 0.03)
+        gap_mid = (left_pos.x1 + right_pos.x0) / 2
+        center_y = (left_pos.y0 + left_pos.y1) / 2
+        radius = min(0.03, gap * 0.4)
+
+        robot = Circle(
+            (gap_mid, center_y),
+            radius=radius,
+            transform=self.preview_fig.transFigure,
+            facecolor="#74b9ff",
+            edgecolor="#0984e3",
+            lw=2,
+            zorder=10,
+        )
+        self.preview_fig.add_artist(robot)
+        self.preview_overlay_artists.append(robot)
+
+        robot_text = self.preview_fig.text(
+            gap_mid,
+            center_y,
+            "ROBOT",
+            ha="center",
+            va="center",
+            fontsize=8,
+            fontweight="bold",
+            color="#0984e3",
+            zorder=11,
+        )
+        self.preview_overlay_artists.append(robot_text)
+
+        top_y = min(max(left_pos.y1, right_pos.y1) + 0.02, 0.97)
+        top_box = Rectangle(
+            (gap_mid - 0.05, top_y - 0.012),
+            0.10,
+            0.024,
+            transform=self.preview_fig.transFigure,
+            facecolor="#ffeaa7",
+            edgecolor="#d35400",
+            lw=1.2,
+            zorder=9,
+        )
+        self.preview_fig.add_artist(top_box)
+        self.preview_overlay_artists.append(top_box)
+        top_text = self.preview_fig.text(
+            gap_mid,
             top_y,
-            left_x + pallet_w,
+            "POBÓR KARTONU",
+            ha="center",
+            va="center",
+            fontsize=7,
+            color="#d35400",
+            zorder=10,
+        )
+        self.preview_overlay_artists.append(top_text)
+
+        bottom_y = max(min(left_pos.y0, right_pos.y0) - 0.03, 0.03)
+        bottom_box = Rectangle(
+            (gap_mid - 0.05, bottom_y - 0.012),
+            0.10,
+            0.024,
+            transform=self.preview_fig.transFigure,
+            facecolor="#ffcccc",
+            edgecolor="#c0392b",
+            lw=1.2,
+            zorder=9,
+        )
+        self.preview_fig.add_artist(bottom_box)
+        self.preview_overlay_artists.append(bottom_box)
+        bottom_text = self.preview_fig.text(
+            gap_mid,
             bottom_y,
-            outline="#2d3436",
-            width=2,
+            "PRZÓD",
+            ha="center",
+            va="center",
+            fontsize=8,
+            fontweight="bold",
+            color="#c0392b",
+            zorder=10,
         )
-        canvas.create_rectangle(
-            right_x,
-            top_y,
-            right_x + pallet_w,
-            bottom_y,
-            outline="#2d3436",
-            width=2,
-        )
-        robot_size = 26
-        robot_x = width // 2
-        robot_y = top_y + pallet_h // 2
-        canvas.create_oval(
-            robot_x - robot_size // 2,
-            robot_y - robot_size // 2,
-            robot_x + robot_size // 2,
-            robot_y + robot_size // 2,
-            fill="#74b9ff",
-            outline="#0984e3",
-            width=2,
-        )
-        canvas.create_text(
-            left_x + pallet_w / 2,
-            bottom_y + 8,
-            text="Paleta lewa",
-            font=("TkDefaultFont", 8),
-        )
-        canvas.create_text(
-            right_x + pallet_w / 2,
-            bottom_y + 8,
-            text="Paleta prawa",
-            font=("TkDefaultFont", 8),
-        )
-        arrow_y = bottom_y + 14
-        canvas.create_line(
-            width / 2,
-            arrow_y + 10,
-            width / 2,
-            arrow_y,
-            arrow=tk.LAST,
-            width=2,
-            fill="#d63031",
-        )
-        canvas.create_text(
-            width / 2,
-            arrow_y + 16,
-            text="PRZÓD ROBOTA",
-            font=("TkDefaultFont", 8, "bold"),
-            fill="#d63031",
-        )
+        self.preview_overlay_artists.append(bottom_text)
 
     def _draw_layer_pattern(
         self,
@@ -1487,6 +1498,7 @@ class TabURCaps(ttk.Frame):
         layer_idx: int,
         approach: str,
         side: str,
+        order: list[int] | None = None,
     ) -> None:
         dimensions = payload.get("dimensions", {})
         product_dims = payload.get("productDimensions", {})
@@ -1506,6 +1518,10 @@ class TabURCaps(ttk.Frame):
         ax.add_patch(Rectangle((0, 0), pallet_w, pallet_l, fill=False, edgecolor="black", lw=1.5))
 
         centers: list[tuple[float, float]] = []
+        centers_by_idx: dict[int, tuple[float, float]] = {}
+        order_map = None
+        if order:
+            order_map = {box_idx: idx + 1 for idx, box_idx in enumerate(order)}
         boxes: list[tuple[int, tuple[float, float, float, float]]] = []
         for idx, item in enumerate(pattern, start=1):
             rotation = (item.get("r") or [0])[0]
@@ -1516,7 +1532,8 @@ class TabURCaps(ttk.Frame):
             y_center = float(item.get("y", 0))
             x_left = x_center - width / 2.0
             y_bottom = y_center - length / 2.0
-            boxes.append((idx - 1, (x_left, x_left + width, y_bottom, y_bottom + length)))
+            box_idx = idx - 1
+            boxes.append((box_idx, (x_left, x_left + width, y_bottom, y_bottom + length)))
             ax.add_patch(
                 Rectangle(
                     (x_left, y_bottom),
@@ -1532,7 +1549,7 @@ class TabURCaps(ttk.Frame):
             ax.text(
                 x_center,
                 y_center,
-                str(idx),
+                str(order_map.get(box_idx, idx) if order_map else idx),
                 ha="center",
                 va="center",
                 fontsize=9,
@@ -1548,14 +1565,23 @@ class TabURCaps(ttk.Frame):
                 fontsize=7,
                 color="#0b5394",
             )
-            if centers:
-                ax.annotate(
-                    "",
-                    xy=(x_center, y_center),
-                    xytext=centers[-1],
-                    arrowprops={"arrowstyle": "->", "color": "#cc0000", "lw": 1.2},
-                )
             centers.append((x_center, y_center))
+            centers_by_idx[box_idx] = (x_center, y_center)
+
+        ordered_centers = centers
+        if order:
+            ordered_centers = [
+                centers_by_idx[box_idx]
+                for box_idx in order
+                if box_idx in centers_by_idx
+            ]
+        for prev_center, next_center in zip(ordered_centers, ordered_centers[1:]):
+            ax.annotate(
+                "",
+                xy=next_center,
+                xytext=prev_center,
+                arrowprops={"arrowstyle": "->", "color": "#cc0000", "lw": 1.2},
+            )
 
         self.preview_boxes_info[side] = boxes
 
@@ -1565,7 +1591,6 @@ class TabURCaps(ttk.Frame):
         ax.set_xlabel("Szerokość [mm]")
         ax.set_ylabel("Długość [mm]")
         self._draw_approach_arrow(ax, pallet_w, pallet_l, approach, side)
-        self.preview_canvas.draw()
 
     def _draw_approach_arrow(
         self, ax, pallet_w: float, pallet_l: float, approach: str, side: str
@@ -1727,6 +1752,7 @@ class TabURCaps(ttk.Frame):
                 layer_idx,
                 approach_right,
                 "right",
+                order_right if signature and self._manual_mode_enabled() else None,
             )
             self._draw_layer_pattern(
                 self.preview_ax_left,
@@ -1735,7 +1761,10 @@ class TabURCaps(ttk.Frame):
                 layer_idx,
                 approach_left,
                 "left",
+                order_left if signature and self._manual_mode_enabled() else None,
             )
+            self._draw_preview_orientation_overlay()
+            self.preview_canvas.draw()
         except Exception:  # noqa: BLE001
             logger.exception("Failed to draw UR CAPS layer preview")
             self._draw_empty_preview("Błąd podglądu")
