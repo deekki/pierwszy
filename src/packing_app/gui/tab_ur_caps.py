@@ -1187,12 +1187,18 @@ class TabURCaps(ttk.Frame):
         signature = self._current_signature(layer_idx)
         if not signature:
             return
-        rect_count = len(snapshot.layer_rects_list[layer_idx - 1])
         target_sides = self._edit_target_sides()
         selection = self.order_tree.selection()
         if not selection:
             return
         selected_index = self.order_tree.index(selection[0])
+        base_side = self._display_side()
+        base_order = self._ensure_manual_order_for_signature(
+            signature,
+            len(snapshot.layer_rects_list[layer_idx - 1]),
+            base_side,
+        )
+        rect_count = len(base_order)
         target = selected_index + delta
         if target < 0 or target >= rect_count:
             return
@@ -1368,9 +1374,6 @@ class TabURCaps(ttk.Frame):
         ur_config = self._collect_config()
         config = self._make_pally_config(snapshot, ur_config, name_override="preview")
         self._update_signature_context(snapshot, config)
-        manual_orders = self._manual_orders_payload(snapshot)
-        orders_right, orders_left = manual_orders if manual_orders else (None, None)
-
         return build_pally_json(
             config=config,
             layer_rects_list=snapshot.layer_rects_list,
@@ -1378,8 +1381,8 @@ class TabURCaps(ttk.Frame):
             include_base_slip=(
                 bool(self.pally_slip_vars[0].get()) if self.pally_slip_vars else True
             ),
-            manual_orders_by_signature_right=orders_right,
-            manual_orders_by_signature_left=orders_left,
+            manual_orders_by_signature_right=None,
+            manual_orders_by_signature_left=None,
         )
 
     def _extract_layer_patterns(
