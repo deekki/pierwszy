@@ -53,10 +53,6 @@ class TabURCaps(ttk.Frame):
             "right": {},
             "left": {},
         }
-        self.manual_progress_by_side: dict[str, dict[str, int]] = {
-            "right": {},
-            "left": {},
-        }
         self.layer_signatures: list[str] = []
         self.signature_to_layers: dict[str, list[int]] = {}
         self.status_var = tk.StringVar(value="")
@@ -64,11 +60,6 @@ class TabURCaps(ttk.Frame):
         self.weight_summary_var = tk.StringVar(value="Masa kartonu: -")
         self.preview_layer_var = tk.StringVar(value="1")
         self.manual_hint_var = tk.StringVar(value="")
-        self.manual_move_target_var = tk.StringVar(value="")
-        self.preview_boxes_info: dict[str, list[tuple[int, tuple[float, float, float, float]]]] = {
-            "right": [],
-            "left": [],
-        }
         self.current_preview_signature: str | None = None
         self.preview_overlay_artists: list = []
         self.loaded_payload: dict | None = None
@@ -337,7 +328,6 @@ class TabURCaps(ttk.Frame):
         self.preview_axes = {"right": self.preview_ax_right, "left": self.preview_ax_left}
         self.preview_canvas = FigureCanvasTkAgg(self.preview_fig, master=canvas_frame)
         self.preview_canvas.get_tk_widget().grid(row=0, column=0, sticky="nsew")
-        self.preview_canvas.mpl_connect("button_press_event", self._on_canvas_click)
 
         manual_frame = ttk.LabelFrame(preview_frame, text="Tryb ręczny")
         manual_frame.grid(row=1, column=1, sticky="nsew", padx=4, pady=(0, 2))
@@ -418,18 +408,11 @@ class TabURCaps(ttk.Frame):
 
         controls_row = ttk.Frame(manual_frame)
         controls_row.grid(row=5, column=0, sticky="ew", pady=4)
-        controls_row.columnconfigure(2, weight=1)
         ttk.Button(controls_row, text="Góra", command=self._move_selected_up).grid(
             row=0, column=0, padx=2
         )
         ttk.Button(controls_row, text="Dół", command=self._move_selected_down).grid(
             row=0, column=1, padx=2
-        )
-        ttk.Entry(controls_row, textvariable=self.manual_move_target_var, width=6).grid(
-            row=0, column=2, padx=2, sticky="w"
-        )
-        ttk.Button(controls_row, text="Przenieś", command=self._move_selected_to).grid(
-            row=0, column=3, padx=2
         )
 
         manual_frame.rowconfigure(4, weight=1)
@@ -603,7 +586,6 @@ class TabURCaps(ttk.Frame):
             "manual_edit_target": self.manual_edit_target_var.get(),
             "manual_sync_parity": bool(self.manual_sync_parity_var.get()),
             "manual_orders_by_side": self.manual_orders_by_side,
-            "manual_progress_by_side": self.manual_progress_by_side,
         }
 
     def apply_ui_state(self, state: dict) -> None:
@@ -665,11 +647,9 @@ class TabURCaps(ttk.Frame):
             bool(state.get("manual_sync_parity", False))
         )
         manual_orders = state.get("manual_orders_by_side") or {}
-        manual_progress = state.get("manual_progress_by_side") or {}
         if manual_orders:
             if snapshot is not None:
                 pruned_orders: dict[str, dict[str, list[int]]] = {"right": {}, "left": {}}
-                pruned_progress: dict[str, dict[str, int]] = {"right": {}, "left": {}}
                 dropped = False
                 for side in ("right", "left"):
                     side_orders = manual_orders.get(side, {})
@@ -680,23 +660,15 @@ class TabURCaps(ttk.Frame):
                         rect_count = self._signature_rect_count(snapshot, signature)
                         if rect_count and len(order) == rect_count:
                             pruned_orders[side][signature] = list(order)
-                            progress_value = manual_progress.get(side, {}).get(
-                                signature, rect_count
-                            )
-                            pruned_progress[side][signature] = min(
-                                max(int(progress_value), 0), rect_count
-                            )
                         else:
                             dropped = True
                 self.manual_orders_by_side = pruned_orders
-                self.manual_progress_by_side = pruned_progress
                 if dropped:
                     self.status_var.set(
                         "Część zapisanych kolejności ręcznych nie pasuje do aktualnego wzoru."
                     )
             else:
                 self.manual_orders_by_side = manual_orders
-                self.manual_progress_by_side = manual_progress
 
         self._update_weight_summary()
         self._update_slip_summary()
@@ -732,14 +704,9 @@ class TabURCaps(ttk.Frame):
         previous_orders = {
             side: dict(orders) for side, orders in self.manual_orders_by_side.items()
         }
-        previous_progress = {
-            side: dict(progress)
-            for side, progress in self.manual_progress_by_side.items()
-        }
 
         self.active_snapshot = snapshot
         self.manual_orders_by_side = previous_orders
-        self.manual_progress_by_side = previous_progress
         self.layer_signatures = []
         self.signature_to_layers = {}
         self.loaded_payload = None
@@ -916,65 +883,94 @@ class TabURCaps(ttk.Frame):
                 even_signatures.add(signature)
         return odd_signatures, even_signatures
 
-    def _find_parity_pair_signature(
+    def _resolve_parity_sync_signatures(
         self, signature: str, layer_idx: int
-    ) -> tuple[str | None, str | None]:
+    ) -> tuple[str | None, str | None, str | None]:
         odd_signatures, even_signatures = self._parity_signature_sets()
         if layer_idx % 2:
             current_set = odd_signatures
-            other_set = even_signatures
-            parity_label = "parzystych"
+            parity_label = "nieparzystych"
         else:
             current_set = even_signatures
-            other_set = odd_signatures
-            parity_label = "nieparzystych"
+            parity_label = "parzystych"
         if signature not in current_set:
-            return None, "Nie można sparować warstw parzystych/nieparzystych."
-        if len(current_set) != 1:
-            return None, "Synchronizacja wyłączona: brak jednoznacznego układu warstw."
-        if len(other_set) != 1:
+            return None, None, "Nie można sparować warstw parzystych/nieparzystych."
+        if len(even_signatures) != 1:
             return (
+                None,
+                None,
+                "Synchronizacja wyłączona: brak jednoznacznego układu warstw parzystych.",
+            )
+        if len(odd_signatures) != 1:
+            return (
+                None,
                 None,
                 f"Synchronizacja wyłączona: różne układy warstw {parity_label}.",
             )
-        return next(iter(other_set)), None
+        return next(iter(even_signatures)), next(iter(odd_signatures)), None
+
+    def _validate_parity_sync(
+        self, signature: str, layer_idx: int
+    ) -> tuple[str | None, str | None]:
+        snapshot = self.active_snapshot
+        if snapshot is None:
+            return None, None
+        even_signature, odd_signature, reason = self._resolve_parity_sync_signatures(
+            signature, layer_idx
+        )
+        if even_signature is None or odd_signature is None:
+            self.manual_sync_parity_var.set(False)
+            if reason:
+                self.status_var.set(reason)
+            return None, None
+        even_count = self._signature_rect_count(snapshot, even_signature)
+        odd_count = self._signature_rect_count(snapshot, odd_signature)
+        if not even_count or even_count != odd_count:
+            self.manual_sync_parity_var.set(False)
+            self.status_var.set(
+                "Synchronizacja wyłączona: różna liczba kartonów w parach."
+            )
+            return None, None
+        return even_signature, odd_signature
+
+    def _effective_manual_signature(self, signature: str, layer_idx: int) -> str | None:
+        if not signature:
+            return None
+        if not self.manual_sync_parity_var.get():
+            return signature
+        even_signature, odd_signature = self._validate_parity_sync(signature, layer_idx)
+        if not even_signature or not odd_signature:
+            return signature
+        return even_signature
 
     def _apply_manual_order_update(
         self,
         signature: str,
         order: list[int],
-        progress: int,
         target_sides: list[str],
         layer_idx: int,
-        rect_count: int,
+    ) -> None:
+        if self.left_palette_mode_var.get() == "mirror":
+            target_sides = ["right", "left"]
+
+        if self.manual_sync_parity_var.get():
+            even_signature, odd_signature = self._validate_parity_sync(
+                signature, layer_idx
+            )
+            if even_signature and odd_signature:
+                self._store_manual_order(even_signature, order, target_sides)
+                self._store_manual_order(odd_signature, order, target_sides)
+                return
+
+        self._store_manual_order(signature, order, target_sides)
+
+    def _store_manual_order(
+        self, signature: str, order: list[int], target_sides: list[str]
     ) -> None:
         if self.left_palette_mode_var.get() == "mirror":
             target_sides = ["right", "left"]
         for side in target_sides:
             self.manual_orders_by_side[side][signature] = list(order)
-            self.manual_progress_by_side[side][signature] = progress
-        if self.manual_sync_parity_var.get():
-            snapshot = self.active_snapshot
-            if snapshot is None:
-                return
-            pair_signature, reason = self._find_parity_pair_signature(
-                signature, layer_idx
-            )
-            if pair_signature is None:
-                self.manual_sync_parity_var.set(False)
-                if reason:
-                    self.status_var.set(reason)
-                return
-            pair_count = self._signature_rect_count(snapshot, pair_signature)
-            if not pair_count or pair_count != rect_count:
-                self.manual_sync_parity_var.set(False)
-                self.status_var.set(
-                    "Synchronizacja wyłączona: różna liczba kartonów w parach."
-                )
-                return
-            for side in target_sides:
-                self.manual_orders_by_side[side][pair_signature] = list(order)
-                self.manual_progress_by_side[side][pair_signature] = progress
 
     def _on_manual_mode_toggle(self) -> None:
         snapshot = self.active_snapshot
@@ -1000,23 +996,13 @@ class TabURCaps(ttk.Frame):
                 signature, rect_count, "right"
             )
             left_orders = self.manual_orders_by_side.setdefault("left", {})
-            left_progress = self.manual_progress_by_side.setdefault("left", {})
             left_orders[signature] = list(right_order)
-            right_progress = self.manual_progress_by_side.get("right", {}).get(
-                signature, 0
-            )
-            left_progress[signature] = min(max(int(right_progress), 0), rect_count)
             return left_orders[signature]
         side_orders = self.manual_orders_by_side.setdefault(side, {})
-        side_progress = self.manual_progress_by_side.setdefault(side, {})
         order = side_orders.get(signature)
         if not order or len(order) != rect_count:
             order = list(range(rect_count))
             side_orders[signature] = order
-            side_progress[signature] = 0
-        else:
-            progress_value = side_progress.get(signature, 0)
-            side_progress[signature] = min(max(int(progress_value), 0), rect_count)
         return order
 
     def _manual_orders_payload(
@@ -1060,31 +1046,17 @@ class TabURCaps(ttk.Frame):
             self.manual_sync_parity_var.set(False)
             self.status_var.set("Synchronizacja wyłączona: brak układu parzystych.")
             return
-        pair_signature, reason = self._find_parity_pair_signature(
+        even_signature, odd_signature = self._validate_parity_sync(
             even_signature, even_layer_idx
         )
-        if pair_signature is None:
-            self.manual_sync_parity_var.set(False)
-            if reason:
-                self.status_var.set(reason)
+        if not even_signature or not odd_signature:
             return
         even_count = self._signature_rect_count(snapshot, even_signature)
-        odd_count = self._signature_rect_count(snapshot, pair_signature)
-        if not even_count or even_count != odd_count:
-            self.manual_sync_parity_var.set(False)
-            self.status_var.set(
-                "Synchronizacja wyłączona: różna liczba kartonów w parach."
-            )
-            return
         for side in ("right", "left"):
             order = self._ensure_manual_order_for_signature(
                 even_signature, even_count, side
             )
-            progress = self.manual_progress_by_side.get(side, {}).get(even_signature, 0)
-            self.manual_orders_by_side[side][pair_signature] = list(order)
-            self.manual_progress_by_side[side][pair_signature] = min(
-                max(int(progress), 0), even_count
-            )
+            self.manual_orders_by_side[side][odd_signature] = list(order)
         self._render_layer_preview()
 
     def _update_manual_hint(self, signature: str | None, layer_idx: int) -> None:
@@ -1106,7 +1078,6 @@ class TabURCaps(ttk.Frame):
             for signature in list(self.manual_orders_by_side.get(side, {}).keys()):
                 if signature not in valid_signatures:
                     self.manual_orders_by_side[side].pop(signature, None)
-                    self.manual_progress_by_side[side].pop(signature, None)
 
     def _update_signature_context(self, snapshot: PalletSnapshot, config: PallyExportConfig) -> None:
         swap_axes = bool(config.swap_axes_for_pally)
@@ -1167,10 +1138,13 @@ class TabURCaps(ttk.Frame):
         signature = self._current_signature(layer_idx)
         if not signature:
             return
+        edit_signature = self._effective_manual_signature(signature, layer_idx)
+        if not edit_signature:
+            return
         rect_count = len(snapshot.layer_rects_list[layer_idx - 1])
         target_sides = self._edit_target_sides()
         base_side = self._display_side() if self._display_side() in target_sides else target_sides[0]
-        order = self._ensure_manual_order_for_signature(signature, rect_count, base_side)
+        order = self._ensure_manual_order_for_signature(edit_signature, rect_count, base_side)
         selection = self.order_tree.selection()
         if not selection:
             return
@@ -1180,51 +1154,11 @@ class TabURCaps(ttk.Frame):
             return
         value = order.pop(selected_index)
         order.insert(target, value)
-        progress = self.manual_progress_by_side.get(base_side, {}).get(signature, 0)
         self._apply_manual_order_update(
             signature,
             order,
-            min(progress, len(order)),
             target_sides,
             layer_idx,
-            rect_count,
-        )
-        self._render_layer_preview()
-
-    def _move_selected_to(self) -> None:
-        if not self._manual_mode_enabled():
-            return
-        snapshot = self.active_snapshot
-        if snapshot is None:
-            return
-        layer_idx = self._selected_layer_index(len(snapshot.layer_rects_list))
-        signature = self._current_signature(layer_idx)
-        if not signature:
-            return
-        rect_count = len(snapshot.layer_rects_list[layer_idx - 1])
-        target_sides = self._edit_target_sides()
-        base_side = self._display_side() if self._display_side() in target_sides else target_sides[0]
-        order = self._ensure_manual_order_for_signature(signature, rect_count, base_side)
-        selection = self.order_tree.selection()
-        if not selection:
-            return
-        try:
-            target = int(self.manual_move_target_var.get()) - 1
-        except (TypeError, ValueError):
-            return
-        if target < 0 or target >= len(order):
-            return
-        selected_index = self.order_tree.index(selection[0])
-        value = order.pop(selected_index)
-        order.insert(target, value)
-        progress = self.manual_progress_by_side.get(base_side, {}).get(signature, 0)
-        self._apply_manual_order_update(
-            signature,
-            order,
-            min(progress, len(order)),
-            target_sides,
-            layer_idx,
-            rect_count,
         )
         self._render_layer_preview()
 
@@ -1238,18 +1172,19 @@ class TabURCaps(ttk.Frame):
         signature = self._current_signature(layer_idx)
         if not signature:
             return
+        edit_signature = self._effective_manual_signature(signature, layer_idx)
+        if not edit_signature:
+            return
         rect_count = len(snapshot.layer_rects_list[layer_idx - 1])
         target_sides = self._edit_target_sides()
         base_side = self._display_side() if self._display_side() in target_sides else target_sides[0]
-        order = self._ensure_manual_order_for_signature(signature, rect_count, base_side)
+        order = self._ensure_manual_order_for_signature(edit_signature, rect_count, base_side)
         order.reverse()
         self._apply_manual_order_update(
             signature,
             order,
-            0,
             target_sides,
             layer_idx,
-            rect_count,
         )
         self._render_layer_preview()
 
@@ -1261,16 +1196,17 @@ class TabURCaps(ttk.Frame):
         signature = self._current_signature(layer_idx)
         if not signature:
             return
+        edit_signature = self._effective_manual_signature(signature, layer_idx)
+        if not edit_signature:
+            return
         rect_count = len(snapshot.layer_rects_list[layer_idx - 1])
         target_sides = self._edit_target_sides()
         order = list(range(rect_count))
         self._apply_manual_order_update(
             signature,
             order,
-            0,
             target_sides,
             layer_idx,
-            rect_count,
         )
         self._render_layer_preview()
 
@@ -1446,7 +1382,6 @@ class TabURCaps(ttk.Frame):
         for side, ax in self.preview_axes.items():
             ax.clear()
             ax.axis("off")
-            self.preview_boxes_info[side] = []
             ax.text(
                 0.5,
                 0.5,
@@ -1585,7 +1520,6 @@ class TabURCaps(ttk.Frame):
         order_map = None
         if order:
             order_map = {box_idx: idx + 1 for idx, box_idx in enumerate(order)}
-        boxes: list[tuple[int, tuple[float, float, float, float]]] = []
         for idx, item in enumerate(pattern, start=1):
             rotation = (item.get("r") or [0])[0]
             width, length = (
@@ -1596,7 +1530,6 @@ class TabURCaps(ttk.Frame):
             x_left = x_center - width / 2.0
             y_bottom = y_center - length / 2.0
             box_idx = idx - 1
-            boxes.append((box_idx, (x_left, x_left + width, y_bottom, y_bottom + length)))
             ax.add_patch(
                 Rectangle(
                     (x_left, y_bottom),
@@ -1646,8 +1579,6 @@ class TabURCaps(ttk.Frame):
                 arrowprops={"arrowstyle": "->", "color": "#cc0000", "lw": 1.2},
             )
 
-        self.preview_boxes_info[side] = boxes
-
         ax.set_xlim(0, max(pallet_w, max((c[0] for c in centers), default=0)))
         ax.set_ylim(0, max(pallet_l, max((c[1] for c in centers), default=0)))
         ax.grid(True, linestyle="--", alpha=0.2)
@@ -1687,76 +1618,6 @@ class TabURCaps(ttk.Frame):
             bbox={"boxstyle": "round,pad=0.2", "fc": "#f3e6ff", "ec": "none", "alpha": 0.7},
         )
 
-    def _box_index_from_event(
-        self, side: str, x: float | None, y: float | None
-    ) -> int | None:
-        if x is None or y is None:
-            return None
-        for idx, (x_left, x_right, y_bottom, y_top) in self.preview_boxes_info.get(
-            side, []
-        ):
-            if x_left <= x <= x_right and y_bottom <= y <= y_top:
-                return idx
-        return None
-
-    def _on_canvas_click(self, event) -> None:  # noqa: ANN001
-        if not self._manual_mode_enabled() or event.inaxes not in self.preview_axes.values():
-            return
-        side_clicked = next(
-            (name for name, ax in self.preview_axes.items() if ax == event.inaxes), None
-        )
-        if side_clicked is None:
-            return
-        snapshot = self.active_snapshot
-        signature = self.current_preview_signature
-        if snapshot is None or not signature:
-            return
-        layer_idx = self._selected_layer_index(len(snapshot.layer_rects_list))
-        rect_count = len(snapshot.layer_rects_list[layer_idx - 1])
-        target_sides = self._edit_target_sides()
-        if side_clicked not in target_sides and len(target_sides) == 1:
-            return
-        base_side = side_clicked if side_clicked in target_sides else target_sides[0]
-
-        orders = {
-            side: self._ensure_manual_order_for_signature(signature, rect_count, side)
-            for side in target_sides
-        }
-        base_order = orders[base_side]
-        progress = self.manual_progress_by_side.get(base_side, {}).get(signature, 0)
-
-        box_idx = self._box_index_from_event(side_clicked, event.xdata, event.ydata)
-        if box_idx is None:
-            return
-
-        if event.button == 1:
-            if box_idx in base_order[:progress]:
-                return
-            if box_idx in base_order:
-                base_order.remove(box_idx)
-            base_order.insert(progress, box_idx)
-            progress = min(progress + 1, len(base_order))
-        elif event.button == 3:
-            if progress > 0:
-                removed = base_order.pop(progress - 1)
-                base_order.append(removed)
-                progress -= 1
-            else:
-                base_order[:] = list(range(len(base_order)))
-                progress = 0
-        else:
-            return
-
-        self._apply_manual_order_update(
-            signature,
-            base_order,
-            progress,
-            target_sides,
-            layer_idx,
-            rect_count,
-        )
-        self._render_layer_preview()
-
     def _render_layer_preview(self, *args) -> None:  # noqa: ARG002
         payload: dict | None
         layer_count: int
@@ -1794,22 +1655,27 @@ class TabURCaps(ttk.Frame):
         self._update_manual_hint(signature, layer_idx)
 
         if signature and self._manual_mode_enabled():
+            effective_signature = self._effective_manual_signature(signature, layer_idx)
+            if not effective_signature:
+                self._draw_empty_preview("Brak danych do podglądu")
+                return
             order_right = self._ensure_manual_order_for_signature(
-                signature, len(pattern), "right"
+                effective_signature, len(pattern), "right"
             )
             if self.left_palette_mode_var.get() == "mirror":
                 order_left = list(order_right)
-                self.manual_orders_by_side["left"][signature] = list(order_right)
-                right_progress = self.manual_progress_by_side.get("right", {}).get(
-                    signature, 0
-                )
-                self.manual_progress_by_side.setdefault("left", {})[signature] = min(
-                    max(int(right_progress), 0), len(order_left)
-                )
+                self.manual_orders_by_side["left"][effective_signature] = list(order_right)
             else:
                 order_left = self._ensure_manual_order_for_signature(
-                    signature, len(alt_pattern), "left"
+                    effective_signature, len(alt_pattern), "left"
                 )
+            if (
+                self.manual_sync_parity_var.get()
+                and signature != effective_signature
+                and signature
+            ):
+                self._store_manual_order(signature, order_right, ["right"])
+                self._store_manual_order(signature, order_left, ["left"])
         else:
             order_right = list(range(len(pattern)))
             order_left = list(range(len(alt_pattern)))
