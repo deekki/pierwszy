@@ -316,7 +316,7 @@ def build_pally_json(
                 if config.alt_layout == "altPattern":
                     base_alt = list(base_pattern)
                 else:
-                    base_alt = mirror_pattern(pattern, pallet_width)
+                    base_alt = mirror_pattern(base_pattern, pallet_width)
                 alt_pattern = _apply_manual_order(
                     base_alt, manual_order_alt, f"alt signature {signature}"
                 )

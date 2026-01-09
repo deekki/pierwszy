@@ -78,6 +78,7 @@ class TabURCaps(ttk.Frame):
         self.omit_altpattern_when_mirror_var = tk.BooleanVar(value=False)
         self.manual_sync_parity_var = tk.BooleanVar(value=False)
         self.box_weight_override_var.trace_add("write", self._on_weight_override_changed)
+        self.manual_sync_parity_var.trace_add("write", self._on_manual_sync_parity_toggle)
 
         self.build_ui()
 
@@ -947,6 +948,8 @@ class TabURCaps(ttk.Frame):
         layer_idx: int,
         rect_count: int,
     ) -> None:
+        if self.left_palette_mode_var.get() == "mirror":
+            target_sides = ["right", "left"]
         for side in target_sides:
             self.manual_orders_by_side[side][signature] = list(order)
             self.manual_progress_by_side[side][signature] = progress
@@ -992,6 +995,18 @@ class TabURCaps(ttk.Frame):
     def _ensure_manual_order_for_signature(
         self, signature: str, rect_count: int, side: str
     ) -> list[int]:
+        if side == "left" and self.left_palette_mode_var.get() == "mirror":
+            right_order = self._ensure_manual_order_for_signature(
+                signature, rect_count, "right"
+            )
+            left_orders = self.manual_orders_by_side.setdefault("left", {})
+            left_progress = self.manual_progress_by_side.setdefault("left", {})
+            left_orders[signature] = list(right_order)
+            right_progress = self.manual_progress_by_side.get("right", {}).get(
+                signature, 0
+            )
+            left_progress[signature] = min(max(int(right_progress), 0), rect_count)
+            return left_orders[signature]
         side_orders = self.manual_orders_by_side.setdefault(side, {})
         side_progress = self.manual_progress_by_side.setdefault(side, {})
         order = side_orders.get(signature)
@@ -1022,7 +1037,55 @@ class TabURCaps(ttk.Frame):
             orders_left[signature] = list(
                 self._ensure_manual_order_for_signature(signature, rect_count, "left")
             )
+        if self.left_palette_mode_var.get() == "mirror":
+            orders_left = {sig: list(order) for sig, order in orders_right.items()}
         return orders_right, orders_left
+
+    def _on_manual_sync_parity_toggle(self, *_: object) -> None:
+        if not self.manual_sync_parity_var.get():
+            return
+        snapshot = self.active_snapshot
+        if snapshot is None:
+            return
+        even_layers = [
+            idx for idx, _ in enumerate(self.layer_signatures, start=1) if idx % 2 == 0
+        ]
+        if not even_layers:
+            self.manual_sync_parity_var.set(False)
+            self.status_var.set("Synchronizacja wyłączona: brak warstw parzystych.")
+            return
+        even_layer_idx = even_layers[0]
+        even_signature = self._current_signature(even_layer_idx)
+        if not even_signature:
+            self.manual_sync_parity_var.set(False)
+            self.status_var.set("Synchronizacja wyłączona: brak układu parzystych.")
+            return
+        pair_signature, reason = self._find_parity_pair_signature(
+            even_signature, even_layer_idx
+        )
+        if pair_signature is None:
+            self.manual_sync_parity_var.set(False)
+            if reason:
+                self.status_var.set(reason)
+            return
+        even_count = self._signature_rect_count(snapshot, even_signature)
+        odd_count = self._signature_rect_count(snapshot, pair_signature)
+        if not even_count or even_count != odd_count:
+            self.manual_sync_parity_var.set(False)
+            self.status_var.set(
+                "Synchronizacja wyłączona: różna liczba kartonów w parach."
+            )
+            return
+        for side in ("right", "left"):
+            order = self._ensure_manual_order_for_signature(
+                even_signature, even_count, side
+            )
+            progress = self.manual_progress_by_side.get(side, {}).get(even_signature, 0)
+            self.manual_orders_by_side[side][pair_signature] = list(order)
+            self.manual_progress_by_side[side][pair_signature] = min(
+                max(int(progress), 0), even_count
+            )
+        self._render_layer_preview()
 
     def _update_manual_hint(self, signature: str | None, layer_idx: int) -> None:
         if not signature:
@@ -1734,9 +1797,19 @@ class TabURCaps(ttk.Frame):
             order_right = self._ensure_manual_order_for_signature(
                 signature, len(pattern), "right"
             )
-            order_left = self._ensure_manual_order_for_signature(
-                signature, len(alt_pattern), "left"
-            )
+            if self.left_palette_mode_var.get() == "mirror":
+                order_left = list(order_right)
+                self.manual_orders_by_side["left"][signature] = list(order_right)
+                right_progress = self.manual_progress_by_side.get("right", {}).get(
+                    signature, 0
+                )
+                self.manual_progress_by_side.setdefault("left", {})[signature] = min(
+                    max(int(right_progress), 0), len(order_left)
+                )
+            else:
+                order_left = self._ensure_manual_order_for_signature(
+                    signature, len(alt_pattern), "left"
+                )
         else:
             order_right = list(range(len(pattern)))
             order_left = list(range(len(alt_pattern)))
