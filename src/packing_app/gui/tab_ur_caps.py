@@ -1408,6 +1408,13 @@ class TabURCaps(ttk.Frame):
                 return pattern, alt_pattern, approach, alt_approach
         return None
 
+    def _force_preview_redraw(self) -> None:
+        try:
+            self.preview_canvas.draw()
+            self.preview_canvas.get_tk_widget().update_idletasks()
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed to redraw UR CAPS preview")
+
     def _draw_empty_preview(self, message: str) -> None:
         for side, ax in self.preview_axes.items():
             ax.clear()
@@ -1422,8 +1429,7 @@ class TabURCaps(ttk.Frame):
             )
         self.current_preview_signature = None
         self._clear_preview_overlay()
-        self.preview_canvas.draw_idle()
-        self.preview_canvas.flush_events()
+        self._force_preview_redraw()
 
     def _clear_preview_overlay(self) -> None:
         for artist in self.preview_overlay_artists:
@@ -1732,8 +1738,7 @@ class TabURCaps(ttk.Frame):
                 order_left if signature and self._manual_mode_enabled() else None,
             )
             self._draw_preview_orientation_overlay()
-            self.preview_canvas.draw_idle()
-            self.preview_canvas.flush_events()
+            self._force_preview_redraw()
         except Exception:  # noqa: BLE001
             logger.exception("Failed to draw UR CAPS layer preview")
             self._draw_empty_preview("Błąd podglądu")
