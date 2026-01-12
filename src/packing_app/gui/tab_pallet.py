@@ -114,6 +114,7 @@ class TabPallet(ttk.Frame):
         self.solution_by_key: Dict[str, Solution] = {}
         self.last_snapshot: PalletSnapshot | None = None
         self.modify_mode_var = tk.BooleanVar(value=False)
+        self.edit_both_layers_var = tk.BooleanVar(value=True)
         self.show_numbers_var = tk.BooleanVar(value=True)
         self.patches = []
         self.selected_indices = set()
@@ -171,6 +172,11 @@ class TabPallet(ttk.Frame):
             return bool(odd_key and even_key and odd_key == even_key)
         except Exception:
             return False
+
+    def edit_layers_linked(self) -> bool:
+        if not self.edit_both_layers_var.get():
+            return False
+        return self.layers_linked()
 
     def _layers_with_same_pattern(self, layer_idx: int) -> list[int]:
         return _matching_layers_for_pattern(self, layer_idx)
@@ -645,7 +651,7 @@ class TabPallet(ttk.Frame):
 
         control_frame = ttk.Frame(actions_frame)
         control_frame.grid(row=0, column=0, sticky="ew", padx=PAD_X, pady=(PAD_Y, 0))
-        control_frame.columnconfigure(7, weight=1)
+        control_frame.columnconfigure(8, weight=1)
 
         self.compute_btn = ttk.Button(
             control_frame, text="Oblicz", command=self.compute_pallet
@@ -659,33 +665,38 @@ class TabPallet(ttk.Frame):
         ).grid(row=0, column=1, padx=4, pady=2, sticky="w")
         ttk.Checkbutton(
             control_frame,
+            text="Edytuj parzyste i nieparzyste razem",
+            variable=self.edit_both_layers_var,
+        ).grid(row=0, column=2, padx=4, pady=2, sticky="w")
+        ttk.Checkbutton(
+            control_frame,
             text="Pokaż numerację",
             variable=self.show_numbers_var,
             command=self.draw_pallet,
-        ).grid(row=0, column=2, padx=4, pady=2, sticky="w")
+        ).grid(row=0, column=3, padx=4, pady=2, sticky="w")
         ttk.Button(
             control_frame,
             text="Wstaw karton",
             command=self.insert_carton_button,
-        ).grid(row=0, column=3, padx=4, pady=2, sticky="w")
+        ).grid(row=0, column=4, padx=4, pady=2, sticky="w")
         ttk.Button(
             control_frame,
             text="Usuń karton",
             command=self.delete_selected_carton,
-        ).grid(row=0, column=4, padx=4, pady=2, sticky="w")
+        ).grid(row=0, column=5, padx=4, pady=2, sticky="w")
         ttk.Button(
             control_frame,
             text="Cofnij",
             command=self.undo,
-        ).grid(row=0, column=5, padx=4, pady=2, sticky="w")
+        ).grid(row=0, column=6, padx=4, pady=2, sticky="w")
         ttk.Button(
             control_frame,
             text="Ponów",
             command=self.redo,
-        ).grid(row=0, column=6, padx=4, pady=2, sticky="w")
+        ).grid(row=0, column=7, padx=4, pady=2, sticky="w")
         self.selection_label_var = tk.StringVar(value="Zaznaczono: 0")
         ttk.Label(control_frame, textvariable=self.selection_label_var).grid(
-            row=0, column=8, padx=PAD_X, pady=PAD_Y, sticky="e"
+            row=0, column=9, padx=PAD_X, pady=PAD_Y, sticky="e"
         )
         self.status_var = tk.StringVar(value="")
         status_frame = ttk.Frame(actions_frame)
@@ -2174,7 +2185,7 @@ class TabPallet(ttk.Frame):
                 layers_to_check.add(layer_idx)
 
                 allowed_layers = _matching_layers_for_pattern(self, layer_idx)
-                if not self.layers_linked():
+                if not self.edit_layers_linked():
                     allowed_layers = [
                         i for i in allowed_layers if i % 2 == layer_idx % 2
                     ]
@@ -2255,7 +2266,7 @@ class TabPallet(ttk.Frame):
                 self.layers[layer_idx][idx] = (snap_x, snap_y, w, h)
 
                 allowed_layers = _matching_layers_for_pattern(self, layer_idx)
-                if not self.layers_linked():
+                if not self.edit_layers_linked():
                     allowed_layers = [
                         i for i in allowed_layers if i % 2 == layer_idx % 2
                     ]
@@ -2314,7 +2325,7 @@ class TabPallet(ttk.Frame):
             self.layers[layer_idx][idx] = (snap_x, snap_y, w, h)
 
             allowed_layers = _matching_layers_for_pattern(self, layer_idx)
-            if not self.layers_linked():
+            if not self.edit_layers_linked():
                 allowed_layers = [
                     i for i in allowed_layers if i % 2 == layer_idx % 2
                 ]
@@ -2351,14 +2362,18 @@ class TabPallet(ttk.Frame):
         if (
             other_layer < len(self.layers)
             and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
-            and self.layers_linked()
+            and self.edit_layers_linked()
         ):
             self.layers[other_layer].append((pos[0], pos[1], w, h))
             next_id_other = max(self.carton_ids[other_layer], default=0) + 1
             self.carton_ids[other_layer].append(next_id_other)
         getattr(self, "sort_layers", lambda: None)()
         self.renumber_layer(layer_idx)
-        if other_layer < len(self.layers) and self.layers_linked() and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]:
+        if (
+            other_layer < len(self.layers)
+            and self.edit_layers_linked()
+            and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
+        ):
             self.renumber_layer(other_layer)
         self.draw_pallet()
         self.update_summary()
@@ -2388,7 +2403,7 @@ class TabPallet(ttk.Frame):
                 other_layer < len(self.layers)
                 and idx < len(self.layers[other_layer])
                 and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
-                and self.layers_linked()
+                and self.edit_layers_linked()
             ):
                 del self.layers[other_layer][idx]
                 del self.carton_ids[other_layer][idx]
@@ -2429,7 +2444,7 @@ class TabPallet(ttk.Frame):
                 other_layer < len(self.layers)
                 and idx < len(self.layers[other_layer])
                 and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
-                and self.layers_linked()
+                and self.edit_layers_linked()
             ):
                 self.layers[other_layer][idx] = (x, y, w, h)
         getattr(self, "sort_layers", lambda: None)()
@@ -2505,7 +2520,7 @@ class TabPallet(ttk.Frame):
         if (
             other_layer < len(self.layers)
             and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
-            and self.layers_linked()
+            and self.edit_layers_linked()
         ):
             for i in indices:
                 if i < len(self.layers[other_layer]):
@@ -2731,7 +2746,7 @@ class TabPallet(ttk.Frame):
         if (
             other_layer < len(self.layers)
             and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
-            and self.layers_linked()
+            and self.edit_layers_linked()
         ):
             for i in indices:
                 if i < len(self.layers[other_layer]):
