@@ -181,6 +181,41 @@ class TabPallet(ttk.Frame):
     def _layers_with_same_pattern(self, layer_idx: int) -> list[int]:
         return _matching_layers_for_pattern(self, layer_idx)
 
+    def _edit_target_layers(self, layer_idx: int, *, include_source: bool = True) -> list[int]:
+        layers = _matching_layers_for_pattern(self, layer_idx)
+        if not self.edit_layers_linked():
+            layers = [idx for idx in layers if idx % 2 == layer_idx % 2]
+        if include_source:
+            return layers
+        return [idx for idx in layers if idx != layer_idx]
+
+    def _create_unique_pattern_id(self, base: str) -> str:
+        normalized = base or "manual"
+        candidate = f"{normalized}-custom"
+        existing = set(self.layer_patterns)
+        if candidate not in existing:
+            return candidate
+        counter = 2
+        while True:
+            candidate = f"{normalized}-custom-{counter}"
+            if candidate not in existing:
+                return candidate
+            counter += 1
+
+    def detach_active_layer_group(self) -> None:
+        layer_idx = getattr(self, "context_layer", None)
+        if layer_idx is None:
+            layer_idx = getattr(self.editor_controller, "active_layer", None)
+        if layer_idx is None or layer_idx >= len(self.layer_patterns):
+            return
+        current_pattern = self.layer_patterns[layer_idx]
+        new_pattern = self._create_unique_pattern_id(current_pattern)
+        self.layer_patterns[layer_idx] = new_pattern
+        if hasattr(self, "status_var"):
+            self.status_var.set(
+                f"Warstwa {layer_idx + 1}: utworzono nową grupę edycji."
+            )
+
     def set_ur_caps_tab(self, tab) -> None:
         self.ur_caps_tab = tab
 
@@ -2358,23 +2393,17 @@ class TabPallet(ttk.Frame):
         self.layers[layer_idx].append((pos[0], pos[1], w, h))
         next_id = max(self.carton_ids[layer_idx], default=0) + 1
         self.carton_ids[layer_idx].append(next_id)
-        other_layer = 1 - layer_idx
-        if (
-            other_layer < len(self.layers)
-            and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
-            and self.edit_layers_linked()
-        ):
-            self.layers[other_layer].append((pos[0], pos[1], w, h))
-            next_id_other = max(self.carton_ids[other_layer], default=0) + 1
-            self.carton_ids[other_layer].append(next_id_other)
+        for target_layer in self._edit_target_layers(layer_idx, include_source=False):
+            if target_layer >= len(self.layers):
+                continue
+            self.layers[target_layer].append((pos[0], pos[1], w, h))
+            next_id_other = max(self.carton_ids[target_layer], default=0) + 1
+            self.carton_ids[target_layer].append(next_id_other)
         getattr(self, "sort_layers", lambda: None)()
         self.renumber_layer(layer_idx)
-        if (
-            other_layer < len(self.layers)
-            and self.edit_layers_linked()
-            and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
-        ):
-            self.renumber_layer(other_layer)
+        for target_layer in self._edit_target_layers(layer_idx, include_source=False):
+            if target_layer < len(self.layers):
+                self.renumber_layer(target_layer)
         self.draw_pallet()
         self.update_summary()
         getattr(self, "_mark_layout_dirty", lambda: None)()
@@ -2390,24 +2419,18 @@ class TabPallet(ttk.Frame):
 
         TabPallet._record_state(self)
         affected = set()
-        for layer_idx, idx in sorted(
-            selection, key=lambda t: (t[0], -t[1])
-        ):
-            if layer_idx >= len(self.layers) or idx >= len(self.layers[layer_idx]):
+        source_layer = next(iter(selection))[0]
+        indices = sorted({idx for layer, idx in selection if layer == source_layer}, reverse=True)
+        target_layers = self._edit_target_layers(source_layer, include_source=True)
+        for layer_idx in target_layers:
+            if layer_idx >= len(self.layers):
                 continue
-            del self.layers[layer_idx][idx]
-            del self.carton_ids[layer_idx][idx]
-            other_layer = 1 - layer_idx
-            affected.add(layer_idx)
-            if (
-                other_layer < len(self.layers)
-                and idx < len(self.layers[other_layer])
-                and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
-                and self.edit_layers_linked()
-            ):
-                del self.layers[other_layer][idx]
-                del self.carton_ids[other_layer][idx]
-                affected.add(other_layer)
+            for idx in indices:
+                if idx >= len(self.layers[layer_idx]):
+                    continue
+                del self.layers[layer_idx][idx]
+                del self.carton_ids[layer_idx][idx]
+                affected.add(layer_idx)
 
         for idx in affected:
             self.renumber_layer(idx)
@@ -2427,10 +2450,13 @@ class TabPallet(ttk.Frame):
             return
 
         TabPallet._record_state(self)
-        for layer_idx, idx in list(selection):
-            if layer_idx >= len(self.layers) or idx >= len(self.layers[layer_idx]):
+        source_layer = next(iter(selection))[0]
+        indices = [idx for layer, idx in selection if layer == source_layer]
+        target_layers = self._edit_target_layers(source_layer, include_source=True)
+        for idx in indices:
+            if source_layer >= len(self.layers) or idx >= len(self.layers[source_layer]):
                 continue
-            x, y, w, h = self.layers[layer_idx][idx]
+            x, y, w, h = self.layers[source_layer][idx]
 
             center_x = x + w / 2
             center_y = y + h / 2
@@ -2438,15 +2464,10 @@ class TabPallet(ttk.Frame):
             x = center_x - w / 2
             y = center_y - h / 2
 
-            self.layers[layer_idx][idx] = (x, y, w, h)
-            other_layer = 1 - layer_idx
-            if (
-                other_layer < len(self.layers)
-                and idx < len(self.layers[other_layer])
-                and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
-                and self.edit_layers_linked()
-            ):
-                self.layers[other_layer][idx] = (x, y, w, h)
+            for layer_idx in target_layers:
+                if layer_idx >= len(self.layers) or idx >= len(self.layers[layer_idx]):
+                    continue
+                self.layers[layer_idx][idx] = (x, y, w, h)
         getattr(self, "sort_layers", lambda: None)()
         self.draw_pallet()
         self.update_summary()
@@ -2516,15 +2537,12 @@ class TabPallet(ttk.Frame):
                 y = pos
                 pos += size + gap
             boxes[i] = (x, y, w, h)
-        other_layer = 1 - layer_idx
-        if (
-            other_layer < len(self.layers)
-            and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
-            and self.edit_layers_linked()
-        ):
+        for target_layer in self._edit_target_layers(layer_idx, include_source=False):
+            if target_layer >= len(self.layers):
+                continue
             for i in indices:
-                if i < len(self.layers[other_layer]):
-                    self.layers[other_layer][i] = self.layers[layer_idx][i]
+                if i < len(self.layers[target_layer]):
+                    self.layers[target_layer][i] = self.layers[layer_idx][i]
 
     def distribute_selected_edges(self):
         selection = self._selection_for_active_layer()
@@ -2742,16 +2760,13 @@ class TabPallet(ttk.Frame):
             x, y, w, h = boxes[i]
             boxes[i] = (x + offset_x, y + offset_y, w, h)
 
-        other_layer = 1 - layer_idx
-        if (
-            other_layer < len(self.layers)
-            and self.layer_patterns[other_layer] == self.layer_patterns[layer_idx]
-            and self.edit_layers_linked()
-        ):
+        for target_layer in self._edit_target_layers(layer_idx, include_source=False):
+            if target_layer >= len(self.layers):
+                continue
             for i in indices:
-                if i < len(self.layers[other_layer]):
+                if i < len(self.layers[target_layer]):
                     x, y, w, h = self.layers[layer_idx][i]
-                    self.layers[other_layer][i] = (x, y, w, h)
+                    self.layers[target_layer][i] = (x, y, w, h)
 
         getattr(self, "sort_layers", lambda: None)()
         self.draw_pallet()
@@ -2771,6 +2786,11 @@ class TabPallet(ttk.Frame):
 
         if self.context_menu is None:
             self.context_menu = tk.Menu(self, tearoff=0)
+            self.context_menu.add_command(
+                label="Edytuj tylko tę warstwę (nowa grupa)",
+                command=self.detach_active_layer_group,
+            )
+            self._detach_layer_menu_index = 0
             self.context_menu.add_command(
                 label="Wstaw karton", command=self.insert_carton_button
             )
@@ -2804,6 +2824,11 @@ class TabPallet(ttk.Frame):
         last_index = self.context_menu.index("end") or 0
         for i in range(1, last_index + 1):
             self.context_menu.entryconfigure(i, state=state)
+        if hasattr(self, "_detach_layer_menu_index"):
+            self.context_menu.entryconfigure(
+                self._detach_layer_menu_index,
+                state="normal" if self.layers else "disabled",
+            )
         gui_ev = event.guiEvent
         if gui_ev:
             self.context_menu.tk_popup(int(gui_ev.x_root), int(gui_ev.y_root))
