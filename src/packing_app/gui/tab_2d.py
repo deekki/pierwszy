@@ -22,6 +22,7 @@ class TabPacking2D(ttk.Frame):
         self.prev_prod_h_rect = "0"
         self.prev_prod_h_circle = "0"
         self.pallet_tab = None
+        self.syncing_display_carton = False
         self.build_ui()
 
     def build_ui(self):
@@ -304,6 +305,47 @@ class TabPacking2D(ttk.Frame):
         ).grid(row=2, column=0, columnspan=6, sticky="w", padx=4, pady=(0, 2))
         self.maximize_mixed.trace_add("write", lambda *args: self.show_packing())
 
+        self.display_mode = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            f_settings,
+            text="Tryb display (równe odstępy butelek)",
+            variable=self.display_mode,
+            command=self.show_packing,
+        ).grid(row=3, column=0, columnspan=6, sticky="w", padx=4, pady=(0, 1))
+
+        self.display_manual_spacing = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            f_settings,
+            text="Ręczne odstępy display (zmieniają rozmiar kartonu)",
+            variable=self.display_manual_spacing,
+            command=self.show_packing,
+        ).grid(row=4, column=0, columnspan=6, sticky="w", padx=4, pady=(0, 1))
+
+        ttk.Label(f_settings, text="Display X/Y [mm]:").grid(
+            row=5, column=0, sticky="w", padx=4, pady=(0, 2)
+        )
+        self.display_gap_x = tk.StringVar(value="0")
+        entry_display_gap_x = ttk.Entry(
+            f_settings,
+            textvariable=self.display_gap_x,
+            width=8,
+            validate="key",
+            validatecommand=(self.register(self.validate_number), "%P"),
+        )
+        entry_display_gap_x.grid(row=5, column=1, sticky="w", padx=(2, 4), pady=(0, 2))
+        entry_display_gap_x.bind("<Return>", self.on_enter_pressed)
+
+        self.display_gap_y = tk.StringVar(value="0")
+        entry_display_gap_y = ttk.Entry(
+            f_settings,
+            textvariable=self.display_gap_y,
+            width=8,
+            validate="key",
+            validatecommand=(self.register(self.validate_number), "%P"),
+        )
+        entry_display_gap_y.grid(row=5, column=2, sticky="w", padx=(2, 4), pady=(0, 2))
+        entry_display_gap_y.bind("<Return>", self.on_enter_pressed)
+
         btn_frame = ttk.Frame(gui_frame)
         btn_frame.grid(row=1, column=0, sticky="w", pady=(3, 0))
 
@@ -348,6 +390,8 @@ class TabPacking2D(ttk.Frame):
         self.prod_h_rect.trace_add("write", self.on_prod_h_rect_changed)
         self.prod_h_circle.trace_add("write", self.on_prod_h_circle_changed)
         self.prod_diam.trace_add("write", self.on_prod_diam_changed)
+        self.display_mode.trace_add("write", lambda *args: self.show_packing())
+        self.display_manual_spacing.trace_add("write", lambda *args: self.show_packing())
         self.on_prod_diam_changed()
         self.update_carton_list()
         self.update_product_fields()
@@ -526,6 +570,103 @@ class TabPacking2D(ttk.Frame):
         self.draw_carton_and_margin(ax, l_c, w_c, margin)
         self.add_air_cushions(ax, l_c, w_c, hex_rev_positions, h_c)
         return len(hex_rev), hex_rev_positions, mrx, mry
+
+    def _group_rows(self, centers):
+        rows = {}
+        for cx, cy in centers:
+            key = round(cy, 6)
+            rows.setdefault(key, []).append(cx)
+        grouped = []
+        for y_key in sorted(rows):
+            grouped.append(sorted(rows[y_key]))
+        return grouped
+
+    def _apply_display_grid(self, width, height, diam, centers, gap_x=None, gap_y=None):
+        rows = self._group_rows(centers)
+        row_count = len(rows)
+        col_count = max((len(row) for row in rows), default=0)
+        if row_count == 0 or col_count == 0:
+            return centers, 0, 0, 0, 0
+        if gap_x is None:
+            gap_x = max((width - col_count * diam) / (col_count + 1), 0)
+        if gap_y is None:
+            gap_y = max((height - row_count * diam) / (row_count + 1), 0)
+        step_x = diam + gap_x
+        step_y = diam + gap_y
+        new_centers = []
+        for row_idx in range(row_count):
+            cy = gap_y + diam / 2 + row_idx * step_y
+            for col_idx in range(col_count):
+                cx = gap_x + diam / 2 + col_idx * step_x
+                new_centers.append((cx, cy))
+        return new_centers, gap_x, gap_y, row_count, col_count
+
+    def _apply_display_hex(self, width, height, diam, centers, gap_x=None, gap_y=None):
+        rows = self._group_rows(centers)
+        row_counts = [len(row) for row in rows]
+        row_total = len(row_counts)
+        max_cols = max(row_counts, default=0)
+        if row_total == 0 or max_cols == 0:
+            return centers, 0, 0, []
+        if gap_x is None:
+            gap_x = max((width - max_cols * diam) / (max_cols + 1), 0)
+        if gap_y is None:
+            gap_y = max((height - row_total * diam) / (row_total + 1), 0)
+        step_x = diam + gap_x
+        step_y = diam + gap_y
+        new_centers = []
+        for row_idx, cols in enumerate(row_counts):
+            cy = gap_y + diam / 2 + row_idx * step_y
+            if cols == max_cols:
+                start = gap_x + diam / 2
+            else:
+                start = gap_x + diam / 2 + step_x / 2
+            for col_idx in range(cols):
+                cx = start + col_idx * step_x
+                new_centers.append((cx, cy))
+        return new_centers, gap_x, gap_y, row_counts
+
+    def _draw_circle_layout(self, ax, width, height, centers, diam, margin, h_c, color):
+        if not centers:
+            return 0, [], 0, 0
+        r = diam / 2
+        mx, my = 0, 0
+        positions = [(cx - r, cy - r, diam, diam) for (cx, cy) in centers]
+        for (cx, cy) in centers:
+            mx = max(mx, cx)
+            my = max(my, cy)
+            ax.add_patch(plt.Circle((cx, cy), r, fill=False, edgecolor=color))
+        self.draw_carton_and_margin(ax, width, height, margin)
+        self.add_air_cushions(ax, width, height, positions, h_c)
+        return len(centers), positions, mx, my
+
+    def _sync_display_carton_size(self, layout_name, diam, gap_x, gap_y, grid_shape, hex_rows, hex_rev_rows):
+        if not self.display_mode.get() or not self.display_manual_spacing.get() or self.syncing_display_carton:
+            return
+        if gap_x < 0 or gap_y < 0:
+            return
+        req_w = None
+        req_l = None
+        if layout_name == "Siatka" and grid_shape:
+            rows, cols = grid_shape
+            req_w = cols * diam + (cols + 1) * gap_x
+            req_l = rows * diam + (rows + 1) * gap_y
+        elif layout_name == "Hex" and hex_rows:
+            max_cols = max(hex_rows)
+            req_w = max_cols * diam + (max_cols + 1) * gap_x
+            req_l = len(hex_rows) * diam + (len(hex_rows) + 1) * gap_y
+        elif layout_name == "Hex(rev)" and hex_rev_rows:
+            max_cols = max(hex_rev_rows)
+            req_l = max_cols * diam + (max_cols + 1) * gap_x
+            req_w = len(hex_rev_rows) * diam + (len(hex_rev_rows) + 1) * gap_y
+        if req_w is None or req_l is None:
+            return
+        self.syncing_display_carton = True
+        try:
+            self.carton_w.set(f"{req_w:.2f}")
+            self.carton_l.set(f"{req_l:.2f}")
+        finally:
+            self.syncing_display_carton = False
 
     def on_prod_h_rect_changed(self, *args):
         current_h = self.prod_h_rect.get()
@@ -708,9 +849,71 @@ class TabPacking2D(ttk.Frame):
             if not self.validate_dimensions(w_c, l_c, diam=diam, margin=margin):
                 return
 
-            c_grid, grid_pos, mgx, mgy = self.draw_grid(self.axes[0], w_c, l_c, diam, margin, h_c)
-            c_hex, hex_pos, mhx, mhy = self.draw_hex(self.axes[1], w_c, l_c, diam, margin, h_c)
-            c_rev, hex_rev_pos, mrx, mry = self.draw_hex_rev(self.axes[2], w_c, l_c, diam, margin, h_c)
+            base_grid = pack_circles_grid_bottomleft(w_c, l_c, diam, margin)
+            base_hex = pack_hex_top_down(w_c, l_c, diam, margin)
+            base_hex_rev = pack_hex_bottom_up(l_c, w_c, diam, margin)
+
+            display_gap_x = self.parse_dim_safe(self.display_gap_x)
+            display_gap_y = self.parse_dim_safe(self.display_gap_y)
+            grid_shape = None
+            hex_rows = []
+            hex_rev_rows = []
+
+            if self.display_mode.get():
+                manual = self.display_manual_spacing.get()
+                grid_centers, gx, gy, grid_rows, grid_cols = self._apply_display_grid(
+                    w_c,
+                    l_c,
+                    diam,
+                    base_grid,
+                    gap_x=display_gap_x if manual else None,
+                    gap_y=display_gap_y if manual else None,
+                )
+                hex_centers, hx, hy, hex_rows = self._apply_display_hex(
+                    w_c,
+                    l_c,
+                    diam,
+                    base_hex,
+                    gap_x=display_gap_x if manual else None,
+                    gap_y=display_gap_y if manual else None,
+                )
+                rev_centers, rx, ry, hex_rev_rows = self._apply_display_hex(
+                    l_c,
+                    w_c,
+                    diam,
+                    base_hex_rev,
+                    gap_x=display_gap_x if manual else None,
+                    gap_y=display_gap_y if manual else None,
+                )
+                if not manual:
+                    self.display_gap_x.set(f"{gx:.2f}")
+                    self.display_gap_y.set(f"{gy:.2f}")
+                grid_shape = (grid_rows, grid_cols)
+                active_gap_x = display_gap_x if manual else gx
+                active_gap_y = display_gap_y if manual else gy
+                self._sync_display_carton_size(
+                    self.layout_choice.get(),
+                    diam,
+                    active_gap_x,
+                    active_gap_y,
+                    grid_shape,
+                    hex_rows,
+                    hex_rev_rows,
+                )
+            else:
+                grid_centers = base_grid
+                hex_centers = base_hex
+                rev_centers = base_hex_rev
+
+            c_grid, grid_pos, mgx, mgy = self._draw_circle_layout(
+                self.axes[0], w_c, l_c, grid_centers, diam, margin, h_c, "blue"
+            )
+            c_hex, hex_pos, mhx, mhy = self._draw_circle_layout(
+                self.axes[1], w_c, l_c, hex_centers, diam, margin, h_c, "green"
+            )
+            c_rev, hex_rev_pos, mrx, mry = self._draw_circle_layout(
+                self.axes[2], l_c, w_c, rev_centers, diam, margin, h_c, "green"
+            )
 
             if not grid_pos and not hex_pos and not hex_rev_pos:
                 messagebox.showwarning("Ostrzeżenie", "Nie można zmieścić żadnego pojemnika w żadnym układzie.")
@@ -729,6 +932,8 @@ class TabPacking2D(ttk.Frame):
                     f"Siatka: {c_grid}\n"
                     f"Wolne miejsce na prawo={w_c - (mgx + r):.1f}\n"
                     f"Wolne miejsce do góry={l_c - (mgy + r):.1f}\n"
+                    f"Odstęp X/Y={self.parse_dim_safe(self.display_gap_x):.1f}/{self.parse_dim_safe(self.display_gap_y):.1f} mm\n"
+                    f"Odstęp po skosie={max(math.sqrt((diam + self.parse_dim_safe(self.display_gap_x))**2 + (diam + self.parse_dim_safe(self.display_gap_y))**2) - diam, 0):.1f} mm\n"
                     f"Zajętość pow.: {area_util:.1f}%\n"
                     f"Zajętość obj.: {vol_util:.1f}%",
                     fontsize=10
@@ -746,6 +951,7 @@ class TabPacking2D(ttk.Frame):
                     f"Hex: {c_hex}\n"
                     f"Wolne miejsce na prawo={w_c - (mhx + r):.1f}\n"
                     f"Wolne miejsce do góry={l_c - (mhy + r):.1f}\n"
+                    f"Odstęp X/Y={self.parse_dim_safe(self.display_gap_x):.1f}/{self.parse_dim_safe(self.display_gap_y):.1f} mm\n"
                     f"Zajętość pow.: {area_util:.1f}%\n"
                     f"Zajętość obj.: {vol_util:.1f}%",
                     fontsize=10
@@ -763,6 +969,7 @@ class TabPacking2D(ttk.Frame):
                     f"Hex(rev): {c_rev}\n"
                     f"Wolne miejsce na prawo={l_c - (mrx + r):.1f}\n"
                     f"Wolne miejsce do góry={w_c - (mry + r):.1f}\n"
+                    f"Odstęp X/Y={self.parse_dim_safe(self.display_gap_x):.1f}/{self.parse_dim_safe(self.display_gap_y):.1f} mm\n"
                     f"Zajętość pow.: {area_util:.1f}%\n"
                     f"Zajętość obj.: {vol_util:.1f}%",
                     fontsize=10
