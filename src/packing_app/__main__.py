@@ -26,6 +26,7 @@ def main() -> None:
     from packing_app.gui.tab_indirect_packaging import TabIndirectPackaging
     from packing_app.gui.tab_auxiliary import TabAuxiliaryMaterials
     from packing_app.gui.tab_ur_caps import TabURCaps
+    from packing_app.gui.tab_empty_space import TabEmptySpaceContainers
 
     app_version = _get_app_version()
 
@@ -56,6 +57,7 @@ def main() -> None:
     tab5 = TabIndirectPackaging(notebook)
     tab6 = TabAuxiliaryMaterials(notebook)
     tab7 = TabCartons(notebook)
+    tab8 = TabEmptySpaceContainers(notebook)
     tab1.set_pallet_tab(tab3)
     tab3.set_ur_caps_tab(tab_ur_caps)
 
@@ -67,6 +69,7 @@ def main() -> None:
     notebook.add(tab5, text="Opakowanie pośrednie")
     notebook.add(tab6, text="Materiały pomocnicze")
     notebook.add(tab7, text="Kartony")
+    notebook.add(tab8, text="Pusta przestrzeń POJEMNIKI")
 
     root.mainloop()
 
