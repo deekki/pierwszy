@@ -3,6 +3,13 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
+from packing_app.gui.empty_space_preview import (
+    SHAPE_OBLONG,
+    SHAPE_OVAL,
+    SHAPE_ROUND,
+    active_dimensions_for_shape,
+    draw_pill_preview,
+)
 from packing_app.core.empty_space import (
     EmptySpaceResult,
     calculate_empty_space,
@@ -15,9 +22,9 @@ from packing_app.core.empty_space import (
 class TabEmptySpaceContainers(ttk.Frame):
     """Zakładka do obliczania pustej przestrzeni w pojemniku typu pilljar."""
 
-    SHAPE_ROUND = "okrągły"
-    SHAPE_OVAL = "owalny"
-    SHAPE_OBLONG = "podłużny"
+    SHAPE_ROUND = SHAPE_ROUND
+    SHAPE_OVAL = SHAPE_OVAL
+    SHAPE_OBLONG = SHAPE_OBLONG
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -29,7 +36,6 @@ class TabEmptySpaceContainers(ttk.Frame):
         self.length_var = tk.StringVar(value="")
         self.width_var = tk.StringVar(value="")
         self.height_var = tk.StringVar(value="")
-        self.total_length_var = tk.StringVar(value="")
 
         self.warning_var = tk.StringVar(value="")
         self.result_unit_mm3_var = tk.StringVar(value="-")
@@ -43,7 +49,15 @@ class TabEmptySpaceContainers(ttk.Frame):
         self._integer_vcmd = (self.register(self._validate_integer_input), "%P")
 
         self._dimensions_frame: ttk.Frame | None = None
+        self._preview_canvas: tk.Canvas | None = None
+        self._dimension_entries: dict[str, ttk.Entry] = {}
+        self._dimension_labels: dict[str, tk.Label] = {}
+        self._active_label_color = "#111111"
+        self._inactive_label_color = "#7e7e7e"
         self.build_ui()
+        self._bind_preview_updates()
+        self._refresh_dimension_field_states()
+        self._refresh_preview()
 
     def build_ui(self) -> None:
         self.columnconfigure(0, weight=1)
@@ -83,9 +97,26 @@ class TabEmptySpaceContainers(ttk.Frame):
             validatecommand=self._numeric_vcmd,
         ).grid(row=2, column=1, sticky="w", padx=4, pady=4)
 
-        self._dimensions_frame = ttk.LabelFrame(self, text="Wymiary jednostki")
-        self._dimensions_frame.grid(row=1, column=0, sticky="ew", padx=8, pady=4)
+        dimensions_panel = ttk.LabelFrame(self, text="Wymiary jednostki")
+        dimensions_panel.grid(row=1, column=0, sticky="ew", padx=8, pady=4)
+        dimensions_panel.columnconfigure(0, weight=3)
+        dimensions_panel.columnconfigure(1, weight=2)
+
+        self._dimensions_frame = ttk.Frame(dimensions_panel)
+        self._dimensions_frame.grid(row=0, column=0, sticky="nsew", padx=(4, 8), pady=4)
         self._dimensions_frame.columnconfigure(1, weight=1)
+        self._build_dimension_fields()
+
+        preview_frame = ttk.LabelFrame(dimensions_panel, text="Podgląd kapsułki")
+        preview_frame.grid(row=0, column=1, sticky="nsew", padx=(0, 4), pady=4)
+        self._preview_canvas = tk.Canvas(
+            preview_frame,
+            width=180,
+            height=120,
+            highlightthickness=0,
+            bg="#fbfbfb",
+        )
+        self._preview_canvas.pack(fill="both", expand=True, padx=4, pady=4)
 
         button_frame = ttk.Frame(self)
         button_frame.grid(row=2, column=0, sticky="w", padx=8, pady=(4, 8))
@@ -105,44 +136,79 @@ class TabEmptySpaceContainers(ttk.Frame):
             row=4, column=0, sticky="w", padx=10, pady=(0, 8)
         )
 
-        self._render_dimension_fields()
-
     def _result_row(self, parent: ttk.Frame, row: int, label: str, variable: tk.StringVar) -> None:
         ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=6, pady=2)
         ttk.Label(parent, textvariable=variable).grid(row=row, column=1, sticky="e", padx=6, pady=2)
 
-    def _render_dimension_fields(self) -> None:
+    def _build_dimension_fields(self) -> None:
         if self._dimensions_frame is None:
             return
-        for widget in self._dimensions_frame.winfo_children():
-            widget.destroy()
 
-        shape = self.shape_var.get()
-        if shape == self.SHAPE_ROUND:
-            self._add_dimension_entry(0, "Średnica [mm]:", self.diameter_var)
-        elif shape == self.SHAPE_OVAL:
-            self._add_dimension_entry(0, "Długość [mm]:", self.length_var)
-            self._add_dimension_entry(1, "Szerokość [mm]:", self.width_var)
-            self._add_dimension_entry(2, "Wysokość / grubość [mm]:", self.height_var)
-        elif shape == self.SHAPE_OBLONG:
-            self._add_dimension_entry(0, "Długość [mm]:", self.total_length_var)
-            self._add_dimension_entry(1, "Średnica [mm]:", self.diameter_var)
+        self._add_dimension_entry(0, "diameter", "Średnica [mm]:", self.diameter_var)
+        self._add_dimension_entry(1, "length", "Długość [mm]:", self.length_var)
+        self._add_dimension_entry(2, "width", "Szerokość [mm]:", self.width_var)
+        self._add_dimension_entry(3, "height", "Wysokość / grubość [mm]:", self.height_var)
 
-    def _add_dimension_entry(self, row: int, label: str, variable: tk.StringVar) -> None:
+    def _add_dimension_entry(self, row: int, key: str, label: str, variable: tk.StringVar) -> None:
         assert self._dimensions_frame is not None
-        ttk.Label(self._dimensions_frame, text=label).grid(row=row, column=0, sticky="e", padx=4, pady=4)
-        ttk.Entry(
+        label_widget = tk.Label(self._dimensions_frame, text=label, anchor="e")
+        label_widget.grid(row=row, column=0, sticky="e", padx=4, pady=4)
+        if row == 0:
+            self._active_label_color = label_widget.cget("fg")
+
+        entry_widget = ttk.Entry(
             self._dimensions_frame,
             textvariable=variable,
             width=20,
             validate="key",
             validatecommand=self._numeric_vcmd,
-        ).grid(row=row, column=1, sticky="w", padx=4, pady=4)
+        )
+        entry_widget.grid(row=row, column=1, sticky="w", padx=4, pady=4)
+        self._dimension_entries[key] = entry_widget
+        self._dimension_labels[key] = label_widget
 
     def _on_shape_changed(self, _: tk.Event) -> None:
         self.warning_var.set("")
         self._clear_results()
-        self._render_dimension_fields()
+        self._refresh_dimension_field_states()
+        self._refresh_preview()
+
+    def _bind_preview_updates(self) -> None:
+        for var in (
+            self.shape_var,
+            self.diameter_var,
+            self.length_var,
+            self.width_var,
+            self.height_var,
+        ):
+            var.trace_add("write", self._on_preview_input_changed)
+
+    def _on_preview_input_changed(self, *_: str) -> None:
+        self._refresh_preview()
+
+    def _refresh_dimension_field_states(self) -> None:
+        active_dimensions = active_dimensions_for_shape(self.shape_var.get())
+        for key, entry_widget in self._dimension_entries.items():
+            if key in active_dimensions:
+                entry_widget.state(["!disabled"])
+                self._dimension_labels[key].config(fg=self._active_label_color)
+            else:
+                entry_widget.state(["disabled"])
+                self._dimension_labels[key].config(fg=self._inactive_label_color)
+
+    def _refresh_preview(self) -> None:
+        if self._preview_canvas is None:
+            return
+        draw_pill_preview(
+            self._preview_canvas,
+            shape=self.shape_var.get(),
+            dimensions_mm={
+                "diameter": self._parse_optional_float(self.diameter_var.get()),
+                "length": self._parse_optional_float(self.length_var.get()),
+                "width": self._parse_optional_float(self.width_var.get()),
+                "height": self._parse_optional_float(self.height_var.get()),
+            },
+        )
 
     def calculate(self) -> None:
         try:
@@ -174,7 +240,7 @@ class TabEmptySpaceContainers(ttk.Frame):
             height_mm = self._parse_positive_float(self.height_var.get(), "Wysokość / grubość [mm]")
             return volume_oval_mm3(length_mm, width_mm, height_mm)
 
-        total_length_mm = self._parse_positive_float(self.total_length_var.get(), "Długość [mm]")
+        total_length_mm = self._parse_positive_float(self.length_var.get(), "Długość [mm]")
         diameter_mm = self._parse_positive_float(self.diameter_var.get(), "Średnica [mm]")
         return volume_oblong_mm3(total_length_mm, diameter_mm)
 
@@ -235,6 +301,15 @@ class TabEmptySpaceContainers(ttk.Frame):
             return float(value.replace(",", ".").strip())
         except ValueError:
             return 0.0
+
+    def _parse_optional_float(self, value: str) -> float | None:
+        normalized = value.replace(",", ".").strip()
+        if not normalized:
+            return None
+        try:
+            return float(normalized)
+        except ValueError:
+            return None
 
     def _format_number(self, value: float, precision: int) -> str:
         return f"{value:.{precision}f}".replace(".", ",")
