@@ -71,3 +71,38 @@ def compute_orientation_mix(pattern: Pattern, *, default_orientation: bool) -> f
         if (w >= length) != default_orientation:
             rotated += 1
     return rotated / len(pattern)
+
+
+def compute_cube_efficiency(
+    *,
+    cartons_per_layer: int,
+    layers: int,
+    box_w_ext: float,
+    box_l_ext: float,
+    box_h_ext: float,
+    pallet_w: float,
+    pallet_l: float,
+    max_stack: float = 0.0,
+    pallet_h: float = 0.0,
+    include_pallet_height: bool = False,
+) -> float:
+    """Return used carton volume divided by usable palletizing volume."""
+    values = [cartons_per_layer, layers, box_w_ext, box_l_ext, box_h_ext, pallet_w, pallet_l]
+    if any(v is None for v in values) or min(float(v) for v in values) <= 0:
+        return 0.0
+    usable_h = 0.0
+    if max_stack and max_stack > 0:
+        usable_h = float(max_stack) - (float(pallet_h) if include_pallet_height else 0.0)
+    if usable_h <= 0:
+        usable_h = float(layers) * float(box_h_ext)
+    available = float(pallet_w) * float(pallet_l) * usable_h
+    if available <= 0:
+        return 0.0
+    used = (
+        float(cartons_per_layer)
+        * float(layers)
+        * float(box_w_ext)
+        * float(box_l_ext)
+        * float(box_h_ext)
+    )
+    return max(0.0, min(1.0, used / available))

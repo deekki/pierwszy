@@ -18,6 +18,7 @@ from .solutions import (
 from .units import MM
 from .selector import PatternScore, PatternSelector
 from .sequencer import EvenOddSequencer
+from .metrics import compute_cube_efficiency
 
 LayerLayout = List[Tuple[float, float, float, float]]
 
@@ -385,11 +386,23 @@ def build_layouts(
         )
         islands = connected_components(centered, touch_eps=DEFAULT_SANITY_POLICY.touch_eps)
         signature = layout_signature(centered)
+        cube_eff = compute_cube_efficiency(
+            cartons_per_layer=len(centered),
+            layers=inputs.num_layers,
+            box_w_ext=inputs.box_w_ext,
+            box_l_ext=inputs.box_l_ext,
+            box_h_ext=inputs.box_h + 2 * inputs.thickness,
+            pallet_w=inputs.pallet_w,
+            pallet_l=inputs.pallet_l,
+            max_stack=inputs.max_stack,
+            pallet_h=inputs.pallet_h,
+            include_pallet_height=inputs.include_pallet_height,
+        )
         metrics = {
             "cartons": float(len(centered)),
             "stability": float(score.stability),
             "layer_eff": float(score.layer_eff),
-            "cube_eff": float(score.cube_eff),
+            "cube_eff": float(cube_eff),
             "support_fraction": float(score.support_fraction),
             "min_support": float(score.min_support),
             "edge_contact": float(score.edge_contact),
