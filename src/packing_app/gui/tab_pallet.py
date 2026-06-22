@@ -183,11 +183,38 @@ class TabPallet(ttk.Frame):
 
     def _edit_target_layers(self, layer_idx: int, *, include_source: bool = True) -> list[int]:
         layers = _matching_layers_for_pattern(self, layer_idx)
-        if not self.edit_layers_linked():
+        if not TabPallet._safe_edit_layers_linked(self):
             layers = [idx for idx in layers if idx % 2 == layer_idx % 2]
         if include_source:
             return layers
         return [idx for idx in layers if idx != layer_idx]
+
+    def _safe_edit_layers_linked(self) -> bool:
+        checker = getattr(self, "edit_layers_linked", None)
+        if callable(checker):
+            return bool(checker())
+        checker = getattr(self, "layers_linked", None)
+        return bool(checker()) if callable(checker) else False
+
+    def _safe_edit_target_layers(
+        self, layer_idx: int, *, include_source: bool = True
+    ) -> list[int]:
+        getter = getattr(self, "_edit_target_layers", None)
+        if callable(getter) and getter is not TabPallet._safe_edit_target_layers:
+            try:
+                return list(getter(layer_idx, include_source=include_source))
+            except TypeError:
+                pass
+        layers = _matching_layers_for_pattern(self, layer_idx)
+        if not TabPallet._safe_edit_layers_linked(self):
+            layers = [idx for idx in layers if idx % 2 == layer_idx % 2]
+        if include_source:
+            return layers
+        return [idx for idx in layers if idx != layer_idx]
+
+    @staticmethod
+    def _round_mm(value: float) -> int:
+        return int(math.floor(value + 0.5))
 
     def _create_unique_pattern_id(self, base: str) -> str:
         normalized = base or "manual"
@@ -1514,7 +1541,7 @@ class TabPallet(ttk.Frame):
         self._clear_selection()
         self.editor_controller.active_layer = 0
         self.drag_info = None
-        if hasattr(self, "undo_stack"):
+        if hasattr(self, "undo_stack") and (force or not has_existing_layers):
             self.undo_stack.clear()
         odd_display = self.odd_layout_var.get()
         even_display = self.even_layout_var.get()
@@ -1925,6 +1952,10 @@ class TabPallet(ttk.Frame):
             return None
         pallet_w = parse_dim(self.pallet_w_var, on_error=silent_error)
         pallet_l = parse_dim(self.pallet_l_var, on_error=silent_error)
+        if not pallet_w or not pallet_l or pallet_w <= 0 or pallet_l <= 0:
+            if hasattr(self, "status_var"):
+                self.status_var.set("Niepoprawne wymiary palety – popraw W/L przed rysowaniem.")
+            return
         axes = [self.ax_odd, self.ax_even, self.ax_overlay]
         labels = ["Warstwa nieparzysta", "Warstwa parzysta", "Nakładanie"]
         self.patches = [[] for _ in axes[:2]]
@@ -2040,10 +2071,12 @@ class TabPallet(ttk.Frame):
             for patch, idx in patch_list:
                 if (layer_idx, idx) in self.selected_indices:
                     patch.set_edgecolor("orange")
-                    patch.set_linewidth(2)
+                    patch.set_linewidth(3)
+                    patch.set_zorder(20)
                 else:
                     patch.set_edgecolor("black")
                     patch.set_linewidth(1)
+                    patch.set_zorder(1)
         self.canvas.draw_idle()
 
     def sort_layers(self):
@@ -2179,7 +2212,12 @@ class TabPallet(ttk.Frame):
             return
         if TabPallet._toolbar_busy(self):
             return
-        result = self.editor_controller.on_motion(event.xdata, event.ydata)
+        result = self.editor_controller.on_motion(
+            event.xdata,
+            event.ydata,
+            getattr(event, "x", None),
+            getattr(event, "y", None),
+        )
         if not result or not self.editor_controller.is_dragging:
             return
         active_layer = self.editor_controller.active_layer
@@ -2215,12 +2253,14 @@ class TabPallet(ttk.Frame):
                     pallet_w,
                     pallet_l,
                 )[0]
+                orig_x = TabPallet._round_mm(orig_x)
+                orig_y = TabPallet._round_mm(orig_y)
                 delta_logical = (orig_x - x, orig_y - y)
                 self.layers[layer_idx][idx] = (orig_x, orig_y, w, h)
                 layers_to_check.add(layer_idx)
 
                 allowed_layers = _matching_layers_for_pattern(self, layer_idx)
-                if not self.edit_layers_linked():
+                if not TabPallet._safe_edit_layers_linked(self):
                     allowed_layers = [
                         i for i in allowed_layers if i % 2 == layer_idx % 2
                     ]
@@ -2297,11 +2337,13 @@ class TabPallet(ttk.Frame):
                 snap_x, snap_y = self.snap_position(
                     orig_x, orig_y, w, h, pallet_w, pallet_l, other_boxes
                 )
+                snap_x = TabPallet._round_mm(snap_x)
+                snap_y = TabPallet._round_mm(snap_y)
                 delta_logical = (snap_x - x, snap_y - y)
                 self.layers[layer_idx][idx] = (snap_x, snap_y, w, h)
 
                 allowed_layers = _matching_layers_for_pattern(self, layer_idx)
-                if not self.edit_layers_linked():
+                if not TabPallet._safe_edit_layers_linked(self):
                     allowed_layers = [
                         i for i in allowed_layers if i % 2 == layer_idx % 2
                     ]
@@ -2314,7 +2356,6 @@ class TabPallet(ttk.Frame):
                     allowed_layers=allowed_layers,
                     reference_box=(x, y, w, h),
                 )
-            getattr(self, "sort_layers", lambda: None)()
             self.draw_pallet()
             self.update_summary()
             self.highlight_selection()
@@ -2356,11 +2397,13 @@ class TabPallet(ttk.Frame):
             snap_x, snap_y = self.snap_position(
                 orig_x, orig_y, w, h, pallet_w, pallet_l, other_boxes
             )
+            snap_x = TabPallet._round_mm(snap_x)
+            snap_y = TabPallet._round_mm(snap_y)
             delta_logical = (snap_x - x, snap_y - y)
             self.layers[layer_idx][idx] = (snap_x, snap_y, w, h)
 
             allowed_layers = _matching_layers_for_pattern(self, layer_idx)
-            if not self.edit_layers_linked():
+            if not TabPallet._safe_edit_layers_linked(self):
                 allowed_layers = [
                     i for i in allowed_layers if i % 2 == layer_idx % 2
                 ]
@@ -2375,7 +2418,6 @@ class TabPallet(ttk.Frame):
             )
 
         self.drag_snapshot_saved = False
-        getattr(self, "sort_layers", lambda: None)()
         self.draw_pallet()
         self.update_summary()
         self.highlight_selection()
@@ -2393,7 +2435,7 @@ class TabPallet(ttk.Frame):
         self.layers[layer_idx].append((pos[0], pos[1], w, h))
         next_id = max(self.carton_ids[layer_idx], default=0) + 1
         self.carton_ids[layer_idx].append(next_id)
-        for target_layer in self._edit_target_layers(layer_idx, include_source=False):
+        for target_layer in TabPallet._safe_edit_target_layers(self, layer_idx, include_source=False):
             if target_layer >= len(self.layers):
                 continue
             self.layers[target_layer].append((pos[0], pos[1], w, h))
@@ -2401,7 +2443,7 @@ class TabPallet(ttk.Frame):
             self.carton_ids[target_layer].append(next_id_other)
         getattr(self, "sort_layers", lambda: None)()
         self.renumber_layer(layer_idx)
-        for target_layer in self._edit_target_layers(layer_idx, include_source=False):
+        for target_layer in TabPallet._safe_edit_target_layers(self, layer_idx, include_source=False):
             if target_layer < len(self.layers):
                 self.renumber_layer(target_layer)
         self.draw_pallet()
@@ -2421,7 +2463,7 @@ class TabPallet(ttk.Frame):
         affected = set()
         source_layer = next(iter(selection))[0]
         indices = sorted({idx for layer, idx in selection if layer == source_layer}, reverse=True)
-        target_layers = self._edit_target_layers(source_layer, include_source=True)
+        target_layers = TabPallet._safe_edit_target_layers(self, source_layer, include_source=True)
         for layer_idx in target_layers:
             if layer_idx >= len(self.layers):
                 continue
@@ -2452,7 +2494,7 @@ class TabPallet(ttk.Frame):
         TabPallet._record_state(self)
         source_layer = next(iter(selection))[0]
         indices = [idx for layer, idx in selection if layer == source_layer]
-        target_layers = self._edit_target_layers(source_layer, include_source=True)
+        target_layers = TabPallet._safe_edit_target_layers(self, source_layer, include_source=True)
         for idx in indices:
             if source_layer >= len(self.layers) or idx >= len(self.layers[source_layer]):
                 continue
@@ -2531,13 +2573,13 @@ class TabPallet(ttk.Frame):
         for i, size in zip(sorted(indices), sizes):
             x, y, w, h = boxes[i]
             if orientation == "x":
-                x = pos
+                x = TabPallet._round_mm(pos)
                 pos += size + gap
             else:
-                y = pos
+                y = TabPallet._round_mm(pos)
                 pos += size + gap
             boxes[i] = (x, y, w, h)
-        for target_layer in self._edit_target_layers(layer_idx, include_source=False):
+        for target_layer in TabPallet._safe_edit_target_layers(self, layer_idx, include_source=False):
             if target_layer >= len(self.layers):
                 continue
             for i in indices:
@@ -2760,7 +2802,7 @@ class TabPallet(ttk.Frame):
             x, y, w, h = boxes[i]
             boxes[i] = (x + offset_x, y + offset_y, w, h)
 
-        for target_layer in self._edit_target_layers(layer_idx, include_source=False):
+        for target_layer in TabPallet._safe_edit_target_layers(self, layer_idx, include_source=False):
             if target_layer >= len(self.layers):
                 continue
             for i in indices:

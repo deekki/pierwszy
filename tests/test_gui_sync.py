@@ -150,7 +150,7 @@ def test_distribution_commands():
     dummy._set_selection_pairs({(0, 0), (0, 1), (0, 2)})
     TabPallet.distribute_selected_edges(dummy)
     xs = [pos[0] for pos in dummy.layers[0]]
-    assert xs == pytest.approx([17.5,45.0,72.5])
+    assert xs == [18, 45, 73]
 
     dummy = make_dummy()
     dummy.layers = [[(0,0,10,10),(10,0,10,10),(40,0,10,10),(80,0,10,10)], [(0,0,10,10),(10,0,10,10),(40,0,10,10),(80,0,10,10)]]
@@ -158,7 +158,7 @@ def test_distribution_commands():
     dummy._set_selection_pairs({(0, 1), (0, 2)})
     TabPallet.distribute_selected_between(dummy)
     xs = [dummy.layers[0][1][0], dummy.layers[0][2][0]]
-    assert xs == pytest.approx([26.6666666667,53.3333333333])
+    assert xs == [27, 53]
 
 def test_auto_distribution_respects_boundaries():
     dummy = make_dummy()
