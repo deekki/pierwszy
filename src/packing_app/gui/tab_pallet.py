@@ -38,8 +38,12 @@ from palletizer_core.engine import (
     LayoutComputation,
     PalletInputs,
     build_layouts,
+    build_row_by_row_pattern,
+    count_row_by_row_rows,
     group_cartons,
+    normalize_row_by_row_counts,
 )
+from packing_app.core.test_card import build_packaging_test_card
 from palletizer_core.selector import (
     RISK_CONTACT_THRESHOLD,
     RISK_STABILITY_THRESHOLD,
@@ -756,6 +760,11 @@ class TabPallet(ttk.Frame):
             text="Ponów",
             command=self.redo,
         ).grid(row=0, column=7, padx=4, pady=2, sticky="w")
+        ttk.Button(
+            control_frame,
+            text="Generuj kartę testu",
+            command=self.generate_test_card,
+        ).grid(row=0, column=8, padx=4, pady=2, sticky="w")
         self.selection_label_var = tk.StringVar(value="Zaznaczono: 0")
         ttk.Label(control_frame, textvariable=self.selection_label_var).grid(
             row=0, column=9, padx=PAD_X, pady=PAD_Y, sticky="e"
@@ -1077,96 +1086,12 @@ class TabPallet(ttk.Frame):
     def _count_row_by_row_rows(
         self, carton: Carton, pattern: LayerLayout | None
     ) -> Tuple[int, int]:
-        if not pattern:
-            return 0, 0
-
-        vertical_rows: List[float] = []
-        horizontal_rows: List[float] = []
-        tol = 1e-6
-        width = carton.width
-        length = carton.length
-
-        for _, y, w, h in pattern:
-            if math.isclose(w, width, rel_tol=1e-6, abs_tol=1e-6) and math.isclose(
-                h, length, rel_tol=1e-6, abs_tol=1e-6
-            ):
-                target = vertical_rows
-            elif math.isclose(w, length, rel_tol=1e-6, abs_tol=1e-6) and math.isclose(
-                h, width, rel_tol=1e-6, abs_tol=1e-6
-            ):
-                target = horizontal_rows
-            else:
-                target = vertical_rows if w >= h else horizontal_rows
-
-            if not any(math.isclose(y, existing, rel_tol=1e-6, abs_tol=tol) for existing in target):
-                target.append(y)
-
-        return len(vertical_rows), len(horizontal_rows)
+        return count_row_by_row_rows(carton, pattern)
 
     def _build_row_by_row_pattern(
         self, carton: Carton, pallet: Pallet, vertical: int, horizontal: int
     ) -> LayerLayout:
-        pattern: LayerLayout = []
-        vertical_remaining = max(vertical, 0)
-        horizontal_remaining = max(horizontal, 0)
-        y = 0.0
-        tol = 1e-6
-        orientation = "vertical" if vertical_remaining > 0 else "horizontal"
-
-        while y + tol < pallet.length and (
-            vertical_remaining > 0 or horizontal_remaining > 0
-        ):
-            if orientation == "vertical":
-                if vertical_remaining <= 0:
-                    orientation = "horizontal"
-                    continue
-                row_height = carton.length
-                col_width = carton.width
-                if (
-                    row_height <= 0
-                    or col_width <= 0
-                    or y + row_height - tol > pallet.length
-                ):
-                    break
-                n_cols = int(pallet.width // col_width) if col_width > 0 else 0
-                if n_cols == 0:
-                    vertical_remaining = 0
-                    orientation = "horizontal"
-                    continue
-                for c in range(n_cols):
-                    pattern.append((c * col_width, y, col_width, row_height))
-                y += row_height
-                vertical_remaining -= 1
-            else:
-                if horizontal_remaining <= 0:
-                    orientation = "vertical"
-                    continue
-                row_height = carton.width
-                col_width = carton.length
-                if (
-                    row_height <= 0
-                    or col_width <= 0
-                    or y + row_height - tol > pallet.length
-                ):
-                    break
-                n_cols = int(pallet.width // col_width) if col_width > 0 else 0
-                if n_cols == 0:
-                    horizontal_remaining = 0
-                    orientation = "vertical"
-                    continue
-                for c in range(n_cols):
-                    pattern.append((c * col_width, y, col_width, row_height))
-                y += row_height
-                horizontal_remaining -= 1
-
-            if vertical_remaining <= 0 and horizontal_remaining <= 0:
-                break
-            if orientation == "vertical":
-                orientation = "horizontal" if horizontal_remaining > 0 else "vertical"
-            else:
-                orientation = "vertical" if vertical_remaining > 0 else "horizontal"
-
-        return pattern
+        return build_row_by_row_pattern(carton, pallet, vertical, horizontal)
 
     def _normalize_row_by_row_counts(
         self,
@@ -1176,72 +1101,7 @@ class TabPallet(ttk.Frame):
         horizontal: int,
         axis_changed: str | None = None,
     ) -> Tuple[int, int]:
-        vertical = max(int(vertical), 0)
-        horizontal = max(int(horizontal), 0)
-
-        row_height_vertical = carton.length
-        row_height_horizontal = carton.width
-        available_height = pallet.length
-
-        max_vertical_total = (
-            int(available_height // row_height_vertical)
-            if row_height_vertical > 0
-            else 0
-        )
-        max_horizontal_total = (
-            int(available_height // row_height_horizontal)
-            if row_height_horizontal > 0
-            else 0
-        )
-
-        vertical_cols = int(pallet.width // carton.width) if carton.width > 0 else 0
-        horizontal_cols = int(pallet.width // carton.length) if carton.length > 0 else 0
-
-        if vertical_cols == 0:
-            vertical = 0
-        else:
-            vertical = min(vertical, max_vertical_total)
-        if horizontal_cols == 0:
-            horizontal = 0
-        else:
-            horizontal = min(horizontal, max_horizontal_total)
-
-        if axis_changed == "vertical":
-            remaining = available_height - vertical * row_height_vertical
-            remaining = max(remaining, 0)
-            max_horizontal = (
-                int(remaining // row_height_horizontal)
-                if row_height_horizontal > 0
-                else 0
-            )
-            horizontal = min(horizontal, max_horizontal)
-        elif axis_changed == "horizontal":
-            remaining = available_height - horizontal * row_height_horizontal
-            remaining = max(remaining, 0)
-            max_vertical = (
-                int(remaining // row_height_vertical)
-                if row_height_vertical > 0
-                else 0
-            )
-            vertical = min(vertical, max_vertical)
-        else:
-            while (
-                vertical * row_height_vertical
-                + horizontal * row_height_horizontal
-                > available_height
-                and (vertical > 0 or horizontal > 0)
-            ):
-                if vertical * row_height_vertical >= horizontal * row_height_horizontal:
-                    if vertical > 0:
-                        vertical -= 1
-                    elif horizontal > 0:
-                        horizontal -= 1
-                elif horizontal > 0:
-                    horizontal -= 1
-                else:
-                    break
-
-        return max(vertical, 0), max(horizontal, 0)
+        return normalize_row_by_row_counts(carton, pallet, vertical, horizontal, axis_changed)
 
     def _customize_row_by_row_pattern(
         self,
@@ -1602,6 +1462,58 @@ class TabPallet(ttk.Frame):
         else:
             self.manual_carton_weight_var.set("")
         self.compute_pallet()
+
+    def apply_carton_selection(self, carton_name: str, *, max_stack: float | None = None, include_pallet_height: bool | None = None) -> None:
+        if carton_name in self.predefined_cartons:
+            self.carton_var.set(carton_name)
+            self.on_carton_selected()
+        if max_stack is not None:
+            self.max_stack_var.set(self._format_number(max_stack))
+        if include_pallet_height is not None:
+            self.include_pallet_height_var.set(bool(include_pallet_height))
+        self.compute_pallet()
+
+    def generate_test_card(self) -> None:
+        filename = filedialog.asksaveasfilename(
+            title="Zapisz kartę testu",
+            defaultextension=".md",
+            filetypes=[("Markdown", "*.md"), ("Wszystkie pliki", "*.*")],
+        )
+        if not filename:
+            return
+        pallet_w = parse_dim(self.pallet_w_var)
+        pallet_l = parse_dim(self.pallet_l_var)
+        pallet_h = parse_dim(self.pallet_h_var)
+        box_w = parse_dim(self.box_w_var)
+        box_l = parse_dim(self.box_l_var)
+        box_h = parse_dim(self.box_h_var)
+        thickness = parse_dim(self.cardboard_thickness_var)
+        layers = getattr(self, "num_layers", self._safe_int(self.num_layers_var))
+        cartons_per_layer = len(self.layers[0]) if self.layers else 0
+        total_cartons = sum(len(layer) for layer in self.layers[:layers]) if self.layers else 0
+        if not total_cartons:
+            total_cartons = cartons_per_layer * layers
+        products = total_cartons * self._get_products_per_carton()
+        height = layers * (box_h + 2 * thickness) + (pallet_h if self.include_pallet_height_var.get() else 0)
+        carton_wt, _ = self._get_active_carton_weight()
+        mass = carton_wt * total_cartons + self.pallet_base_mass
+        layout = getattr(self, "best_layout_name", "") or getattr(self, "best_layout_key", "")
+        data = {
+            "carton_name": self.carton_var.get(),
+            "carton_dims": f"{box_w + 2 * thickness:.1f} × {box_l + 2 * thickness:.1f} × {box_h + 2 * thickness:.1f} mm",
+            "pallet_data": f"{pallet_w:.1f} × {pallet_l:.1f} × {pallet_h:.1f} mm",
+            "cartons_per_layer": cartons_per_layer,
+            "layers": layers,
+            "cartons_per_pallet": total_cartons,
+            "products_per_pallet": products,
+            "pallet_height": f"{height:.1f} mm",
+            "pallet_mass": f"{mass:.2f} kg" if mass > 0 else "",
+            "layout": layout,
+            "warnings": self.limit_label.cget("text") if hasattr(self, "limit_label") else "",
+        }
+        with open(filename, "w", encoding="utf-8") as fh:
+            fh.write(build_packaging_test_card(data))
+        messagebox.showinfo("Karta testu", f"Zapisano plik:\\n{filename}")
 
     @staticmethod
     def apply_transformation(positions, transform, pallet_w, pallet_l):
