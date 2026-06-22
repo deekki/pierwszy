@@ -98,13 +98,25 @@ class EditorController:
             "clear_layer": clear_layer,
         }
 
-    def on_motion(self, x: float, y: float) -> Dict[str, object]:
+    def on_motion(
+        self,
+        x: float,
+        y: float,
+        screen_x: float | None = None,
+        screen_y: float | None = None,
+    ) -> Dict[str, object]:
         if self.pressed_button != 1:
             return {}
         if self.drag_start is None:
             return {}
 
-        distance = hypot(x - self.drag_start[0], y - self.drag_start[1])
+        if screen_x is not None and screen_y is not None:
+            if not hasattr(self, "_screen_drag_start"):
+                self._screen_drag_start = (screen_x, screen_y)
+            sx, sy = self._screen_drag_start
+            distance = hypot(screen_x - sx, screen_y - sy)
+        else:
+            distance = hypot(x - self.drag_start[0], y - self.drag_start[1])
         if distance > self.drag_threshold_px:
             self.is_dragging = True
 
@@ -124,6 +136,8 @@ class EditorController:
         self.last_pos = None
         self.is_dragging = False
         self.pressed_button = None
+        if hasattr(self, "_screen_drag_start"):
+            delattr(self, "_screen_drag_start")
         return {"was_dragging": was_dragging}
 
     def reset_drag_state(self) -> None:
@@ -131,3 +145,5 @@ class EditorController:
         self.last_pos = None
         self.is_dragging = False
         self.pressed_button = None
+        if hasattr(self, "_screen_drag_start"):
+            delattr(self, "_screen_drag_start")

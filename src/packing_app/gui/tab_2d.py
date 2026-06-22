@@ -51,7 +51,8 @@ class TabPacking2D(ttk.Frame):
         ttk.Label(f_carton, text="Wybierz karton:").grid(
             row=0, column=0, sticky="w", padx=4, pady=(2, 1)
         )
-        self.carton_choice = tk.StringVar(value="Manual")
+        self.manual_carton_label = "Ręcznie"
+        self.carton_choice = tk.StringVar(value=self.manual_carton_label)
         self.cb_carton = ttk.Combobox(
             f_carton,
             textvariable=self.carton_choice,
@@ -248,11 +249,28 @@ class TabPacking2D(ttk.Frame):
         self.use_cushions = tk.BooleanVar(value=False)
         ttk.Checkbutton(
             f_settings,
-            text="Poduszki z powietrzem (37×175×110 mm)",
+            text="Poduszki z powietrzem",
             variable=self.use_cushions,
             command=self.show_packing,
         ).grid(row=0, column=2, columnspan=4, sticky="w", padx=4, pady=(2, 1))
         self.use_cushions.trace_add("write", lambda *args: self.show_packing())
+
+        ttk.Label(f_settings, text="Poduszka W/L/H [mm]:").grid(
+            row=6, column=0, sticky="w", padx=4, pady=(0, 2)
+        )
+        self.cushion_w = tk.StringVar(value="37")
+        self.cushion_l = tk.StringVar(value="175")
+        self.cushion_h = tk.StringVar(value="110")
+        for col, var in enumerate((self.cushion_w, self.cushion_l, self.cushion_h), start=1):
+            entry = ttk.Entry(
+                f_settings,
+                textvariable=var,
+                width=8,
+                validate="key",
+                validatecommand=(self.register(self.validate_number), "%P"),
+            )
+            entry.grid(row=6, column=col, sticky="w", padx=(2, 4), pady=(0, 2))
+            entry.bind("<Return>", self.on_enter_pressed)
 
         ttk.Label(f_settings, text="Odstęp poduszek [mm]:").grid(
             row=1, column=0, sticky="w", padx=4, pady=(0, 1)
@@ -392,6 +410,9 @@ class TabPacking2D(ttk.Frame):
         self.prod_diam.trace_add("write", self.on_prod_diam_changed)
         self.display_mode.trace_add("write", lambda *args: self.show_packing())
         self.display_manual_spacing.trace_add("write", lambda *args: self.show_packing())
+        self.cushion_w.trace_add("write", lambda *args: self.show_packing())
+        self.cushion_l.trace_add("write", lambda *args: self.show_packing())
+        self.cushion_h.trace_add("write", lambda *args: self.show_packing())
         self.on_prod_diam_changed()
         self.update_carton_list()
         self.update_product_fields()
@@ -450,12 +471,12 @@ class TabPacking2D(ttk.Frame):
         current_l = self.parse_dim_safe(self.carton_l)
         current_h = self.parse_dim_safe(self.carton_h)
         selected_carton = self.carton_choice.get()
-        if selected_carton != "Manual":
-            key = selected_carton.split()[0]
+        if selected_carton != self.manual_carton_label:
+            key = selected_carton.split(":")[0]
             if key in self.predefined_cartons:
                 w, length, h = self.predefined_cartons[key]
                 if current_w != w or current_l != length or current_h != h:
-                    self.carton_choice.set("Manual")
+                    self.carton_choice.set(self.manual_carton_label)
 
     def draw_carton_and_margin(self, ax, width, height, margin):
         ax.add_patch(plt.Rectangle((0, 0), width, height, fill=False, edgecolor='black'))
@@ -465,11 +486,24 @@ class TabPacking2D(ttk.Frame):
 
     def add_air_cushions(self, ax, width, height, positions, h_c):
         if self.use_cushions.get():
-            cushion_positions = place_air_cushions(width, height, positions, min_gap=self.parse_dim_safe(self.cushion_gap), offset_x=self.parse_dim_safe(self.offset_x), offset_y=self.parse_dim_safe(self.offset_y))
+            cushion_w = max(self.parse_dim_safe(self.cushion_w), 1)
+            cushion_l = max(self.parse_dim_safe(self.cushion_l), 1)
+            cushion_h = max(self.parse_dim_safe(self.cushion_h), 1)
+            cushion_positions = place_air_cushions(
+                width,
+                height,
+                positions,
+                cushion_w=cushion_w,
+                cushion_l=cushion_l,
+                cushion_h=cushion_h,
+                min_gap=self.parse_dim_safe(self.cushion_gap),
+                offset_x=self.parse_dim_safe(self.offset_x),
+                offset_y=self.parse_dim_safe(self.offset_y),
+            )
             for (x0, y0, ww, hh) in cushion_positions:
                 ax.add_patch(plt.Rectangle((x0, y0), ww, hh, fill=True, facecolor='yellow', edgecolor='black', alpha=0.5))
-            if h_c > 0 and h_c < 110:
-                messagebox.showinfo("Informacja", "Sprawdź fizycznie, czy poduszka się zmieści (wysokość poduszki: 110 mm).")
+            if h_c > 0 and h_c < cushion_h:
+                messagebox.showinfo("Informacja", f"Sprawdź fizycznie, czy poduszka się zmieści (wysokość poduszki: {cushion_h:.0f} mm).")
 
     def draw_vertical(self, ax, w_c, l_c, w_p, l_p, margin, h_c):
         c_vert, pos_vert = pack_rectangles_2d(w_c, l_c, w_p, l_p, margin)
@@ -584,7 +618,8 @@ class TabPacking2D(ttk.Frame):
     def _apply_display_grid(self, width, height, diam, centers, gap_x=None, gap_y=None):
         rows = self._group_rows(centers)
         row_count = len(rows)
-        col_count = max((len(row) for row in rows), default=0)
+        row_counts = [len(row) for row in rows]
+        col_count = max(row_counts, default=0)
         if row_count == 0 or col_count == 0:
             return centers, 0, 0, 0, 0
         if gap_x is None:
@@ -594,12 +629,22 @@ class TabPacking2D(ttk.Frame):
         step_x = diam + gap_x
         step_y = diam + gap_y
         new_centers = []
-        for row_idx in range(row_count):
+        for row_idx, cols in enumerate(row_counts):
             cy = gap_y + diam / 2 + row_idx * step_y
-            for col_idx in range(col_count):
+            for col_idx in range(cols):
                 cx = gap_x + diam / 2 + col_idx * step_x
                 new_centers.append((cx, cy))
         return new_centers, gap_x, gap_y, row_count, col_count
+
+    def _centers_within_bounds(self, width, height, diam, centers):
+        r = diam / 2
+        return all(
+            cx - r >= -1e-6
+            and cy - r >= -1e-6
+            and cx + r <= width + 1e-6
+            and cy + r <= height + 1e-6
+            for cx, cy in centers
+        )
 
     def _apply_display_hex(self, width, height, diam, centers, gap_x=None, gap_y=None):
         rows = self._group_rows(centers)
@@ -663,8 +708,8 @@ class TabPacking2D(ttk.Frame):
             return
         self.syncing_display_carton = True
         try:
-            self.carton_w.set(f"{req_w:.2f}")
-            self.carton_l.set(f"{req_l:.2f}")
+            self.carton_w.set(f"{round(req_w):.0f}")
+            self.carton_l.set(f"{round(req_l):.0f}")
         finally:
             self.syncing_display_carton = False
 
@@ -702,10 +747,10 @@ class TabPacking2D(ttk.Frame):
                 label = f"{k}: {w}x{length}x{h} (luz: {free_space:.1f} mm)"
                 cvals.append((label, free_space))
         cvals.sort(key=lambda x: x[1])
-        cvals = ["Manual"] + [item[0] for item in cvals]
+        cvals = [self.manual_carton_label] + [item[0] for item in cvals]
         self.cb_carton["values"] = cvals
         current = self.carton_choice.get()
-        if current == "Manual":
+        if current == self.manual_carton_label:
             return
         if current in cvals:
             return
@@ -714,7 +759,7 @@ class TabPacking2D(ttk.Frame):
         if match:
             self.carton_choice.set(match)
         else:
-            self.carton_choice.set("Manual")
+            self.carton_choice.set(self.manual_carton_label)
 
     def update_layout_options(self):
         if self.prod_type.get() == "rectangle":
@@ -743,7 +788,7 @@ class TabPacking2D(ttk.Frame):
         try:
             self.updating_carton = True
             val = self.carton_choice.get()
-            if val != "Manual":
+            if val != self.manual_carton_label:
                 key = val.split(":")[0]
                 if key in self.predefined_cartons:
                     w, length, h = self.predefined_cartons[key]
@@ -837,10 +882,12 @@ class TabPacking2D(ttk.Frame):
             carton_area = w_c * l_c / 1_000_000
             prod_area = w_p * l_p / 1_000_000 if w_p > 0 and l_p > 0 else 0
             area_ratio = carton_area / prod_area if prod_area > 0 else 0
+            prod_area_cm2 = w_p * l_p / 100 if w_p > 0 and l_p > 0 else 0
             self.area_label.config(
                 text=(
                     f"Pow. kartonu: {carton_area:.3f} m² | "
-                    f"Pow. kartonika: {prod_area:.2f} m² | Miejsca: {area_ratio:.2f}"
+                    f"Pow. kartonika: {prod_area:.4f} m² ({prod_area_cm2:.1f} cm²) | "
+                    f"Miejsca: {area_ratio:.2f}"
                 )
             )
         else:
@@ -886,8 +933,22 @@ class TabPacking2D(ttk.Frame):
                     gap_y=display_gap_y if manual else None,
                 )
                 if not manual:
-                    self.display_gap_x.set(f"{gx:.2f}")
-                    self.display_gap_y.set(f"{gy:.2f}")
+                    self.display_gap_x.set(f"{round(gx):.0f}")
+                    self.display_gap_y.set(f"{round(gy):.0f}")
+                if manual:
+                    checks = (
+                        (w_c, l_c, grid_centers),
+                        (w_c, l_c, hex_centers),
+                        (l_c, w_c, rev_centers),
+                    )
+                    if not all(
+                        self._centers_within_bounds(width, height, diam, centers)
+                        for width, height, centers in checks
+                    ):
+                        messagebox.showwarning(
+                            "Ostrzeżenie",
+                            "Ręczne odstępy display wypychają część pojemników poza karton.",
+                        )
                 grid_shape = (grid_rows, grid_cols)
                 active_gap_x = display_gap_x if manual else gx
                 active_gap_y = display_gap_y if manual else gy
@@ -932,8 +993,8 @@ class TabPacking2D(ttk.Frame):
                     f"Siatka: {c_grid}\n"
                     f"Wolne miejsce na prawo={w_c - (mgx + r):.1f}\n"
                     f"Wolne miejsce do góry={l_c - (mgy + r):.1f}\n"
-                    f"Odstęp X/Y={self.parse_dim_safe(self.display_gap_x):.1f}/{self.parse_dim_safe(self.display_gap_y):.1f} mm\n"
-                    f"Odstęp po skosie={max(math.sqrt((diam + self.parse_dim_safe(self.display_gap_x))**2 + (diam + self.parse_dim_safe(self.display_gap_y))**2) - diam, 0):.1f} mm\n"
+                    f"Odstęp X/Y={self.parse_dim_safe(self.display_gap_x):.0f}/{self.parse_dim_safe(self.display_gap_y):.0f} mm\n"
+                    f"Odstęp po skosie={max(math.sqrt((diam + self.parse_dim_safe(self.display_gap_x))**2 + (diam + self.parse_dim_safe(self.display_gap_y))**2) - diam, 0):.0f} mm\n"
                     f"Zajętość pow.: {area_util:.1f}%\n"
                     f"Zajętość obj.: {vol_util:.1f}%",
                     fontsize=10
@@ -951,7 +1012,7 @@ class TabPacking2D(ttk.Frame):
                     f"Hex: {c_hex}\n"
                     f"Wolne miejsce na prawo={w_c - (mhx + r):.1f}\n"
                     f"Wolne miejsce do góry={l_c - (mhy + r):.1f}\n"
-                    f"Odstęp X/Y={self.parse_dim_safe(self.display_gap_x):.1f}/{self.parse_dim_safe(self.display_gap_y):.1f} mm\n"
+                    f"Odstęp X/Y={self.parse_dim_safe(self.display_gap_x):.0f}/{self.parse_dim_safe(self.display_gap_y):.0f} mm\n"
                     f"Zajętość pow.: {area_util:.1f}%\n"
                     f"Zajętość obj.: {vol_util:.1f}%",
                     fontsize=10
@@ -969,7 +1030,7 @@ class TabPacking2D(ttk.Frame):
                     f"Hex(rev): {c_rev}\n"
                     f"Wolne miejsce na prawo={l_c - (mrx + r):.1f}\n"
                     f"Wolne miejsce do góry={w_c - (mry + r):.1f}\n"
-                    f"Odstęp X/Y={self.parse_dim_safe(self.display_gap_x):.1f}/{self.parse_dim_safe(self.display_gap_y):.1f} mm\n"
+                    f"Odstęp X/Y={self.parse_dim_safe(self.display_gap_x):.0f}/{self.parse_dim_safe(self.display_gap_y):.0f} mm\n"
                     f"Zajętość pow.: {area_util:.1f}%\n"
                     f"Zajętość obj.: {vol_util:.1f}%",
                     fontsize=10
@@ -980,10 +1041,12 @@ class TabPacking2D(ttk.Frame):
             carton_area = w_c * l_c / 1_000_000
             prod_area = math.pi * (diam / 2) ** 2 / 1_000_000 if diam > 0 else 0
             area_ratio = carton_area / prod_area if prod_area > 0 else 0
+            prod_area_cm2 = math.pi * (diam / 2) ** 2 / 100 if diam > 0 else 0
             self.area_label.config(
                 text=(
                     f"Pow. kartonu: {carton_area:.3f} m² | "
-                    f"Pow. kartonika: {prod_area:.2f} m² | Miejsca: {area_ratio:.2f}"
+                    f"Pow. pojemnika: {prod_area:.4f} m² ({prod_area_cm2:.1f} cm²) | "
+                    f"Miejsca: {area_ratio:.2f}"
                 )
             )
 
@@ -1088,7 +1151,7 @@ class TabPacking2D(ttk.Frame):
         margin = self.parse_dim_safe(self.margin)
         carton_code = None
         val = self.carton_choice.get()
-        if val != "Manual":
+        if val != self.manual_carton_label:
             carton_code = val.split(":")[0]
         if carton_code:
             self.pallet_tab.carton_var.set(carton_code)
